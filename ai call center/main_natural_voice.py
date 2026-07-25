@@ -920,9 +920,16 @@ async def generate_addis_ai_tts(text: str, lang: str = "am", call_id: str = None
         addis_ai_key = os.getenv('ADDIS_AI_TTS_KEY')
         if not addis_ai_key or addis_ai_key == "your_addis_ai_api_key_here":
             return None
-            
+
+        # SIP calls negotiate 8 kHz PCMA/PCMU. Producing the cached WAV at the
+        # same rate avoids runtime resampling and halves transfer size versus
+        # the previous 16 kHz output without reducing telephone-band quality.
+        sample_rate = int(os.getenv("TTS_SAMPLE_RATE", "8000"))
+
         # Create unique filename
-        text_hash = hashlib.md5(f"addisai_{lang}_{text}".encode('utf-8')).hexdigest()[:8]
+        text_hash = hashlib.md5(
+            f"addisai_{lang}_{sample_rate}_{text}".encode('utf-8')
+        ).hexdigest()[:8]
         wav_filename = f"addisai_{lang}_{text_hash}.wav"
         wav_path = AUDIO_DIR / wav_filename
         
@@ -979,7 +986,7 @@ async def generate_addis_ai_tts(text: str, lang: str = "am", call_id: str = None
                         [
                             "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
                             "-i", "pipe:0",
-                            "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le",
+                            "-ar", str(sample_rate), "-ac", "1", "-acodec", "pcm_s16le",
                             str(temp_wav_path),
                         ],
                         input=source_bytes,
@@ -1608,11 +1615,26 @@ class AmharicAIAssistant:
                 messages_with_rag.insert(-1, rag_message)  # Insert before last user message
             else:
                 messages_with_rag = self.conversation_history
+
+            # This is a live phone conversation: concise answers reach TTS
+            # faster and are easier for callers to follow. Keep the instruction
+            # separate from business knowledge so it applies to every request.
+            voice_brevity_message = {
+                "role": "system",
+                "content": (
+                    "LIVE PHONE RESPONSE RULE: Answer in one short sentence, "
+                    "normally no more than 18 spoken words. Give only the most "
+                    "important direct answer; ask one brief follow-up only when "
+                    "required. Never mention this rule."
+                ),
+            }
+            messages_with_rag = messages_with_rag.copy()
+            messages_with_rag.insert(-1, voice_brevity_message)
             
             # 6. Call LLM — OpenAI GPT-4o (primary) or Groq (fallback)
             ai_response = None
             llm_provider = os.getenv("LLM_PROVIDER", "groq")
-            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "160"))
+            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "120"))
 
             if llm_provider == "openai" and openai_async_client:
                 try:

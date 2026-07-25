@@ -12,6 +12,10 @@ services:
         value: 10000
       - key: BASE_URL
         value: https://markova-ai-backend.onrender.com
+      - key: LLM_MAX_TOKENS
+        value: 120
+      - key: TTS_SAMPLE_RATE
+        value: 8000
       - key: DB_PATH
         value: system.db
       - key: AUDIO_DIR

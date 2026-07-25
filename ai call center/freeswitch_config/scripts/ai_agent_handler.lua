@@ -262,7 +262,7 @@ end
 
 -- 1. Cache the static greeting locally. Repeat calls avoid both the greeting
 -- endpoint and audio download, while invalid/non-WAV cache entries self-heal.
-local greeting_cache = temp_dir .. "\\markova_ai_greeting.wav"
+local greeting_cache = temp_dir .. "\\markova_ai_greeting_8k.wav"
 if is_valid_wav(greeting_cache) then
     freeswitch.consoleLog("info", "[AI Agent] Greeting cache hit\n")
     play_with_barge_in(greeting_cache, true)
