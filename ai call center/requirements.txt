@@ -6,17 +6,11 @@ twilio
 openai
 groq
 python-multipart
-whisper
 aiofiles
 httpx
-TTS
-torch
-torchaudio
-soundfile
 aiosqlite
 structlog
 aiosmtplib
-numpy
 edge-tts
 elevenlabs
 greenswitch
