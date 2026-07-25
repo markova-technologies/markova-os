@@ -2310,6 +2310,51 @@ async def stream_response(
         logger.error(f"❌ Stream response error: {e}")
         return JSONResponse({"error": str(e)}, status_code=500)
 
+@app.post("/sip-response")
+async def sip_response(
+    request: Request,
+    audio_file: UploadFile = File(None),
+    call_id: str = Form(None),
+):
+    """
+    Run the normal voice pipeline but return the first WAV directly.
+
+    FreeSWITCH previously received JSON and then opened a second HTTPS
+    connection to download the generated audio. A direct media response keeps
+    the existing web JSON API intact while removing that extra SIP round trip.
+    """
+    response = await stream_response(request, audio_file, call_id)
+    if response.status_code != 200:
+        return response
+
+    try:
+        payload = json.loads(response.body)
+        sentences = payload.get("sentences") or []
+        audio_url = sentences[0].get("audio_url") if sentences else None
+        if not audio_url:
+            raise ValueError("No generated sentence audio")
+
+        filename = Path(audio_url).name
+        audio_path = (AUDIO_DIR / filename).resolve()
+        audio_root = AUDIO_DIR.resolve()
+        if audio_path.parent != audio_root or not audio_path.is_file():
+            raise ValueError("Generated audio file is unavailable")
+
+        latency = payload.get("latency_total", 0)
+        logger.info(
+            f"⚡ SIP direct audio ready | call={call_id} "
+            f"pipeline={latency}s file={filename}"
+        )
+        return FileResponse(
+            audio_path,
+            media_type="audio/wav",
+            filename=filename,
+            headers={"X-Pipeline-Latency": str(latency)},
+        )
+    except Exception as exc:
+        logger.error(f"❌ SIP direct response error: {exc}")
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
 # --- Dashboard API Endpoints ---
 
 DASHBOARD_API_KEY = os.getenv('DASHBOARD_API_KEY', 'default-secret-key')
