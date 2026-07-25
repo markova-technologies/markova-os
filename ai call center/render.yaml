@@ -6,9 +6,12 @@ services:
     region: frankfurt
     dockerfilePath: ai call center/Dockerfile
     dockerContext: ai call center
+    healthCheckPath: /
     envVars:
       - key: PORT
         value: 10000
+      - key: BASE_URL
+        value: https://markova-ai-backend.onrender.com
       - key: DB_PATH
         value: system.db
       - key: AUDIO_DIR

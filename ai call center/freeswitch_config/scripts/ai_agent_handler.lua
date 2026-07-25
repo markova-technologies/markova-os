@@ -3,14 +3,32 @@
 -- Uses system curl for reliable HTTP communication
 
 session:answer()
-session:sleep(500)
 
-local backend_url = "http://localhost:8001"
+local backend_url = "https://markova-ai-backend.onrender.com"
 local uuid = session:get_uuid()
 local caller_id = session:getVariable("caller_id_number") or "sip-user"
 
 -- Windows-compatible temp directory
 local temp_dir = os.getenv("TEMP") or "C:\\Temp"
+
+local function now_ms()
+    local ok, value = pcall(freeswitch.getTime)
+    if ok and value then
+        return math.floor(value / 1000)
+    end
+    return os.time() * 1000
+end
+
+local function is_valid_wav(path)
+    local f = io.open(path, "rb")
+    if not f then return false end
+    local header = f:read(12)
+    local size = f:seek("end") or 0
+    f:close()
+    return size > 100 and header and
+        string.sub(header, 1, 4) == "RIFF" and
+        string.sub(header, 9, 12) == "WAVE"
+end
 
 -- === CRITICAL: Disable all RTP/media/SIP timeouts ===
 -- Without these, the call drops during HTTP processing (Whisper + LLM takes 5-15s)
@@ -80,13 +98,14 @@ function fix_audio_url(url)
 end
 
 -- Download audio file to local disk for playback (avoids needing mod_shout)
-function download_audio(url)
+function download_audio(url, target_file)
+    local download_started = now_ms()
     -- Detect file extension from URL (default to .wav for FreeSWITCH compatibility)
     local ext = string.match(url, "%.(%w+)$") or "wav"
     if ext ~= "wav" then
         ext = "wav"  -- Force WAV for FreeSWITCH compatibility
     end
-    local local_file = temp_dir .. "\\ai_response_" .. uuid .. "." .. ext
+    local local_file = target_file or (temp_dir .. "\\ai_response_" .. uuid .. "." .. ext)
     local cmd = string.format('curl.exe -s -o "%s" "%s"', local_file, url)
     freeswitch.consoleLog("info", "[AI Agent] Downloading: " .. url .. " -> " .. local_file .. "\n")
     os.execute(cmd)
@@ -97,7 +116,11 @@ function download_audio(url)
         local size = f:seek("end")
         f:close()
         if size > 100 then
-            freeswitch.consoleLog("info", "[AI Agent] Downloaded " .. size .. " bytes\n")
+            freeswitch.consoleLog(
+                "info",
+                "[AI Agent] Downloaded " .. size .. " bytes in " ..
+                (now_ms() - download_started) .. "ms\n"
+            )
             return local_file
         end
     end
@@ -153,12 +176,18 @@ end
 --   When playback starts → ESL calls uuid_execute <uuid> vmd start
 --   When vmd::start fires → ESL calls uuid_break to stop playback
 -- Lua does nothing special here — just plain playback.
-function play_with_barge_in(local_file)
+function play_with_barge_in(local_file, keep_file)
     if not local_file or not session:ready() then return false end
+    local playback_started = now_ms()
     freeswitch.consoleLog("info", "[AI Agent] PLAYING: " .. local_file .. "\n")
     session:execute("playback", local_file)
-    pcall(function() os.remove(local_file) end)
-    freeswitch.consoleLog("info", "[AI Agent] Playback done\n")
+    if not keep_file then
+        pcall(function() os.remove(local_file) end)
+    end
+    freeswitch.consoleLog(
+        "info",
+        "[AI Agent] Playback done in " .. (now_ms() - playback_started) .. "ms\n"
+    )
     return false
 end
 
@@ -166,6 +195,7 @@ end
 -- === HELPER: Streaming response — play sentence by sentence (Stage 4) ===
 -- Calls /stream-response which returns JSON list of audio URLs (one per sentence)
 function stream_response(rec_file)
+    local backend_started = now_ms()
     -- Build multipart upload command to /stream-response
     local url = backend_url .. "/stream-response"
     local out_file = temp_dir .. "\\stream_meta_" .. uuid .. ".json"
@@ -175,6 +205,11 @@ function stream_response(rec_file)
     )
     freeswitch.consoleLog("info", "[AI Agent] Calling /stream-response...\n")
     os.execute(cmd)
+    freeswitch.consoleLog(
+        "info",
+        "[AI Agent] Backend response returned in " ..
+        (now_ms() - backend_started) .. "ms\n"
+    )
 
     -- Read the JSON response (list of audio URLs + transcript)
     local f = io.open(out_file, "r")
@@ -225,19 +260,35 @@ end
 
 -- === MAIN CONVERSATION FLOW ===
 
--- 1. Get initial greeting (still uses /incoming-call for welcome message)
-freeswitch.consoleLog("info", "[AI Agent] Fetching greeting...\n")
-local greeting = http_post("/incoming-call", "From=" .. caller_id .. "&CallSid=" .. uuid)
--- Play greeting with barge-in enabled (user can speak right away)
-local greeting_file_url = string.match(greeting, "<Play>(.-)</Play>")
-if greeting_file_url then
-    if string.sub(greeting_file_url, 1, 1) == "/" then
-        greeting_file_url = backend_url .. greeting_file_url
-    end
-    greeting_file_url = fix_audio_url(greeting_file_url)
-    local local_greeting = download_audio(greeting_file_url)
-    if local_greeting then
-        play_with_barge_in(local_greeting)
+-- 1. Cache the static greeting locally. Repeat calls avoid both the greeting
+-- endpoint and audio download, while invalid/non-WAV cache entries self-heal.
+local greeting_cache = temp_dir .. "\\markova_ai_greeting.wav"
+if is_valid_wav(greeting_cache) then
+    freeswitch.consoleLog("info", "[AI Agent] Greeting cache hit\n")
+    play_with_barge_in(greeting_cache, true)
+else
+    pcall(function() os.remove(greeting_cache) end)
+    local greeting_started = now_ms()
+    freeswitch.consoleLog("info", "[AI Agent] Greeting cache miss; fetching greeting...\n")
+    local greeting = http_post("/incoming-call", "From=" .. caller_id .. "&CallSid=" .. uuid)
+    local greeting_file_url = string.match(greeting, "<Play>(.-)</Play>")
+    if greeting_file_url then
+        if string.sub(greeting_file_url, 1, 1) == "/" then
+            greeting_file_url = backend_url .. greeting_file_url
+        end
+        greeting_file_url = fix_audio_url(greeting_file_url)
+        local local_greeting = download_audio(greeting_file_url, greeting_cache)
+        if local_greeting and is_valid_wav(local_greeting) then
+            freeswitch.consoleLog(
+                "info",
+                "[AI Agent] Greeting ready in " ..
+                (now_ms() - greeting_started) .. "ms\n"
+            )
+            play_with_barge_in(local_greeting, true)
+        else
+            pcall(function() os.remove(greeting_cache) end)
+            freeswitch.consoleLog("err", "[AI Agent] Greeting download was not a valid WAV\n")
+        end
     end
 end
 
@@ -257,7 +308,13 @@ for turn = 1, max_turns do
     session:setVariable("enable_file_write_buffering", "false")
 
     -- Stage 2: 0.5s silence timeout for low latency
+    local record_started = now_ms()
     session:execute("record", rec_file .. " 10 500 0")
+    freeswitch.consoleLog(
+        "info",
+        "[AI Agent] Recording stage took " ..
+        (now_ms() - record_started) .. "ms\n"
+    )
 
     if not session:ready() then break end
 
@@ -270,7 +327,13 @@ for turn = 1, max_turns do
 
         if size > 1000 then
             -- Stage 4: Stream response sentence-by-sentence with barge-in (Stage 3)
+            local turn_backend_started = now_ms()
             local ok = stream_response(rec_file)
+            freeswitch.consoleLog(
+                "info",
+                "[AI Agent] Turn " .. turn .. " backend/playback stage took " ..
+                (now_ms() - turn_backend_started) .. "ms\n"
+            )
             if not ok then
                 -- Fallback to batch /handle-input if streaming fails
                 freeswitch.consoleLog("warning", "[AI Agent] Stream failed, falling back to batch mode\n")

@@ -739,6 +739,26 @@ async def startup_event():
 from dotenv import load_dotenv
 load_dotenv()
 
+# Reuse provider connections across calls. Creating a new AsyncClient for every
+# STT/TTS request repeats DNS, TCP, and TLS setup on the critical voice path.
+provider_http_client: Optional[httpx.AsyncClient] = None
+
+async def get_provider_http_client() -> httpx.AsyncClient:
+    global provider_http_client
+    if provider_http_client is None or provider_http_client.is_closed:
+        provider_http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0, connect=10.0),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+        )
+    return provider_http_client
+
+@app.on_event("shutdown")
+async def close_provider_http_client():
+    global provider_http_client
+    if provider_http_client is not None and not provider_http_client.is_closed:
+        await provider_http_client.aclose()
+    provider_http_client = None
+
 # Initialize LLM client (Groq or Gemini based on LLM_PROVIDER env var)
 groq_client = None
 llm_provider = os.getenv("LLM_PROVIDER", "groq").lower()
@@ -924,64 +944,65 @@ async def generate_addis_ai_tts(text: str, lang: str = "am", call_id: str = None
         if call_id:
             asyncio.create_task(metrics.record_tts_cache_hit(call_id, False))
             
-        async with httpx.AsyncClient(timeout=30) as client:
-            payload = {
-                "text": text,
-                "language": lang
-            }
-            headers = {
-                "X-API-Key": addis_ai_key,
-                "Content-Type": "application/json"
-            }
-            # Verify endpoint URL, default to the official one
-            base_url = os.getenv("ADDIS_AI_TTS_URL", "https://api.addisassistant.com/api/v1/audio")
-            
-            resp = await client.post(base_url, json=payload, headers=headers)
-            if resp.status_code == 200:
-                resp_json = resp.json()
-                if "audio" in resp_json:
-                    audio_data = resp_json["audio"]
-                    # Usually returned as data:audio/wav;base64,...
-                    if audio_data.startswith("data:"):
-                        audio_data = audio_data.split(",")[1]
-                    
-                    import base64
-                    source_bytes = base64.b64decode(audio_data)
+        client = await get_provider_http_client()
+        payload = {
+            "text": text,
+            "language": lang
+        }
+        headers = {
+            "X-API-Key": addis_ai_key,
+            "Content-Type": "application/json"
+        }
+        # Verify endpoint URL, default to the official one
+        base_url = os.getenv("ADDIS_AI_TTS_URL", "https://api.addisassistant.com/api/v1/audio")
 
-                    # Normalize whatever container the provider returned (currently
-                    # MP3) into a real mono 16-bit PCM WAV. Write atomically so a
-                    # failed conversion can never leave a corrupt cache entry.
-                    import subprocess
-                    temp_wav_path = AUDIO_DIR / f".{wav_filename}.tmp.wav"
-                    try:
-                        subprocess.run(
-                            [
-                                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                                "-i", "pipe:0",
-                                "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le",
-                                str(temp_wav_path),
-                            ],
-                            input=source_bytes,
-                            check=True,
-                            capture_output=True,
-                            timeout=20,
-                        )
+        resp = await client.post(base_url, json=payload, headers=headers)
+        if resp.status_code == 200:
+            resp_json = resp.json()
+            if "audio" in resp_json:
+                audio_data = resp_json["audio"]
+                # Usually returned as data:audio/wav;base64,...
+                if audio_data.startswith("data:"):
+                    audio_data = audio_data.split(",")[1]
 
-                        with open(temp_wav_path, "rb") as converted_audio:
-                            converted_header = converted_audio.read(12)
-                        if converted_header[:4] != b"RIFF" or converted_header[8:12] != b"WAVE":
-                            raise ValueError("ffmpeg output is not a valid RIFF/WAVE file")
+                import base64
+                source_bytes = base64.b64decode(audio_data)
 
-                        os.replace(temp_wav_path, wav_path)
-                    except Exception as conversion_error:
-                        temp_wav_path.unlink(missing_ok=True)
-                        logger.error(f"Addis AI audio conversion failed: {conversion_error}")
-                        return None
+                # Normalize whatever container the provider returned (currently
+                # MP3) into a real mono 16-bit PCM WAV. Write atomically so a
+                # failed conversion can never leave a corrupt cache entry.
+                import subprocess
+                temp_wav_path = AUDIO_DIR / f".{wav_filename}.tmp.wav"
+                try:
+                    await asyncio.to_thread(
+                        subprocess.run,
+                        [
+                            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                            "-i", "pipe:0",
+                            "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le",
+                            str(temp_wav_path),
+                        ],
+                        input=source_bytes,
+                        check=True,
+                        capture_output=True,
+                        timeout=20,
+                    )
 
-                    logger.info(f"✅ Generated Addis AI TTS {lang} audio: {wav_filename}")
-                    return f"/audio/{wav_filename}"
-            else:
-                logger.warning(f"Addis AI API Error: {resp.status_code} {resp.text}")
+                    with open(temp_wav_path, "rb") as converted_audio:
+                        converted_header = converted_audio.read(12)
+                    if converted_header[:4] != b"RIFF" or converted_header[8:12] != b"WAVE":
+                        raise ValueError("ffmpeg output is not a valid RIFF/WAVE file")
+
+                    os.replace(temp_wav_path, wav_path)
+                except Exception as conversion_error:
+                    temp_wav_path.unlink(missing_ok=True)
+                    logger.error(f"Addis AI audio conversion failed: {conversion_error}")
+                    return None
+
+                logger.info(f"✅ Generated Addis AI TTS {lang} audio: {wav_filename}")
+                return f"/audio/{wav_filename}"
+        else:
+            logger.warning(f"Addis AI API Error: {resp.status_code} {resp.text}")
                 
         return None
     except Exception as e:
@@ -1201,6 +1222,8 @@ class AmharicAIAssistant:
         self.conversation_history = []
         self.detected_language = "amharic"
         self.detected_language = "amharic"
+        self.last_stt_provider = "none"
+        self.last_stt_timings: Dict[str, float] = {}
         self.is_first_turn = True
         self.db = conversation_db
         
@@ -1255,6 +1278,8 @@ class AmharicAIAssistant:
         """
         if not self.groq_client and not openai_async_client: return "", "amharic"
         
+        transcribe_started = time.perf_counter()
+        preprocess_started = transcribe_started
         temp_path = None
         processed_path = None
         
@@ -1279,7 +1304,8 @@ class AmharicAIAssistant:
                 # 3. loudnorm      — normalize volume (quiet speakers become audible)
                 # 4. ar=16000      — upsample to 16kHz (Whisper's native rate)
                 # 5. acodec=pcm_s16le — 16-bit PCM for maximum compatibility
-                subprocess.run(
+                await asyncio.to_thread(
+                    subprocess.run,
                     [
                         'ffmpeg', '-y', '-i', str(temp_path),
                         '-af', 'highpass=f=300,lowpass=f=3400,loudnorm=I=-16:TP=-1.5:LRA=11',
@@ -1295,7 +1321,8 @@ class AmharicAIAssistant:
                 logger.warning(f"FFmpeg enhancement failed, using basic conversion: {ffmpeg_err}")
                 # Fallback: basic conversion without filters
                 try:
-                    subprocess.run(
+                    await asyncio.to_thread(
+                        subprocess.run,
                         ['ffmpeg', '-y', '-i', str(temp_path), '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le', str(processed_path)],
                         check=True, capture_output=True, timeout=10
                     )
@@ -1314,6 +1341,8 @@ class AmharicAIAssistant:
                 "ዋጋ ብር ክፍያ ቅጣፍ ባንክ ዋስትና ትዕዛዝ order furniture desk chair bed style"
             )
 
+            preprocess_elapsed = time.perf_counter() - preprocess_started
+            provider_started = time.perf_counter()
             transcription_text = None
             detected_lang = "amharic"
             stt_provider_used = "none"
@@ -1332,16 +1361,16 @@ class AmharicAIAssistant:
                 if not elevenlabs_key or elevenlabs_key.startswith("your_"):
                     return False
                 try:
-                    async with httpx.AsyncClient(timeout=30) as client:
-                        with open(transcribe_path, "rb") as audio_f:
-                            files = {"file": (transcribe_filename, audio_f, "audio/wav")}
-                            data = {"model_id": "scribe_v2", "language_code": "am"}
-                            resp = await client.post(
-                                "https://api.elevenlabs.io/v1/speech-to-text",
-                                headers={"xi-api-key": elevenlabs_key},
-                                files=files,
-                                data=data
-                            )
+                    client = await get_provider_http_client()
+                    with open(transcribe_path, "rb") as audio_f:
+                        files = {"file": (transcribe_filename, audio_f, "audio/wav")}
+                        data = {"model_id": "scribe_v2", "language_code": "am"}
+                        resp = await client.post(
+                            "https://api.elevenlabs.io/v1/speech-to-text",
+                            headers={"xi-api-key": elevenlabs_key},
+                            files=files,
+                            data=data
+                        )
                         if resp.status_code == 200:
                             transcription_text = resp.json().get("text", "").strip()
                             stt_provider_used = "elevenlabs-scribe_v2"
@@ -1401,12 +1430,12 @@ class AmharicAIAssistant:
             # Route execution based on provider
             if stt_provider == "elevenlabs":
                 if not await try_elevenlabs_stt():
-                    try_groq_stt()
+                    await asyncio.to_thread(try_groq_stt)
             elif stt_provider == "openai":
                 if not await try_openai_stt():
-                    try_groq_stt()
+                    await asyncio.to_thread(try_groq_stt)
             else:
-                if not try_groq_stt():
+                if not await asyncio.to_thread(try_groq_stt):
                     await try_elevenlabs_stt()
 
             if transcription_text is None:
@@ -1417,6 +1446,18 @@ class AmharicAIAssistant:
             if detected_lang.lower() in ["arabic", "ar"]:
                 detected_lang = "amharic"
 
+            provider_elapsed = time.perf_counter() - provider_started
+            total_elapsed = time.perf_counter() - transcribe_started
+            self.last_stt_provider = stt_provider_used
+            self.last_stt_timings = {
+                "preprocess_ms": round(preprocess_elapsed * 1000, 1),
+                "provider_ms": round(provider_elapsed * 1000, 1),
+                "total_ms": round(total_elapsed * 1000, 1),
+            }
+            logger.info(
+                f"⏱️ STT timing | provider={stt_provider_used} "
+                f"preprocess={preprocess_elapsed:.3f}s api={provider_elapsed:.3f}s total={total_elapsed:.3f}s"
+            )
             logger.info(f"🎤 [{stt_provider_used}] detected [{detected_lang}]: {transcription_text}")
             return transcription_text, detected_lang
 
@@ -1511,7 +1552,14 @@ class AmharicAIAssistant:
             logger.info(f"🌐 Language switch: {self.detected_language} -> {new_lang}")
             self.detected_language = new_lang
             if self.call_id:
-                asyncio.create_task(self.db.update_session_language(self.call_id, new_lang))
+                try:
+                    asyncio.get_running_loop().create_task(
+                        self.db.update_session_language(self.call_id, new_lang)
+                    )
+                except RuntimeError:
+                    # generate_response may run in a worker thread; the endpoint
+                    # persists the final language on its event loop.
+                    pass
 
         # 2. Choose Model Routing (Updated for 2026 decommissionings)
         # Spanish, French, English, Amharic, Arabic -> Llama 3.3 70B (Versatile)
@@ -1564,6 +1612,7 @@ class AmharicAIAssistant:
             # 6. Call LLM — OpenAI GPT-4o (primary) or Groq (fallback)
             ai_response = None
             llm_provider = os.getenv("LLM_PROVIDER", "groq")
+            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "160"))
 
             if llm_provider == "openai" and openai_async_client:
                 try:
@@ -1574,7 +1623,7 @@ class AmharicAIAssistant:
                             model="gpt-4o",
                             messages=messages_with_rag,
                             temperature=0.7,
-                            max_tokens=300
+                            max_tokens=max_tokens
                         )
                     ) if False else None  # Placeholder — sync wrapper below
                     # Use sync OpenAI client for LLM (avoids event loop issues in sync context)
@@ -1583,7 +1632,7 @@ class AmharicAIAssistant:
                             model="gpt-4o",
                             messages=messages_with_rag,
                             temperature=0.7,
-                            max_tokens=300
+                            max_tokens=max_tokens
                         )
                         ai_response = oai_resp.choices[0].message.content.strip()
                         logger.info("🤖 LLM: Using OpenAI GPT-4o")
@@ -1596,7 +1645,7 @@ class AmharicAIAssistant:
                     model=model,
                     messages=messages_with_rag,
                     temperature=0.7,
-                    max_tokens=400
+                    max_tokens=max_tokens
                 )
                 ai_response = response.choices[0].message.content.strip()
                 logger.info(f"🤖 LLM: Using Groq {model} (fallback)")
@@ -1769,6 +1818,18 @@ def get_response(user_input: str, assistant: AmharicAIAssistant) -> Tuple[str, s
     
     return AMHARIC_RESPONSES["default"], "amharic"
 
+async def get_response_async(
+    user_input: str,
+    assistant: AmharicAIAssistant,
+) -> Tuple[str, str]:
+    """Run the synchronous provider SDK outside the FastAPI event loop."""
+    response, lang = await asyncio.to_thread(get_response, user_input, assistant)
+    if assistant.call_id:
+        asyncio.create_task(
+            assistant.db.update_session_language(assistant.call_id, lang)
+        )
+    return response, lang
+
 # Add favicon route to prevent 404 errors
 @app.get("/favicon.ico")
 async def favicon():
@@ -1863,6 +1924,25 @@ async def handle_incoming_call(
 
         return Response(content=error_twiml, media_type="application/xml; charset=utf-8")
 
+def should_repair_transcription(text: str, provider: str) -> bool:
+    """Only spend an extra LLM round-trip on transcripts that look uncertain."""
+    if not text or len(text) < 3:
+        return False
+    if provider != "elevenlabs-scribe_v2":
+        return True
+
+    meaningful = [char for char in text if char.isalpha()]
+    if not meaningful:
+        return True
+    geez_count = sum(0x1200 <= ord(char) <= 0x137F for char in meaningful)
+    latin_count = sum(("a" <= char.lower() <= "z") for char in meaningful)
+    geez_ratio = geez_count / len(meaningful)
+
+    # Scribe's clean native-Ge'ez output is already the highest-quality source
+    # in our benchmark. Mixed Latin/code-switching and low-Ge'ez output still
+    # benefit from the repair pass.
+    return geez_ratio < 0.85 or latin_count > 0
+
 async def repair_amharic_transcription(text: str) -> str:
     """
     Lightweight LLM pass to repair Whisper's common Amharic phonetic mistakes.
@@ -1871,7 +1951,8 @@ async def repair_amharic_transcription(text: str) -> str:
     if not groq_client or len(text) < 3:
         return text
     try:
-        response = groq_client.chat.completions.create(
+        response = await asyncio.to_thread(
+            groq_client.chat.completions.create,
             model="llama-3.1-8b-instant",  # Fast, cheap model
             messages=[{
                 "role": "system",
@@ -1889,7 +1970,7 @@ async def repair_amharic_transcription(text: str) -> str:
                 "role": "user", 
                 "content": text
             }],
-            max_tokens=200,
+            max_tokens=120,
             temperature=0.0
         )
         repaired = response.choices[0].message.content.strip()
@@ -1914,6 +1995,7 @@ async def handle_input(
     # Identify Call ID (Twilio uses CallSid, Web uses Form param or Header)
     call_id = CallSid or request.headers.get("X-Call-ID") or "web-session"
     start_time = time.time()
+    perf_started = time.perf_counter()
     
     # Get isolated session for this call
     assistant = await session_manager.get_session(call_id)
@@ -1990,7 +2072,12 @@ async def handle_input(
         return Response(content=twiml, media_type="application/xml; charset=utf-8")
 
     # === LLM POST-CORRECTION: Fix spelling mistakes before processing ===
-    user_input = await repair_amharic_transcription(user_input)
+    repair_started = time.perf_counter()
+    if should_repair_transcription(user_input, assistant.last_stt_provider):
+        user_input = await repair_amharic_transcription(user_input)
+    else:
+        logger.info("⚡ Skipping repair LLM for clean ElevenLabs Ge'ez transcript")
+    repair_elapsed = time.perf_counter() - repair_started
 
     # 4. START LOGGING: Save User Input
     if call_id:
@@ -2004,7 +2091,9 @@ async def handle_input(
     call_rec.add_user_turn(user_input)
 
     # Generate response and detect language
-    response, lang = get_response(user_input, assistant)
+    llm_started = time.perf_counter()
+    response, lang = await get_response_async(user_input, assistant)
+    llm_elapsed = time.perf_counter() - llm_started
     logger.info(f"✅ Generated {lang} response: {response}")
 
     # 5. LOGGING: Save Assistant Response
@@ -2021,7 +2110,9 @@ async def handle_input(
     asyncio.get_event_loop().run_in_executor(None, call_rec.save)
     
     # Try to generate natural voice with correct language
+    tts_started = time.perf_counter()
     audio_url = await generate_multilingual_voice(response, lang, call_id=call_id) # Await the async function
+    tts_elapsed = time.perf_counter() - tts_started
     
     elapsed = time.time() - start_time
     if call_id:
@@ -2038,6 +2129,13 @@ async def handle_input(
     else:
         twiml = create_enhanced_twiml_with_audio(response, lang_name=lang)
         logger.info(f"✅ Using enhanced Twilio voice for {lang}")
+
+    logger.info(
+        f"⏱️ Handle timing | call={call_id} "
+        f"stt={assistant.last_stt_timings.get('total_ms', 0) / 1000:.3f}s "
+        f"repair={repair_elapsed:.3f}s llm={llm_elapsed:.3f}s "
+        f"tts={tts_elapsed:.3f}s total={time.perf_counter() - perf_started:.3f}s"
+    )
     
     return Response(content=twiml, media_type="application/xml; charset=utf-8")
 
@@ -2075,6 +2173,7 @@ async def stream_response(
     5. Return JSON list of audio URLs for Lua to play sentence-by-sentence
     """
     start_time = time.time()
+    perf_started = time.perf_counter()
     call_id = call_id or request.headers.get("X-Call-ID") or "stream-session"
 
     try:
@@ -2082,8 +2181,12 @@ async def stream_response(
         if not audio_file:
             return JSONResponse({"error": "No audio"}, status_code=400)
 
+        session_started = time.perf_counter()
         assistant = await session_manager.get_session(call_id)
+        session_elapsed = time.perf_counter() - session_started
+        stt_started = time.perf_counter()
         user_text, detected_lang = await assistant.transcribe_audio(audio_file)
+        stt_elapsed = time.perf_counter() - stt_started
 
         if not user_text or is_garbage_transcription(user_text):
             retry_msg = get_polite_retry()
@@ -2097,7 +2200,15 @@ async def stream_response(
             })
 
         user_text = normalize_amharic(user_text)
-        user_text = await repair_amharic_transcription(user_text)
+        repair_started = time.perf_counter()
+        repair_applied = should_repair_transcription(
+            user_text, assistant.last_stt_provider
+        )
+        if repair_applied:
+            user_text = await repair_amharic_transcription(user_text)
+        else:
+            logger.info("⚡ Skipping repair LLM for clean ElevenLabs Ge'ez transcript")
+        repair_elapsed = time.perf_counter() - repair_started
         logger.info(f"🎤 Stream STT [{detected_lang}]: {user_text}")
 
         # Track in call session
@@ -2109,7 +2220,9 @@ async def stream_response(
         asyncio.create_task(assistant.db.save_message(call_id, "user", user_text, detected_lang))
 
         # === Step 2: Generate full response ===
-        response_text, lang = get_response(user_text, assistant)
+        llm_started = time.perf_counter()
+        response_text, lang = await get_response_async(user_text, assistant)
+        llm_elapsed = time.perf_counter() - llm_started
         logger.info(f"🤖 Stream response [{lang}]: {response_text}")
 
         # Track AI turn
@@ -2128,8 +2241,10 @@ async def stream_response(
             audio_url = await generate_multilingual_voice(sentence, lang, call_id=f"{call_id}_s{idx}")
             return {"text": sentence, "audio_url": audio_url}
 
+        tts_started = time.perf_counter()
         sentence_tasks = [gen_sentence_audio(s, i) for i, s in enumerate(sentences)]
         sentence_results = await asyncio.gather(*sentence_tasks)
+        tts_elapsed = time.perf_counter() - tts_started
 
         # Filter out failed TTS
         valid_sentences = [r for r in sentence_results if r.get("audio_url")]
@@ -2138,6 +2253,24 @@ async def stream_response(
         asyncio.create_task(metrics.record_response_time(call_id, elapsed))
         asyncio.create_task(dashboard_reporter.report_call_end(call_id, elapsed * 1000, elapsed * 1000))
 
+        total_elapsed = time.perf_counter() - perf_started
+        latency_breakdown = {
+            "session_ms": round(session_elapsed * 1000, 1),
+            "stt_ms": round(stt_elapsed * 1000, 1),
+            "repair_ms": round(repair_elapsed * 1000, 1),
+            "llm_ms": round(llm_elapsed * 1000, 1),
+            "tts_ms": round(tts_elapsed * 1000, 1),
+            "total_ms": round(total_elapsed * 1000, 1),
+            "repair_applied": repair_applied,
+            "stt_provider": assistant.last_stt_provider,
+        }
+        logger.info(
+            f"⏱️ Stream timing | call={call_id} "
+            f"session={session_elapsed:.3f}s stt={stt_elapsed:.3f}s "
+            f"repair={repair_elapsed:.3f}s llm={llm_elapsed:.3f}s "
+            f"tts={tts_elapsed:.3f}s total={total_elapsed:.3f}s "
+            f"repair_applied={repair_applied}"
+        )
         logger.info(f"⚡ Stream response ready in {elapsed:.2f}s — {len(valid_sentences)} audio chunks")
 
         return JSONResponse({
@@ -2147,7 +2280,8 @@ async def stream_response(
             "language": lang,
             "sentences": valid_sentences,
             "sentence_count": len(valid_sentences),
-            "latency_total": round(elapsed, 2)
+            "latency_total": round(elapsed, 2),
+            "latency": latency_breakdown,
         })
 
     except Exception as e:
