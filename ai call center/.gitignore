@@ -1,0 +1,26 @@
+# Ignore virtual environment
+.venv/
+venv/
+ENV/
+
+# Ignore python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore local config with sensitive keys
+.env
+.env.*
+
+# Ignore databases
+*.db
+*.sqlite
+
+# Ignore temporary audio/recording files
+*.wav
+*.webm
+*.mp3
+*.ogg
+recordings/
+temp_*

@@ -1,0 +1,16 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+.DS_Store
+coverage/
+.next/
+out/
+.vscode/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local project credentials and environment
+# (ai call center/ has its own local .gitignore)

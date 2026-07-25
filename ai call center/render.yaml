@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: markova-ai-backend
+    env: docker
+    region: frankfurt
+    plan: starter
+    disk:
+      name: markova-data
+      mountPath: /app/data
+      sizeGB: 1
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: DB_PATH
+        value: /app/data/system.db
+      - key: AUDIO_DIR
+        value: /app/data/audio
+      # You will add your API keys (GROQ, ELEVENLABS, ADDIS_AI) in the Render Dashboard

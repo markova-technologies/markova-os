@@ -1,0 +1,11 @@
+{
+  "name": "embedding-worker",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "redis": "^4.6.10",
+    "pg": "^8.11.3",
+    "pdf-parse": "^1.1.1",
+    "@markova/events-schemas": "file:../../packages/event-schemas"
+  }
+}

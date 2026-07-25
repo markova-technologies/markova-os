@@ -1,0 +1,13 @@
+{
+  "name": "conversation-runtime",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "redis": "^4.6.10",
+    "axios": "^1.6.2",
+    "@markova/ai-runtime": "file:../../kernel/ai",
+    "@markova/event-schemas": "file:../../packages/event-schemas"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "markova-platform",
+  "version": "2.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/admin-dashboard",
+    "apps/client-dashboard",
+    "services/*",
+    "packages/*",
+    "workers/*"
+  ],
+  "scripts": {
+    "dev": "docker-compose up",
+    "dev:admin": "npm run dev --workspace=apps/admin-dashboard",
+    "dev:client": "npm run dev --workspace=apps/client-dashboard",
+    "build:admin": "npm run build --workspace=apps/admin-dashboard",
+    "build:client": "npm run build --workspace=apps/client-dashboard"
+  }
+}

@@ -1,0 +1,47 @@
+<include>
+  <!-- 
+      Public Dialplan for Inbound Calls
+      This file goes in /etc/freeswitch/dialplan/public/00_ai_agent.xml
+  -->
+  <extension name="inbound_to_ai">
+    <!-- Match calls coming to your short code -->
+    <condition field="destination_number" expression="^(YOUR_SHORTCODE)$">
+      
+      <action application="answer"/>
+      <action application="sleep" data="500"/>
+      
+      <!-- Log the call -->
+      <action application="log" data="INFO Incoming call from ${caller_id_number} to AI Agent"/>
+      
+      <!-- 
+           Send HTTP POST to your FastAPI Backend 
+           URL: http://localhost:8001/incoming-call (Or your public IP)
+           Method: POST
+      -->
+      <action application="curl" data="http://localhost:8001/incoming-call post uuid=${uuid}&caller_id=${caller_id_number}&destination=${destination_number}"/>
+      
+      <!-- 
+           If FastAPI returns TwiML (XML), FreeSWITCH needs to parse it. 
+           However, mod_curl returns the raw body in ${curl_response_data}.
+           FreeSWITCH doesn't natively execute TwiML like Twilio does.
+           
+           CRITICAL: Since we are using an existing TwiML-generating backend, 
+           we need to translate TwiML to FreeSWITCH actions.
+           
+           Simplified Approach for Phase 1:
+           We will use 'httapi' (Hypertext Telephony API) if possible, or 
+           execute a Lua script to parse the response.
+           
+           For this specific plan (Plan A):
+           We will bridge the audio stream or play/record based on response.
+           
+           BUT, since the backend generates TwiML XML, the easiest path is 
+           using a Lua script to act as the interpreter.
+      -->
+      
+      <!-- Execute the AI logic script -->
+      <action application="lua" data="ai_agent_handler.lua"/>
+      
+    </condition>
+  </extension>
+</include>

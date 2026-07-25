@@ -1,0 +1,249 @@
+version: '3.8'
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Infrastructure
+  # ─────────────────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: markova-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-markova_db}
+      POSTGRES_USER: ${POSTGRES_USER:-markova}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./infrastructure/postgres/init-roles.sql:/docker-entrypoint-initdb.d/02_init_roles.sql
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U markova -d markova_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: markova-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Core Services
+  # ─────────────────────────────────────────────────────────────────────────────
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: markova-auth-service
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - REDIS_URL=redis://redis:6379
+      - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  tenant-service:
+    build:
+      context: ./services/tenant-service
+      dockerfile: Dockerfile
+    container_name: markova-tenant-service
+    ports:
+      - "5002:5002"
+    environment:
+      - PORT=5002
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  agent-builder:
+    build:
+      context: ./services/agent-builder
+      dockerfile: Dockerfile
+    container_name: markova-agent-builder
+    ports:
+      - "5003:5003"
+    environment:
+      - PORT=5003
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  tool-engine:
+    build:
+      context: ./services/tool-engine
+      dockerfile: Dockerfile
+    container_name: markova-tool-engine
+    ports:
+      - "5004:5004"
+    environment:
+      - PORT=5004
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  knowledge-service:
+    build:
+      context: ./services/knowledge-service
+      dockerfile: Dockerfile
+    container_name: markova-knowledge-service
+    ports:
+      - "5006:5006"
+    environment:
+      - PORT=5006
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  connector-hub:
+    build:
+      context: ./services/connector-hub
+      dockerfile: Dockerfile
+    container_name: markova-connector-hub
+    ports:
+      - "5005:5005"
+    environment:
+      - PORT=5005
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+      - UPLOAD_DIR=/tmp/connector-uploads
+    volumes:
+      - connector_uploads:/tmp/connector-uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  orchestrator:
+    build:
+      context: ./services/orchestrator
+      dockerfile: Dockerfile
+    container_name: markova-orchestrator
+    ports:
+      - "6000:6000"
+    environment:
+      - PORT=6000
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+      - REDIS_URL=redis://redis:6379
+      - TOOL_ENGINE_URL=http://tool-engine:5004
+      - CONNECTOR_HUB_URL=http://connector-hub:5005
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: markova-api-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - AUTH_SERVICE_URL=http://auth-service:5001
+      - TENANT_SERVICE_URL=http://tenant-service:5002
+      - AGENT_BUILDER_URL=http://agent-builder:5003
+      - TOOL_ENGINE_URL=http://tool-engine:5004
+      - CONNECTOR_HUB_URL=http://connector-hub:5005
+      - KNOWLEDGE_SERVICE_URL=http://knowledge-service:5006
+      - ORCHESTRATOR_URL=http://orchestrator:6000
+    depends_on:
+      - auth-service
+      - tenant-service
+      - redis
+    restart: always
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Workers
+  # ─────────────────────────────────────────────────────────────────────────────
+  connector-worker:
+    build:
+      context: ./workers/connector-worker
+      dockerfile: Dockerfile
+    container_name: markova-connector-worker
+    environment:
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  rpa-agent:
+    build:
+      context: ./workers/rpa-agent
+      dockerfile: Dockerfile
+    container_name: markova-rpa-agent
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  reporting-worker:
+    build:
+      context: ./workers/reporting-worker
+      dockerfile: Dockerfile
+    container_name: markova-reporting-worker
+    environment:
+      - DATABASE_URL=postgresql://markova:markova_pass@postgres:5432/markova_db
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  sync-worker:
+    build:
+      context: ./workers/sync-worker
+      dockerfile: Dockerfile
+    container_name: markova-sync-worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+volumes:
+  postgres_data:
+  redis_data:
+  connector_uploads:

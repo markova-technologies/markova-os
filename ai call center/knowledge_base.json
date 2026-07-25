@@ -1,0 +1,417 @@
+{
+    "company": {
+        "name": "GM Furniture",
+        "name_amharic": "ጂኤም ፈርኒቸር",
+        "description": "GM Furniture is a leading Ethiopian manufacturer and supplier of modern office and household furniture. Established in Addis Ababa, the company uses imported machinery and skilled Ethiopian craftsmen to produce high-quality furniture at competitive prices.",
+        "factory": "Alemgena, Sebeta Wereda — about 5 minutes from Jemo",
+        "email": "info@gm-furnitures.com",
+        "phone_main": ["+251-113-870206", "+251-113-870209"],
+        "fax": "+251-113-870207",
+        "address": "Oromia Liyu Zone, Alemgena Sebeta Wereda Kerabu, P.O.Box 70100, Addis Ababa, Ethiopia",
+        "website": "www.gm-furnitures.com",
+        "working_hours": "Monday-Saturday 8:30 AM - 6:00 PM",
+        "payment_methods": ["Cash", "Bank Transfer (CBE, Awash, Dashen)", "Installment plan for orders above 50,000 birr"],
+        "delivery_info": {
+            "addis_ababa": "Free delivery within Addis Ababa for orders above 10,000 birr. Standard delivery 2-3 business days.",
+            "outside_addis": "Delivery available to major cities. Shipping cost calculated based on distance. Delivery time 5-7 business days.",
+            "installation": "Free installation included with all furniture purchases. Our technicians will assemble and set up at your location."
+        },
+        "warranty": "1 year warranty on all products. 3 year warranty on office furniture frames.",
+        "custom_orders": "Custom furniture orders accepted. Design consultation available at showrooms. Production time 2-4 weeks depending on complexity."
+    },
+
+    "showrooms": [
+        {
+            "id": "bole",
+            "name": "Bole Showroom (Netsanet)",
+            "name_amharic": "ቦሌ ሾሩም (ነፃነት)",
+            "location": "Bole, Bitweded Bahiru Building, 1st Floor",
+            "location_amharic": "ቦሌ፣ ብጡወደድ ባህሩ ህንፃ፣ 1ኛ ፎቅ",
+            "phone": "+251-935-986-036",
+            "landmark": "Near Bole Medhanialem Church"
+        },
+        {
+            "id": "kera",
+            "name": "Kera Showroom",
+            "name_amharic": "ቄራ ሾሩም",
+            "location": "Kera, Main Road",
+            "location_amharic": "ቄራ፣ ዋና መንገድ",
+            "phone": "+251-113-870206",
+            "landmark": "Near Kera roundabout"
+        },
+        {
+            "id": "piassa",
+            "name": "Piassa Showroom (Elsa)",
+            "name_amharic": "ፒያሳ ሾሩም (ኤልሳ)",
+            "location": "Piassa, Churchill Road",
+            "location_amharic": "ፒያሳ፣ ቸርችል ጎዳና",
+            "phone": "+251-987-928-788",
+            "landmark": "On Churchill Avenue"
+        },
+        {
+            "id": "torhailoch",
+            "name": "Torhailoch Showroom (Genet)",
+            "name_amharic": "ቶርሃይሎች ሾሩም (ገነት)",
+            "location": "Torhailoch, in front of Queens Supermarket",
+            "location_amharic": "ቶርሃይሎች፣ ኩዊንስ ሱፐርማርኬት ፊት ለፊት",
+            "phone": "+251-930-247-888",
+            "landmark": "In front of Queens Supermarket"
+        },
+        {
+            "id": "gurd_shola",
+            "name": "Gurd Shola Showroom",
+            "name_amharic": "ጉርድ ሾላ ሾሩም",
+            "location": "Gurd Shola, near the main road",
+            "location_amharic": "ጉርድ ሾላ፣ ዋና መንገድ አጠገብ",
+            "phone": "+251-113-870209",
+            "landmark": "Near Gurd Shola intersection"
+        },
+        {
+            "id": "alemgena_hq",
+            "name": "Alemgena HQ & Shopping Mall",
+            "name_amharic": "አለምገና ዋና መሥሪያ ቤት",
+            "location": "Alemgena, 5 min from Jemo — 1800m² showroom",
+            "location_amharic": "አለምገና፣ ከጀሞ 5 ደቂቃ — 1800 ካሬ ሜትር ሾሩም",
+            "phone": "+251-113-870206",
+            "landmark": "GM Furniture Factory & Main Showroom"
+        }
+    ],
+
+    "products": [
+        {
+            "id": "sofa_3seat",
+            "category": "sofa",
+            "category_amharic": "ሶፋ",
+            "name": "Classic 3-Seater Sofa",
+            "name_amharic": "ክላሲክ 3-ሰው ሶፋ",
+            "price": 28000,
+            "price_range": "25,000 - 35,000",
+            "description": "Comfortable 3-seater sofa with high-density foam cushions and durable fabric upholstery",
+            "materials": "Hardwood frame, high-density foam, premium fabric",
+            "colors": ["Brown", "Gray", "Beige", "Black"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "sofa_lshape",
+            "category": "sofa",
+            "category_amharic": "ሶፋ",
+            "name": "L-Shape Corner Sofa",
+            "name_amharic": "ኤል ቅርጽ ሶፋ",
+            "price": 45000,
+            "price_range": "40,000 - 55,000",
+            "description": "Modern L-shaped corner sofa that seats 5-6 people. Perfect for living rooms.",
+            "materials": "Solid wood frame, premium foam, leather/fabric options",
+            "colors": ["Black Leather", "Gray Fabric", "Brown Leather", "Cream"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "sofa_2seat",
+            "category": "sofa",
+            "category_amharic": "ሶፋ",
+            "name": "2-Seater Love Seat",
+            "name_amharic": "2-ሰው ሶፋ",
+            "price": 18000,
+            "price_range": "15,000 - 22,000",
+            "description": "Compact 2-seater sofa, ideal for small spaces and offices",
+            "materials": "Hardwood frame, foam cushions, fabric",
+            "colors": ["Gray", "Beige", "Blue"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "bed_king",
+            "category": "bed",
+            "category_amharic": "አልጋ",
+            "name": "King Size Bed with Headboard",
+            "name_amharic": "ኪንግ ሳይዝ አልጋ ከራስጌ ጋር",
+            "price": 35000,
+            "price_range": "30,000 - 45,000",
+            "description": "Spacious king size bed (180x200cm) with elegant padded headboard",
+            "materials": "Solid wood, MDF panels, upholstered headboard",
+            "colors": ["Walnut", "White", "Oak"],
+            "in_stock": true,
+            "delivery_days": 3,
+            "mattress_included": false,
+            "mattress_price": "8,000 - 15,000 birr (sold separately)"
+        },
+        {
+            "id": "bed_queen",
+            "category": "bed",
+            "category_amharic": "አልጋ",
+            "name": "Queen Size Bed",
+            "name_amharic": "ኩዊን ሳይዝ አልጋ",
+            "price": 25000,
+            "price_range": "22,000 - 32,000",
+            "description": "Queen size bed (160x200cm) with modern design",
+            "materials": "Solid wood, MDF panels",
+            "colors": ["Walnut", "White", "Natural Wood"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "bed_single",
+            "category": "bed",
+            "category_amharic": "አልጋ",
+            "name": "Single Bed",
+            "name_amharic": "ነጠላ አልጋ",
+            "price": 12000,
+            "price_range": "10,000 - 15,000",
+            "description": "Standard single bed (90x200cm) suitable for children and guest rooms",
+            "materials": "Solid wood, MDF",
+            "colors": ["White", "Walnut", "Natural"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "dining_6",
+            "category": "dining",
+            "category_amharic": "የመመገቢያ ጠረጴዛ",
+            "name": "6-Person Dining Table Set",
+            "name_amharic": "6-ሰው የመመገቢያ ጠረጴዛ ሴት",
+            "price": 32000,
+            "price_range": "28,000 - 40,000",
+            "description": "Elegant dining table with 6 matching chairs. Solid wood construction.",
+            "materials": "Solid hardwood, lacquer finish",
+            "colors": ["Dark Brown", "Natural Wood", "Walnut"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "dining_4",
+            "category": "dining",
+            "category_amharic": "የመመገቢያ ጠረጴዛ",
+            "name": "4-Person Dining Table Set",
+            "name_amharic": "4-ሰው የመመገቢያ ጠረጴዛ ሴት",
+            "price": 22000,
+            "price_range": "18,000 - 28,000",
+            "description": "Compact dining table with 4 chairs. Great for apartments.",
+            "materials": "Solid wood, MDF top",
+            "colors": ["Brown", "White", "Oak"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "office_desk_manager",
+            "category": "office_desk",
+            "category_amharic": "የቢሮ ጠረጴዛ",
+            "name": "Executive Manager Desk",
+            "name_amharic": "ኤግዘክቲቭ ማኔጀር ጠረጴዛ",
+            "price": 28000,
+            "price_range": "25,000 - 38,000",
+            "description": "Large executive desk (160x80cm) with drawers and cable management. Professional look for offices.",
+            "materials": "MDF with melamine finish, steel frame",
+            "colors": ["Dark Walnut", "Light Oak", "Gray"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "office_desk_computer",
+            "category": "office_desk",
+            "category_amharic": "የቢሮ ጠረጴዛ",
+            "name": "Computer Desk",
+            "name_amharic": "ኮምፒውተር ጠረጴዛ",
+            "price": 12000,
+            "price_range": "8,000 - 15,000",
+            "description": "Compact computer desk with keyboard tray and shelf",
+            "materials": "MDF, steel frame",
+            "colors": ["White", "Oak", "Black"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "office_chair_swivel",
+            "category": "chair",
+            "category_amharic": "ወንበር",
+            "name": "Executive Swivel Chair",
+            "name_amharic": "ኤግዘክቲቭ ስዊቬል ወንበር",
+            "price": 15000,
+            "price_range": "12,000 - 22,000",
+            "description": "Ergonomic high-back swivel chair with armrests and adjustable height",
+            "materials": "Mesh/leather back, foam seat, chrome base",
+            "colors": ["Black", "Gray", "Brown"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "chair_dining",
+            "category": "chair",
+            "category_amharic": "ወንበር",
+            "name": "Dining Chair",
+            "name_amharic": "የመመገቢያ ወንበር",
+            "price": 3500,
+            "price_range": "2,500 - 5,000",
+            "description": "Comfortable padded dining chair, sold individually",
+            "materials": "Solid wood, padded seat",
+            "colors": ["Brown", "Gray", "Cream"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "chair_visitor",
+            "category": "chair",
+            "category_amharic": "ወንበር",
+            "name": "Visitor/Guest Chair",
+            "name_amharic": "የእንግዳ ወንበር",
+            "price": 5500,
+            "price_range": "4,000 - 7,000",
+            "description": "Comfortable waiting/guest chair for offices and reception areas",
+            "materials": "Steel frame, padded seat and back",
+            "colors": ["Black", "Blue", "Gray"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "cabinet_filing",
+            "category": "cabinet",
+            "category_amharic": "ካቢኔ",
+            "name": "4-Drawer Filing Cabinet",
+            "name_amharic": "4-መሳቢያ ፋይል ካቢኔ",
+            "price": 8500,
+            "price_range": "7,000 - 12,000",
+            "description": "Metal filing cabinet with 4 lockable drawers for office documents",
+            "materials": "Cold-rolled steel, powder coated",
+            "colors": ["Gray", "Black", "White"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "cabinet_wardrobe",
+            "category": "cabinet",
+            "category_amharic": "ካቢኔ",
+            "name": "3-Door Wardrobe",
+            "name_amharic": "3-በር ዋርድሮብ",
+            "price": 22000,
+            "price_range": "18,000 - 28,000",
+            "description": "Spacious 3-door wardrobe with mirror, hanging space and shelves",
+            "materials": "MDF with laminate finish",
+            "colors": ["White", "Walnut", "Oak"],
+            "in_stock": true,
+            "delivery_days": 5
+        },
+        {
+            "id": "bookshelf",
+            "category": "shelf",
+            "category_amharic": "መደርደሪያ",
+            "name": "Dixon Bookshelf (5-Tier)",
+            "name_amharic": "ዲክሰን መጽሐፍ መደርደሪያ (5-ደረጃ)",
+            "price": 8000,
+            "price_range": "6,000 - 12,000",
+            "description": "5-tier open bookshelf for home or office",
+            "materials": "MDF with steel frame",
+            "colors": ["Oak", "Walnut", "White"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "tv_stand",
+            "category": "tv_stand",
+            "category_amharic": "ቲቪ ስታንድ",
+            "name": "Modern TV Stand",
+            "name_amharic": "ዘመናዊ ቲቪ ስታንድ",
+            "price": 12000,
+            "price_range": "8,000 - 18,000",
+            "description": "Modern TV stand with storage cabinets, fits up to 65-inch TV",
+            "materials": "MDF, tempered glass",
+            "colors": ["White/Walnut", "Black", "Oak"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "center_table",
+            "category": "table",
+            "category_amharic": "ጠረጴዛ",
+            "name": "Coffee/Center Table",
+            "name_amharic": "ሴንተር ጠረጴዛ (የቡና ጠረጴዛ)",
+            "price": 7500,
+            "price_range": "5,000 - 12,000",
+            "description": "Elegant center table for living rooms with glass top",
+            "materials": "Wood frame, tempered glass top",
+            "colors": ["Black/Glass", "Walnut/Glass", "White"],
+            "in_stock": true,
+            "delivery_days": 2
+        },
+        {
+            "id": "dressing_table",
+            "category": "table",
+            "category_amharic": "ጠረጴዛ",
+            "name": "Dressing Table with Mirror",
+            "name_amharic": "የመስታወት ጠረጴዛ (ድሬሲንግ ቴብል)",
+            "price": 15000,
+            "price_range": "12,000 - 20,000",
+            "description": "Elegant dressing table with large mirror and 3 drawers",
+            "materials": "MDF, mirror glass",
+            "colors": ["White", "Walnut", "Cream"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "bar_table_set",
+            "category": "bar",
+            "category_amharic": "ባር",
+            "name": "Bar Table with 2 Stools",
+            "name_amharic": "ባር ጠረጴዛ ከ2 ስቱል ጋር",
+            "price": 18000,
+            "price_range": "15,000 - 25,000",
+            "description": "High bar table with 2 matching bar stools, perfect for cafeterias and homes",
+            "materials": "Solid wood, steel frame",
+            "colors": ["Natural Wood", "Black", "Walnut"],
+            "in_stock": true,
+            "delivery_days": 3
+        },
+        {
+            "id": "chest_drawers",
+            "category": "storage",
+            "category_amharic": "መሳቢያ",
+            "name": "Chest of Drawers (5-Drawer)",
+            "name_amharic": "5-መሳቢያ ቼስት",
+            "price": 14000,
+            "price_range": "10,000 - 18,000",
+            "description": "Spacious 5-drawer chest for bedroom storage",
+            "materials": "MDF with laminate finish",
+            "colors": ["White", "Walnut", "Oak"],
+            "in_stock": true,
+            "delivery_days": 3
+        }
+    ],
+
+    "faq": [
+        {
+            "question": "Do you deliver outside Addis Ababa?",
+            "question_amharic": "ከአዲስ አበባ ውጪ ዴሊቨሪ ታደርጋላችሁ?",
+            "answer": "Yes, we deliver to major cities across Ethiopia. Delivery within Addis Ababa is free for orders above 10,000 birr. For outside Addis, shipping costs are calculated based on distance.",
+            "answer_amharic": "አዎ፣ በኢትዮጵያ ውስጥ ባሉ ዋና ከተሞች ዴሊቨሪ እናደርጋለን። በአዲስ አበባ ውስጥ ከ10,000 ብር በላይ ለሆኑ ትዕዛዞች ዴሊቨሪ ነፃ ነው።"
+        },
+        {
+            "question": "Do you do custom/made-to-order furniture?",
+            "question_amharic": "ብጁ ፈርኒቸር ትሰራላችሁ?",
+            "answer": "Yes! We accept custom orders. Visit any showroom for a design consultation. Production takes 2-4 weeks depending on complexity.",
+            "answer_amharic": "አዎ! ብጁ ትዕዛዞችን እንቀበላለን። ለዲዛይን ምክክር ወደ ማንኛውም ሾሩም ይምጡ። ምርት ከ2-4 ሳምንት ይፈጃል።"
+        },
+        {
+            "question": "What payment methods do you accept?",
+            "question_amharic": "ምን ዓይነት የክፍያ ዘዴ ትቀበላላችሁ?",
+            "answer": "We accept cash, bank transfer (CBE, Awash, Dashen banks), and installment plans for orders above 50,000 birr.",
+            "answer_amharic": "በጥሬ ገንዘብ፣ በባንክ ማስተላለፍ (ንግድ ባንክ፣ አዋሽ፣ ዳሸን) እና ከ50,000 ብር በላይ ለሆኑ ትዕዛዞች በክፍያ ቅጣፍ (Installment) መክፈል ይችላሉ።"
+        },
+        {
+            "question": "Is installation included?",
+            "question_amharic": "መትከያ/ማስገጠም ተካትቷል?",
+            "answer": "Yes, free installation is included with all purchases. Our technicians will deliver, assemble and set up your furniture.",
+            "answer_amharic": "አዎ፣ ነጻ የመትከያ አገልግሎት ከሁሉም ግዢዎች ጋር ተካትቷል። ቴክኒሻኖቻችን ያስረክባሉ፣ ያገጣጥማሉ፣ ያስቀምጣሉ።"
+        },
+        {
+            "question": "Do you have a warranty?",
+            "question_amharic": "ዋስትና አለ?",
+            "answer": "Yes, all products come with a 1-year warranty. Office furniture frames have a 3-year warranty.",
+            "answer_amharic": "አዎ፣ ሁሉም ምርቶች 1 ዓመት ዋስትና አላቸው። የቢሮ ፈርኒቸር ፍሬሞች 3 ዓመት ዋስትና አላቸው።"
+        },
+        {
+            "question": "What are your working hours?",
+            "question_amharic": "የሥራ ሰዓት ስንት ነው?",
+            "answer": "We are open Monday to Saturday from 8:30 AM to 6:00 PM.",
+            "answer_amharic": "ከሰኞ እስከ ቅዳሜ ከጠዋቱ 8:30 እስከ ምሽት 6:00 ድረስ ክፍት ነን።"
+        }
+    ]
+}

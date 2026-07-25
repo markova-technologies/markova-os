@@ -1,0 +1,25 @@
+<include>
+  <context name="default">
+    <!-- 
+         Default Context (Internal Calls)
+         Used for registered extensions calling each other or outbound.
+    -->
+    <!-- GM Furniture AI Agent (Almaz) - Amharic AI Customer Service -->
+    <extension name="ai_agent">
+      <condition field="destination_number" expression="^8000$">
+        <action application="answer"/>
+        <action application="sleep" data="500"/>
+        <action application="lua" data="ai_agent_handler.lua"/>
+        <action application="hangup"/>
+      </condition>
+    </extension>
+
+    <extension name="local_extension">
+      <condition field="destination_number" expression="^(10[0-9][0-9])$">
+        <action application="export" data="dialed_extension=$1"/>
+        <action application="user_exists" data="id=$1 domain=${domain}"/>
+        <action application="bridge" data="user/${dialed_extension}@${domain_name}"/>
+      </condition>
+    </extension>
+  </context>
+</include>

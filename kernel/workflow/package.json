@@ -1,0 +1,6 @@
+{
+  "name": "@markova/workflow-runtime",
+  "version": "1.0.0",
+  "main": "compiler.js",
+  "dependencies": {}
+}

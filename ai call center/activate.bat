@@ -1,0 +1,3 @@
+@echo off
+echo Activating Amharic AI Call System environment...
+.venv\Scripts\activate.bat

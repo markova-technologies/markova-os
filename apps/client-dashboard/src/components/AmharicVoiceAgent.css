@@ -1,0 +1,7 @@
+/* AmharicVoiceAgent.css */
+/* Voiceflow widget styles are loaded externally. 
+   Add any custom overrides here. */
+
+.voiceflow-widget-container {
+  z-index: 9999 !important;
+}

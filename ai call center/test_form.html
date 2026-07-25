@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="am">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Markova AI - Web Phone</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0; padding: 0;
+            background-color: #0f111a;
+            color: #ffffff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .phone-container {
+            width: 100%; max-width: 420px; height: 90vh; max-height: 850px;
+            background-color: #1a1d27;
+            border-radius: 40px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 0 0 10px #090a0f;
+            display: flex; flex-direction: column; overflow: hidden;
+            position: relative;
+        }
+
+        .notch {
+            position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+            width: 150px; height: 25px;
+            background-color: #090a0f;
+            border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;
+            z-index: 10;
+        }
+
+        .header {
+            text-align: center; padding: 40px 20px 20px;
+            background: linear-gradient(180deg, #242938 0%, #1a1d27 100%);
+            border-bottom: 1px solid #2e3447;
+        }
+
+        .header h1 {
+            margin: 0; font-size: 1.4rem; font-weight: 600;
+            background: linear-gradient(90deg, #4facfe 0%, #00f2fe 100%);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        }
+
+        .settings-bar {
+            padding: 12px 20px; background: #14161f;
+            display: flex; justify-content: space-between; gap: 10px;
+            font-size: 0.85rem; border-bottom: 1px solid #2e3447;
+        }
+        .settings-bar input, .settings-bar select {
+            background: #242938; color: white; border: 1px solid #3d455c;
+            padding: 6px 10px; border-radius: 8px; font-family: inherit; font-size: 0.8rem;
+            width: 100%; outline: none; transition: border-color 0.2s;
+        }
+        .settings-bar input:focus { border-color: #4facfe; }
+
+        .status-display {
+            text-align: center; padding: 15px; font-size: 0.9rem;
+            color: #8c9bba; font-weight: 500; height: 20px;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+        }
+        .status-dot {
+            width: 8px; height: 8px; border-radius: 50%; background-color: #8c9bba;
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+        .status-dot.active {
+            background-color: #00f2fe; box-shadow: 0 0 10px #00f2fe;
+        }
+        .status-dot.listening {
+            background-color: #ff3b30; box-shadow: 0 0 10px #ff3b30;
+            animation: blink 1s infinite;
+        }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+        .chat-log {
+            flex-grow: 1; padding: 20px; overflow-y: auto;
+            display: flex; flex-direction: column; gap: 16px;
+            scroll-behavior: smooth;
+        }
+        .chat-log::-webkit-scrollbar { width: 6px; }
+        .chat-log::-webkit-scrollbar-thumb { background: #3d455c; border-radius: 10px; }
+
+        .bubble {
+            padding: 14px 18px; border-radius: 20px; max-width: 85%;
+            font-size: 0.95rem; line-height: 1.5; font-weight: 400;
+            animation: slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .bubble.ai {
+            background: #242938; color: #e2e8f0; align-self: flex-start;
+            border-bottom-left-radius: 4px; border: 1px solid #2e3447;
+        }
+        .bubble.user {
+            background: linear-gradient(135deg, #0061ff 0%, #60efff 100%);
+            color: #ffffff; align-self: flex-end; border-bottom-right-radius: 4px;
+        }
+        .bubble.system {
+            background: transparent; color: #64748b; align-self: center;
+            font-size: 0.8rem; box-shadow: none; padding: 4px 0; text-align: center;
+        }
+
+        .controls {
+            padding: 25px 20px 40px; background: #14161f;
+            display: flex; justify-content: center; gap: 25px;
+            border-top: 1px solid #2e3447;
+        }
+
+        .btn-call {
+            width: 70px; height: 70px; border-radius: 50%; border: none;
+            cursor: pointer; display: flex; justify-content: center; align-items: center;
+            font-size: 28px; transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            outline: none; color: white;
+        }
+        .btn-call:active { transform: scale(0.9); }
+
+        .btn-start {
+            background: linear-gradient(135deg, #0ba360 0%, #3cba92 100%);
+            box-shadow: 0 10px 20px rgba(11, 163, 96, 0.3);
+        }
+        .btn-start:hover { box-shadow: 0 12px 25px rgba(11, 163, 96, 0.5); transform: translateY(-2px); }
+
+        .btn-end {
+            background: linear-gradient(135deg, #ff0844 0%, #ffb199 100%);
+            box-shadow: 0 10px 20px rgba(255, 8, 68, 0.3);
+            display: none;
+        }
+        .btn-end:hover { box-shadow: 0 12px 25px rgba(255, 8, 68, 0.5); transform: translateY(-2px); }
+        
+        .btn-mic {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            box-shadow: 0 10px 20px rgba(0, 242, 254, 0.3);
+            display: none;
+        }
+        .btn-mic:hover { box-shadow: 0 12px 25px rgba(0, 242, 254, 0.5); transform: translateY(-2px); }
+        
+        .btn-mic.listening {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 10px 20px rgba(245, 87, 108, 0.4);
+            animation: recording-pulse 1.5s infinite;
+        }
+        @keyframes recording-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(245, 87, 108, 0.6); }
+            70% { box-shadow: 0 0 0 20px rgba(245, 87, 108, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(245, 87, 108, 0); }
+        }
+
+        #audioPlayer { display: none; }
+        
+        /* Modern Amharic Font Tweaks */
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Ethiopic:wght@400;500;600&display=swap');
+        .bubble.user, .bubble.ai { font-family: 'Noto Sans Ethiopic', 'Inter', sans-serif; }
+
+    </style>
+</head>
+<body>
+
+    <div class="phone-container">
+        <div class="notch"></div>
+        <div class="header">
+            <h1>Almaz AI</h1>
+        </div>
+        
+        <div class="settings-bar">
+            <div style="flex: 2;">
+                <input type="text" id="serverUrl" value="http://localhost:8001" placeholder="Backend URL">
+            </div>
+            <div style="flex: 1;">
+                <select id="micLang">
+                    <option value="am-ET">አማርኛ</option>
+                    <option value="en-US">English</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="status-display">
+            <div class="status-dot" id="statusDot"></div>
+            <span id="statusText">Ready to connect</span>
+        </div>
+
+        <div class="chat-log" id="chatLog">
+            <div class="bubble system">Tap the green button to start the voice call.</div>
+        </div>
+
+        <div class="controls">
+            <button class="btn-call btn-start" id="btnStart" title="Start Call">📞</button>
+            <button class="btn-call btn-mic" id="btnMic" title="Microphone">🎙️</button>
+            <button class="btn-call btn-end" id="btnEnd" title="End Call">掛</button>
+        </div>
+        
+        <audio id="audioPlayer"></audio>
+    </div>
+
+    <script>
+        const btnStart = document.getElementById('btnStart');
+        const btnEnd = document.getElementById('btnEnd');
+        const btnMic = document.getElementById('btnMic');
+        const statusText = document.getElementById('statusText');
+        const statusDot = document.getElementById('statusDot');
+        const chatLog = document.getElementById('chatLog');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const serverUrlInput = document.getElementById('serverUrl');
+        
+        // Use SVG for End Call icon to avoid missing emoji fonts
+        btnEnd.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white"><path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.87 1.12-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.71l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.11-.7-.28-.79-.74-1.69-1.36-2.67-1.85-.33-.16-.56-.5-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z"/></svg>`;
+        btnStart.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white"><path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/></svg>`;
+        btnMic.innerHTML = `<svg viewBox="0 0 24 24" width="32" height="32" fill="white"><path d="M12 14c1.66 0 2.99-1.34 2.99-3L15 5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z"/></svg>`;
+
+        let callActive = false;
+        let callSid = "";
+        
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+
+        async function initAudio() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    if (!callActive) return;
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    audioChunks = [];
+                    sendAudioToAI(audioBlob);
+                };
+            } catch (err) {
+                console.error("Microphone access denied:", err);
+                addBubble("Microphone permission denied. Cannot place call.", "system");
+            }
+        }
+
+        // Auto-play next audio when current ends
+        audioPlayer.onended = () => {
+            if (callActive) {
+                startRecording();
+            }
+        };
+
+        function addBubble(text, type) {
+            const div = document.createElement('div');
+            div.className = `bubble ${type}`;
+            div.textContent = text;
+            chatLog.appendChild(div);
+            chatLog.scrollTop = chatLog.scrollHeight;
+        }
+
+        function updateStatus(text, dotState = 'normal') {
+            statusText.textContent = text;
+            statusDot.className = 'status-dot';
+            if (dotState === 'active') statusDot.classList.add('active');
+            if (dotState === 'listening') statusDot.classList.add('listening');
+        }
+
+        btnStart.onclick = async () => {
+            if (!mediaRecorder) {
+                await initAudio();
+                if (!mediaRecorder) return;
+            }
+            
+            callActive = true;
+            callSid = "web-call-" + Date.now();
+            chatLog.innerHTML = '';
+            addBubble("Connecting to Almaz...", "system");
+            
+            btnStart.style.display = 'none';
+            btnEnd.style.display = 'flex';
+            btnMic.style.display = 'flex';
+            
+            updateStatus("Ringing...", "active");
+
+            const params = new URLSearchParams();
+            params.append('CallSid', callSid);
+            params.append('From', 'WebClient');
+            params.append('To', '8888');
+
+            fetch(`${serverUrlInput.value}/incoming-call`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: params
+            })
+            .then(res => res.text())
+            .then(handleTwiML)
+            .catch(err => {
+                console.error(err);
+                addBubble("Failed to connect to backend server.", "system");
+                endCall();
+            });
+        };
+
+        btnEnd.onclick = () => endCall();
+
+        btnMic.onclick = () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        };
+
+        function startRecording() {
+            if (!callActive || !mediaRecorder) return;
+            audioChunks = [];
+            try {
+                mediaRecorder.start();
+                isRecording = true;
+                btnMic.classList.add('listening');
+                updateStatus("Listening...", "listening");
+            } catch (e) { console.error(e); }
+        }
+
+        function stopRecording() {
+            if (!callActive || !mediaRecorder) return;
+            try {
+                mediaRecorder.stop();
+                isRecording = false;
+                btnMic.classList.remove('listening');
+            } catch (e) { console.error(e); }
+        }
+
+        function sendAudioToAI(audioBlob) {
+            if (!callActive) return;
+            
+            updateStatus("Processing...", "active");
+            audioPlayer.src = ""; // Stop previous audio
+            addBubble("🎙️ [Voice sent]", "user");
+            
+            const formData = new FormData();
+            formData.append('CallSid', callSid);
+            formData.append('AudioFile', audioBlob, 'recording.webm');
+
+            fetch(`${serverUrlInput.value}/handle-input`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.text())
+            .then(handleTwiML)
+            .catch(err => {
+                console.error(err);
+                addBubble("Network error while sending audio.", "system");
+                updateStatus("Error. Tap mic to retry.", "normal");
+            });
+        }
+
+        function handleTwiML(xmlText) {
+            if (!callActive) return;
+
+            const playMatch = xmlText.match(/<Play>(.*?)<\/Play>/);
+            
+            if (playMatch && playMatch[1]) {
+                let audioUrl = playMatch[1];
+                const audioIndex = audioUrl.indexOf('/audio/');
+                if (audioIndex !== -1) {
+                    audioUrl = serverUrlInput.value + audioUrl.substring(audioIndex);
+                }
+                
+                addBubble("💬 [Agent speaking]", "ai");
+                updateStatus("AI speaking...", "active");
+                
+                audioPlayer.src = audioUrl;
+                audioPlayer.play().catch(e => {
+                    console.error("Autoplay prevented:", e);
+                    updateStatus("Tap anywhere to allow audio!");
+                    document.body.onclick = () => audioPlayer.play();
+                });
+            } 
+            else if (xmlText.includes('<Hangup/>')) {
+                addBubble("Call ended by AI.", "system");
+                endCall();
+            }
+            else {
+                updateStatus("No audio returned. Tap mic to speak.", "normal");
+            }
+        }
+
+        function endCall() {
+            callActive = false;
+            btnStart.style.display = 'flex';
+            btnEnd.style.display = 'none';
+            btnMic.style.display = 'none';
+            updateStatus("Call ended", "normal");
+            audioPlayer.pause(); audioPlayer.src = "";
+            if (isRecording) {
+                isRecording = false;
+                btnMic.classList.remove('listening');
+                mediaRecorder.stop();
+            }
+            addBubble("Call disconnected.", "system");
+        }
+
+    </script>
+</body>
+</html>

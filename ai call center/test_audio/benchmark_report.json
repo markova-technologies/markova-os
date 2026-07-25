@@ -1,0 +1,204 @@
+{
+  "summary": [
+    {
+      "provider": "Groq (Whisper-v3-Turbo)",
+      "avg_wer": 142.5,
+      "avg_cer": 316.21,
+      "avg_latency": 4.54,
+      "success_rate": "4/5"
+    },
+    {
+      "provider": "OpenAI (Whisper-1)",
+      "avg_wer": 100.0,
+      "avg_cer": 100.0,
+      "avg_latency": 0.0,
+      "success_rate": "0/5 (Failed)"
+    },
+    {
+      "provider": "ElevenLabs (Scribe v2)",
+      "avg_wer": 73.5,
+      "avg_cer": 37.78,
+      "avg_latency": 5.18,
+      "success_rate": "5/5"
+    },
+    {
+      "provider": "Gladia (Solaria-1)",
+      "avg_wer": 120.0,
+      "avg_cer": 180.87,
+      "avg_latency": 5.69,
+      "success_rate": "5/5"
+    }
+  ],
+  "samples": [
+    {
+      "sample_name": "temp_15423a4136e868ce69a4e956334d71cc",
+      "ground_truth": "ሰላም እኔ ዘላለም ነኝ መረጃ ማወቅ ፈልጌ ነበረ",
+      "providers": {
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "",
+          "latency_sec": 9.447,
+          "status": "HTTP 500: {\"error\":{\"message\":\"Internal Server Error\",\"type\":\"internal_server_error\"}}\n",
+          "wer": 100.0,
+          "cer": 100.0
+        },
+        "OpenAI (Whisper-1)": {
+          "transcription": "",
+          "latency_sec": 5.379,
+          "status": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and bil",
+          "wer": 100.0,
+          "cer": 100.0
+        },
+        "ElevenLabs (Scribe v2)": {
+          "transcription": "ሰላም እኔ ዜላለም ነኝ መረጃ ማወቅ ፈልግኝ ነበር",
+          "latency_sec": 5.733,
+          "status": "OK (REST)",
+          "wer": 37.5,
+          "cer": 17.39
+        },
+        "Gladia (Solaria-1)": {
+          "transcription": "Hello, I'm Zalemni. Please stand up.",
+          "latency_sec": 6.493,
+          "status": "OK (v2)",
+          "wer": 100.0,
+          "cer": 117.39
+        }
+      }
+    },
+    {
+      "sample_name": "temp_327ef5bb10c049915deaccf71f1b0d29",
+      "ground_truth": "ሰላም መረጃ ማወቅ ፈልጌ ነበረ",
+      "providers": {
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "ድጋጋም ደስፘጽ ነ፶ጎ የጎ ድጋ፣ ድግቆ።",
+          "latency_sec": 4.994,
+          "status": "OK",
+          "wer": 120.0,
+          "cer": 126.67
+        },
+        "OpenAI (Whisper-1)": {
+          "transcription": "",
+          "latency_sec": 3.551,
+          "status": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and bil",
+          "wer": 100.0,
+          "cer": 100.0
+        },
+        "ElevenLabs (Scribe v2)": {
+          "transcription": "ሰላም በለጃሞ እፈልግ የነበረ።",
+          "latency_sec": 5.578,
+          "status": "OK (REST)",
+          "wer": 80.0,
+          "cer": 53.33
+        },
+        "Gladia (Solaria-1)": {
+          "transcription": "Salam, berla jamal feledine ber.",
+          "latency_sec": 4.343,
+          "status": "OK (v2)",
+          "wer": 100.0,
+          "cer": 173.33
+        }
+      }
+    },
+    {
+      "sample_name": "temp_processed_420a304c159d4f72cff170039a186671",
+      "ground_truth": "ወንበር ፈልጌ ነበር?",
+      "providers": {
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "ድለለሚለሚገ ድለሚሊድሚለለሟለሎናሜለሎሃሆጋሒሒለሉለሃስለሖገሚገሃለመለሀልፎ እለሎሚገዝሗለህናሽሉሎለለልገል።",
+          "latency_sec": 4.179,
+          "status": "OK",
+          "wer": 100.0,
+          "cer": 620.0
+        },
+        "OpenAI (Whisper-1)": {
+          "transcription": "",
+          "latency_sec": 2.502,
+          "status": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and bil",
+          "wer": 100.0,
+          "cer": 100.0
+        },
+        "ElevenLabs (Scribe v2)": {
+          "transcription": "ወምበር፣ ፈለግ ይነበር",
+          "latency_sec": 3.571,
+          "status": "OK (REST)",
+          "wer": 100.0,
+          "cer": 50.0
+        },
+        "Gladia (Solaria-1)": {
+          "transcription": "Wimber. getting better.",
+          "latency_sec": 5.709,
+          "status": "OK (v2)",
+          "wer": 100.0,
+          "cer": 190.0
+        }
+      }
+    },
+    {
+      "sample_name": "temp_processed_62fbf16d530db63998d48e5ca25143a7",
+      "ground_truth": "የሶፋው ዋጋ ስንት ነው?",
+      "providers": {
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "ጷገጶገሟጅ ድጷገጼጱገዾጚገሓገገᓛጎንገገነጌጅ",
+          "latency_sec": 4.785,
+          "status": "OK",
+          "wer": 100.0,
+          "cer": 218.18
+        },
+        "OpenAI (Whisper-1)": {
+          "transcription": "",
+          "latency_sec": 5.458,
+          "status": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and bil",
+          "wer": 100.0,
+          "cer": 100.0
+        },
+        "ElevenLabs (Scribe v2)": {
+          "transcription": "የሶፋ ዋጋ ስንተ ነው?",
+          "latency_sec": 5.947,
+          "status": "OK (REST)",
+          "wer": 50.0,
+          "cer": 18.18
+        },
+        "Gladia (Solaria-1)": {
+          "transcription": "Yes, we'll follow our guys in the know.",
+          "latency_sec": 6.212,
+          "status": "OK (v2)",
+          "wer": 200.0,
+          "cer": 263.64
+        }
+      }
+    },
+    {
+      "sample_name": "temp_processed_659ee145f43c9db2d88a8917d4889ba3",
+      "ground_truth": "ሾው ሩማችሁ የት ነው?",
+      "providers": {
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "ስጋጋንደም ድጋፍ ደንደም ድጋ። ደም ይጋፍ ደም ደም ደም ድጋ።",
+          "latency_sec": 4.202,
+          "status": "OK",
+          "wer": 250.0,
+          "cer": 300.0
+        },
+        "OpenAI (Whisper-1)": {
+          "transcription": "",
+          "latency_sec": 3.424,
+          "status": "HTTP 429: {\n    \"error\": {\n        \"message\": \"You exceeded your current quota, please check your plan and bil",
+          "wer": 100.0,
+          "cer": 100.0
+        },
+        "ElevenLabs (Scribe v2)": {
+          "transcription": "ሾሩማቸው የድ ነው።",
+          "latency_sec": 5.052,
+          "status": "OK (REST)",
+          "wer": 100.0,
+          "cer": 50.0
+        },
+        "Gladia (Solaria-1)": {
+          "transcription": "Shuruma Chuu Yat Nu",
+          "latency_sec": 5.714,
+          "status": "OK (v2)",
+          "wer": 100.0,
+          "cer": 160.0
+        }
+      }
+    }
+  ]
+}

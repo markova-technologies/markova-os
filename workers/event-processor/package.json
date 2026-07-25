@@ -1,0 +1,9 @@
+{
+  "name": "event-processor",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "redis": "^4.6.10",
+    "pg": "^8.11.3"
+  }
+}

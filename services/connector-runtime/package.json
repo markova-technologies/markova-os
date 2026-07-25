@@ -1,0 +1,12 @@
+{
+  "name": "connector-runtime",
+  "version": "1.0.0",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "pg": "^8.11.3",
+    "@markova/connector-runtime": "file:../../kernel/connector",
+    "@markova/event-schemas": "file:../../packages/event-schemas"
+  }
+}

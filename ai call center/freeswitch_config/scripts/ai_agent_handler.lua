@@ -1,0 +1,297 @@
+-- ai_agent_handler.lua
+-- Bridges FreeSWITCH calls to FastAPI TwiML backend (Windows Compatible)
+-- Uses system curl for reliable HTTP communication
+
+session:answer()
+session:sleep(500)
+
+local backend_url = "http://localhost:8001"
+local uuid = session:get_uuid()
+local caller_id = session:getVariable("caller_id_number") or "sip-user"
+
+-- Windows-compatible temp directory
+local temp_dir = os.getenv("TEMP") or "C:\\Temp"
+
+-- === CRITICAL: Disable all RTP/media/SIP timeouts ===
+-- Without these, the call drops during HTTP processing (Whisper + LLM takes 5-15s)
+session:setVariable("rtp_timeout_sec", "0")
+session:setVariable("rtp_hold_timeout_sec", "0")
+session:setVariable("media_timeout", "0")
+session:setVariable("sip_session_expires", "0")
+session:setVariable("minimum_session_expires", "0")
+-- Tell FreeSWITCH to refuse session timer negotiation from the client (MicroSIP)
+session:setVariable("sip_enable_soa", "true")
+session:setVariable("sip_force_expires", "0")
+session:setVariable("jitterbuffer_msec", "60:200:20")
+
+freeswitch.consoleLog("info", "[AI Agent] === CALL STARTED === UUID: " .. uuid .. "\n")
+freeswitch.consoleLog("info", "[AI Agent] Caller: " .. caller_id .. "\n")
+freeswitch.consoleLog("info", "[AI Agent] Temp dir: " .. temp_dir .. "\n")
+
+-- Make HTTP POST using system curl (reliable on Windows)
+function http_post(endpoint, post_data)
+    local url = backend_url .. endpoint
+    freeswitch.consoleLog("info", "[AI Agent] POST " .. url .. "\n")
+    
+    local cmd = string.format(
+        'curl.exe -s -X POST "%s" -d "%s"',
+        url, post_data
+    )
+    
+    local handle = io.popen(cmd)
+    local response = ""
+    if handle then
+        response = handle:read("*a")
+        handle:close()
+    end
+    
+    freeswitch.consoleLog("info", "[AI Agent] Response (" .. #response .. " bytes): " .. string.sub(response, 1, 200) .. "\n")
+    return response
+end
+
+-- Upload audio file via system curl
+function upload_audio(filepath)
+    local url = backend_url .. "/handle-input"
+    freeswitch.consoleLog("info", "[AI Agent] Uploading audio: " .. filepath .. " to " .. url .. "\n")
+    
+    local cmd = string.format(
+        'curl.exe -s -X POST "%s" -F "AudioFile=@%s" -F "CallSid=%s"',
+        url, filepath, uuid
+    )
+    
+    local handle = io.popen(cmd)
+    local response = ""
+    if handle then
+        response = handle:read("*a")
+        handle:close()
+    end
+    
+    freeswitch.consoleLog("info", "[AI Agent] Upload response (" .. #response .. " bytes): " .. string.sub(response, 1, 200) .. "\n")
+    return response
+end
+
+-- Rewrite remote URLs to localhost (both run on same machine)
+function fix_audio_url(url)
+    local fixed = url:gsub("https?://[^/]+/audio/", backend_url .. "/audio/")
+    if fixed ~= url then
+        freeswitch.consoleLog("info", "[AI Agent] URL rewritten: " .. url .. " -> " .. fixed .. "\n")
+    end
+    return fixed
+end
+
+-- Download audio file to local disk for playback (avoids needing mod_shout)
+function download_audio(url)
+    -- Detect file extension from URL (default to .wav for FreeSWITCH compatibility)
+    local ext = string.match(url, "%.(%w+)$") or "wav"
+    if ext ~= "wav" then
+        ext = "wav"  -- Force WAV for FreeSWITCH compatibility
+    end
+    local local_file = temp_dir .. "\\ai_response_" .. uuid .. "." .. ext
+    local cmd = string.format('curl.exe -s -o "%s" "%s"', local_file, url)
+    freeswitch.consoleLog("info", "[AI Agent] Downloading: " .. url .. " -> " .. local_file .. "\n")
+    os.execute(cmd)
+    
+    -- Verify file exists and has content
+    local f = io.open(local_file, "r")
+    if f then
+        local size = f:seek("end")
+        f:close()
+        if size > 100 then
+            freeswitch.consoleLog("info", "[AI Agent] Downloaded " .. size .. " bytes\n")
+            return local_file
+        end
+    end
+    freeswitch.consoleLog("err", "[AI Agent] Download failed or empty file\n")
+    return nil
+end
+
+-- Parse TwiML and play audio or speak text
+function parse_and_play(xml)
+    if not xml or xml == "" then
+        freeswitch.consoleLog("err", "[AI Agent] Empty XML!\n")
+        return false
+    end
+
+    -- Look for <Play> tag (AI-generated audio URL)
+    local play_url = string.match(xml, "<Play>(.-)</Play>")
+    if play_url then
+        -- Fix relative URLs
+        if string.sub(play_url, 1, 1) == "/" then
+            play_url = backend_url .. play_url
+        end
+        
+        -- Rewrite ngrok/remote URLs to localhost
+        play_url = fix_audio_url(play_url)
+        
+        -- Download to local file first (no mod_shout needed!)
+        local local_file = download_audio(play_url)
+        if local_file then
+            freeswitch.consoleLog("info", "[AI Agent] PLAYING LOCAL FILE: " .. local_file .. "\n")
+            session:execute("playback", local_file)
+            os.remove(local_file)  -- cleanup
+            return true
+        else
+            freeswitch.consoleLog("err", "[AI Agent] Could not download audio!\n")
+        end
+    end
+    
+    -- Fallback: <Say> tag
+    local say_text = string.match(xml, "<Say.->(.-)</Say>")
+    if say_text then
+        freeswitch.consoleLog("info", "[AI Agent] SAY text (no TTS available): " .. say_text .. "\n")
+        -- flite may not be installed, just log it
+        return false
+    end
+    
+    freeswitch.consoleLog("warning", "[AI Agent] No Play or Say found in XML\n")
+    return false
+end
+
+
+-- === HELPER: Play audio (VMD barge-in handled by Python ESL) ===
+-- Python ESL (barge_in_manager.py) watches CHANNEL_EXECUTE events:
+--   When playback starts → ESL calls uuid_execute <uuid> vmd start
+--   When vmd::start fires → ESL calls uuid_break to stop playback
+-- Lua does nothing special here — just plain playback.
+function play_with_barge_in(local_file)
+    if not local_file or not session:ready() then return false end
+    freeswitch.consoleLog("info", "[AI Agent] PLAYING: " .. local_file .. "\n")
+    session:execute("playback", local_file)
+    pcall(function() os.remove(local_file) end)
+    freeswitch.consoleLog("info", "[AI Agent] Playback done\n")
+    return false
+end
+
+
+-- === HELPER: Streaming response — play sentence by sentence (Stage 4) ===
+-- Calls /stream-response which returns JSON list of audio URLs (one per sentence)
+function stream_response(rec_file)
+    -- Build multipart upload command to /stream-response
+    local url = backend_url .. "/stream-response"
+    local out_file = temp_dir .. "\\stream_meta_" .. uuid .. ".json"
+    local cmd = string.format(
+        'curl.exe -s -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -o "%s" --max-time 30',
+        url, rec_file, uuid, out_file
+    )
+    freeswitch.consoleLog("info", "[AI Agent] Calling /stream-response...\n")
+    os.execute(cmd)
+
+    -- Read the JSON response (list of audio URLs + transcript)
+    local f = io.open(out_file, "r")
+    if not f then
+        freeswitch.consoleLog("err", "[AI Agent] No stream-response file\n")
+        return false
+    end
+    local json_str = f:read("*all")
+    f:close()
+    os.remove(out_file)
+
+    if not json_str or json_str == "" then
+        freeswitch.consoleLog("err", "[AI Agent] Empty stream-response\n")
+        return false
+    end
+
+    -- Parse audio URLs from JSON: {"sentences": [{"audio_url": "...", "text": "..."}]}
+    -- Simple Lua JSON parse for our known format
+    local interrupted = false
+    local count = 0
+    for audio_url in string.gmatch(json_str, '"audio_url"%s*:%s*"([^"]+)"') do
+        if not session:ready() then break end
+        if interrupted then break end  -- Don't play more if user interrupted
+
+        -- Fix relative URLs
+        if string.sub(audio_url, 1, 1) == "/" then
+            audio_url = backend_url .. audio_url
+        end
+        audio_url = fix_audio_url(audio_url)
+
+        -- Download sentence audio
+        local local_file = download_audio(audio_url)
+        if local_file then
+            count = count + 1
+            freeswitch.consoleLog("info", "[AI Agent] Playing sentence " .. count .. "\n")
+            interrupted = play_with_barge_in(local_file)
+        end
+    end
+
+    if count == 0 then
+        freeswitch.consoleLog("warning", "[AI Agent] No sentence audio URLs in response\n")
+        return false
+    end
+
+    freeswitch.consoleLog("info", "[AI Agent] Streamed " .. count .. " sentences (interrupted=" .. tostring(interrupted) .. ")\n")
+    return true
+end
+
+-- === MAIN CONVERSATION FLOW ===
+
+-- 1. Get initial greeting (still uses /incoming-call for welcome message)
+freeswitch.consoleLog("info", "[AI Agent] Fetching greeting...\n")
+local greeting = http_post("/incoming-call", "From=" .. caller_id .. "&CallSid=" .. uuid)
+-- Play greeting with barge-in enabled (user can speak right away)
+local greeting_file_url = string.match(greeting, "<Play>(.-)</Play>")
+if greeting_file_url then
+    if string.sub(greeting_file_url, 1, 1) == "/" then
+        greeting_file_url = backend_url .. greeting_file_url
+    end
+    greeting_file_url = fix_audio_url(greeting_file_url)
+    local local_greeting = download_audio(greeting_file_url)
+    if local_greeting then
+        play_with_barge_in(local_greeting)
+    end
+end
+
+-- 2. Streaming conversation loop with barge-in
+local max_turns = 20
+for turn = 1, max_turns do
+    if not session:ready() then
+        freeswitch.consoleLog("info", "[AI Agent] Caller hung up at turn " .. turn .. "\n")
+        break
+    end
+
+    -- Record user's voice at 16kHz for best Whisper quality
+    local rec_file = temp_dir .. "\\fs_recording_" .. uuid .. ".wav"
+    freeswitch.consoleLog("info", "[AI Agent] Turn " .. turn .. " - Listening...\n")
+
+    session:setVariable("record_sample_rate", "16000")
+    session:setVariable("enable_file_write_buffering", "false")
+
+    -- Stage 2: 0.5s silence timeout for low latency
+    session:execute("record", rec_file .. " 10 500 0")
+
+    if not session:ready() then break end
+
+    -- Check recording has audio
+    local f = io.open(rec_file, "r")
+    if f then
+        local size = f:seek("end")
+        f:close()
+        freeswitch.consoleLog("info", "[AI Agent] Recording: " .. size .. " bytes\n")
+
+        if size > 1000 then
+            -- Stage 4: Stream response sentence-by-sentence with barge-in (Stage 3)
+            local ok = stream_response(rec_file)
+            if not ok then
+                -- Fallback to batch /handle-input if streaming fails
+                freeswitch.consoleLog("warning", "[AI Agent] Stream failed, falling back to batch mode\n")
+                local response = upload_audio(rec_file)
+                if not session:ready() then
+                    os.remove(rec_file)
+                    break
+                end
+                parse_and_play(response)
+            end
+        else
+            freeswitch.consoleLog("info", "[AI Agent] Recording too small, silence\n")
+        end
+
+        os.remove(rec_file)
+    else
+        freeswitch.consoleLog("err", "[AI Agent] Recording file not found!\n")
+    end
+end
+
+freeswitch.consoleLog("info", "[AI Agent] === CALL ENDED === UUID: " .. uuid .. "\n")
+if session:ready() then
+    session:hangup()
+end
