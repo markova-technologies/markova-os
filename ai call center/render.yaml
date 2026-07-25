@@ -2,8 +2,10 @@ services:
   - type: web
     name: markova-ai-backend
     env: docker
-    region: frankfurt
     plan: free
+    region: frankfurt
+    dockerfilePath: ai call center/Dockerfile
+    dockerContext: ai call center
     envVars:
       - key: PORT
         value: 10000
