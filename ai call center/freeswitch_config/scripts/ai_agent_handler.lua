@@ -307,9 +307,10 @@ for turn = 1, max_turns do
     session:setVariable("record_sample_rate", "16000")
     session:setVariable("enable_file_write_buffering", "false")
 
-    -- Stage 2: 0.5s silence timeout for low latency
+    -- Stop after one second below the speech-energy threshold instead of
+    -- waiting near the 10-second maximum after the caller finishes speaking.
     local record_started = now_ms()
-    session:execute("record", rec_file .. " 10 500 0")
+    session:execute("record", rec_file .. " 10 200 1")
     freeswitch.consoleLog(
         "info",
         "[AI Agent] Recording stage took " ..
