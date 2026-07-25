@@ -906,12 +906,20 @@ async def generate_addis_ai_tts(text: str, lang: str = "am", call_id: str = None
         wav_filename = f"addisai_{lang}_{text_hash}.wav"
         wav_path = AUDIO_DIR / wav_filename
         
-        # Check if WAV already cached
+        # Only reuse a genuine RIFF/WAVE file. Addis AI currently returns MP3
+        # bytes even though this app historically saved them with a .wav suffix.
+        # FreeSWITCH's mod_sndfile rejects those mislabeled files.
         if wav_path.exists():
-            logger.info(f"✅ Using cached Addis AI TTS {lang} audio: {wav_filename}")
-            if call_id:
-                asyncio.create_task(metrics.record_tts_cache_hit(call_id, True))
-            return f"/audio/{wav_filename}"
+            with open(wav_path, "rb") as cached_audio:
+                header = cached_audio.read(12)
+            if header[:4] == b"RIFF" and header[8:12] == b"WAVE":
+                logger.info(f"✅ Using cached Addis AI TTS {lang} audio: {wav_filename}")
+                if call_id:
+                    asyncio.create_task(metrics.record_tts_cache_hit(call_id, True))
+                return f"/audio/{wav_filename}"
+
+            logger.warning(f"Discarding invalid cached WAV (actual format is not RIFF/WAVE): {wav_filename}")
+            wav_path.unlink(missing_ok=True)
             
         if call_id:
             asyncio.create_task(metrics.record_tts_cache_hit(call_id, False))
@@ -938,11 +946,38 @@ async def generate_addis_ai_tts(text: str, lang: str = "am", call_id: str = None
                         audio_data = audio_data.split(",")[1]
                     
                     import base64
-                    wav_bytes = base64.b64decode(audio_data)
-                    
-                    with open(wav_path, "wb") as f:
-                        f.write(wav_bytes)
-                        
+                    source_bytes = base64.b64decode(audio_data)
+
+                    # Normalize whatever container the provider returned (currently
+                    # MP3) into a real mono 16-bit PCM WAV. Write atomically so a
+                    # failed conversion can never leave a corrupt cache entry.
+                    import subprocess
+                    temp_wav_path = AUDIO_DIR / f".{wav_filename}.tmp.wav"
+                    try:
+                        subprocess.run(
+                            [
+                                "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                                "-i", "pipe:0",
+                                "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le",
+                                str(temp_wav_path),
+                            ],
+                            input=source_bytes,
+                            check=True,
+                            capture_output=True,
+                            timeout=20,
+                        )
+
+                        with open(temp_wav_path, "rb") as converted_audio:
+                            converted_header = converted_audio.read(12)
+                        if converted_header[:4] != b"RIFF" or converted_header[8:12] != b"WAVE":
+                            raise ValueError("ffmpeg output is not a valid RIFF/WAVE file")
+
+                        os.replace(temp_wav_path, wav_path)
+                    except Exception as conversion_error:
+                        temp_wav_path.unlink(missing_ok=True)
+                        logger.error(f"Addis AI audio conversion failed: {conversion_error}")
+                        return None
+
                     logger.info(f"✅ Generated Addis AI TTS {lang} audio: {wav_filename}")
                     return f"/audio/{wav_filename}"
             else:
