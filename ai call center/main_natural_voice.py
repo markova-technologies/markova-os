@@ -1981,7 +1981,9 @@ async def handle_input(
     # === STAGE 7: Record AI response turn in call session ===
     call_rec.add_ai_turn(response)
     # Save transcript file in background (non-blocking)
-    asyncio.create_task(asyncio.get_event_loop().run_in_executor(None, call_rec.save))
+    # NOTE: run_in_executor() already returns a Future that starts running immediately;
+    # wrapping it in create_task() raises "a coroutine was expected, got <Future>".
+    asyncio.get_event_loop().run_in_executor(None, call_rec.save)
     
     # Try to generate natural voice with correct language
     audio_url = await generate_multilingual_voice(response, lang, call_id=call_id) # Await the async function
@@ -2077,7 +2079,9 @@ async def stream_response(
 
         # Track AI turn
         call_rec.add_ai_turn(response_text)
-        asyncio.create_task(asyncio.get_event_loop().run_in_executor(None, call_rec.save))
+        # NOTE: run_in_executor() already returns a Future that starts running immediately;
+        # wrapping it in create_task() raises "a coroutine was expected, got <Future>".
+        asyncio.get_event_loop().run_in_executor(None, call_rec.save)
         asyncio.create_task(assistant.db.save_message(call_id, "assistant", response_text, lang))
 
         # === Step 3: Split into sentences ===
