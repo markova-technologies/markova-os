@@ -8,6 +8,28 @@ const api = axios.create({
 });
 
 // --- Token storage (single source of truth) ---
+export const DEMO_MODE_KEY = 'markova_demo_mode'
+export const DEMO_CREDENTIALS = {
+  email: 'demo@markova.et',
+  password: 'MarkovaDemo2026!',
+}
+export const DEMO_USER = {
+  id: 'demo-user',
+  email: DEMO_CREDENTIALS.email,
+  name: 'Demo Developer',
+  companyName: 'Markova Demo',
+  plan: 'plus',
+}
+
+export const isDemoMode = () => localStorage.getItem(DEMO_MODE_KEY) === '1'
+
+export const enterDemoMode = () => {
+  localStorage.setItem(DEMO_MODE_KEY, '1')
+  localStorage.setItem('onboardingComplete', '1')
+  localStorage.setItem('user', JSON.stringify(DEMO_USER))
+  tokenStore.set('demo-token', 'demo-refresh')
+}
+
 export const tokenStore = {
   get: () => localStorage.getItem('token'),
   getRefresh: () => localStorage.getItem('refreshToken'),
@@ -19,6 +41,7 @@ export const tokenStore = {
     localStorage.removeItem('token');
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
+    localStorage.removeItem(DEMO_MODE_KEY);
   },
 };
 
@@ -45,7 +68,14 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const refreshToken = tokenStore.getRefresh();
 
-    if (status === 401 && refreshToken && original && !original._retried && !original.url?.includes('/auth/')) {
+    if (
+      status === 401 &&
+      refreshToken &&
+      !isDemoMode() &&
+      original &&
+      !original._retried &&
+      !original.url?.includes('/auth/')
+    ) {
       original._retried = true;
       try {
         refreshing = refreshing || axios.post(`${API_BASE}/v1/auth/refresh`, { refreshToken });
@@ -60,6 +90,8 @@ api.interceptors.response.use(
     }
 
     if (status === 401) {
+      // Demo sessions have no real JWT — keep the user in the app shell.
+      if (isDemoMode()) return Promise.reject(error)
       tokenStore.clear();
       if (!window.location.pathname.startsWith('/login')) {
         window.location.href = '/login';
