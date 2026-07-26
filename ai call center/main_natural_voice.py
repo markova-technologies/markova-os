@@ -1381,8 +1381,24 @@ class AmharicAIAssistant:
                     return False
                 try:
                     client = await get_provider_http_client()
-                    with open(transcribe_path, "rb") as audio_f:
-                        files = {"file": (transcribe_filename, audio_f, "audio/wav")}
+                    # Scribe handles native telephony audio directly. Sending it
+                    # the original recording avoids a second loudness pass that
+                    # can amplify PCMA/PCMU noise and produce hallucinations.
+                    elevenlabs_path = temp_path
+                    elevenlabs_filename = temp_filename
+                    media_type = (
+                        "audio/wav"
+                        if elevenlabs_path.suffix.casefold() == ".wav"
+                        else "application/octet-stream"
+                    )
+                    with open(elevenlabs_path, "rb") as audio_f:
+                        files = {
+                            "file": (
+                                elevenlabs_filename,
+                                audio_f,
+                                media_type,
+                            )
+                        }
                         data = {"model_id": "scribe_v2", "language_code": "am"}
                         resp = await client.post(
                             "https://api.elevenlabs.io/v1/speech-to-text",

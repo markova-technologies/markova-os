@@ -151,10 +151,15 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
             "ሪልሜ ስማርትዋቅ",
             "noisy-watch-order",
         )
+        inflected_phone_response = await self.agent.process_turn(
+            "ስልኪ ነው? እም እግዚአብሄር ስልኪ ነው በረ?",
+            "inflected-phone-order",
+        )
 
         self.assertIn("በማን ስም", phone_response)
         self.assertIn("በማን ስም", charger_response)
         self.assertIn("በማን ስም", watch_response)
+        self.assertIn("በማን ስም", inflected_phone_response)
 
     async def test_noisy_scribe_confirmation_creates_order(self):
         call_id = "noisy-confirmation"

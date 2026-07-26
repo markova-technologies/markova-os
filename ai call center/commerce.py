@@ -333,6 +333,9 @@ class CommerceRepository:
         # syllable in short product names over 8 kHz telephone audio.
         observed_voice_variants = {
             "ስልከ": "ስልክ",
+            "ስልኪ": "ስልክ",
+            "ስልኬ": "ስልክ",
+            "ስልክን": "ስልክ",
             "ቻንገር": "ቻርጀር",
             "ቻንጀር": "ቻርጀር",
             "ስማርትዋች": "ስማርት ሰዓት",
@@ -346,11 +349,16 @@ class CommerceRepository:
         best_length = 0
         products = self.list_products()
         for product in products:
+            seeded = next(
+                (item for item in SEED_PRODUCTS if item["sku"] == product["sku"]),
+                None,
+            )
             candidates = [
                 product["sku"],
                 product["name_en"],
                 product["name_am"],
                 *product["aliases"],
+                *((seeded or {}).get("aliases", [])),
             ]
             for candidate in candidates:
                 candidate_normalized = str(candidate).casefold()
@@ -368,11 +376,16 @@ class CommerceRepository:
         }
         best_score = 0.0
         for product in products:
+            seeded = next(
+                (item for item in SEED_PRODUCTS if item["sku"] == product["sku"]),
+                None,
+            )
             candidates = [
                 product["sku"],
                 product["name_en"],
                 product["name_am"],
                 *product["aliases"],
+                *((seeded or {}).get("aliases", [])),
             ]
             for candidate in candidates:
                 candidate_normalized = str(candidate).casefold().strip()
