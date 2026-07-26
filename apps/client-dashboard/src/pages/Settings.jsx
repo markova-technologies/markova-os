@@ -343,8 +343,8 @@ const Settings = () => {
             <tr key={u.id}>
               <td>{u.name}</td>
               <td>{u.email}</td>
-              <td><span style={{color: u.role === 'Owner' ? '#10b981' : 'inherit', fontWeight: u.role === 'Owner' ? 600 : 400}}>{u.role}</span></td>
-              <td><span style={{color: u.status === 'Active' ? '#10b981' : '#f59e0b'}}>● {u.status}</span></td>
+              <td><span style={{color: u.role === 'Owner' ? 'var(--live-amber)' : 'inherit', fontWeight: u.role === 'Owner' ? 600 : 400}}>{u.role}</span></td>
+              <td><span style={{color: u.status === 'Active' ? 'var(--live-amber)' : 'var(--live-amber)'}}>● {u.status}</span></td>
             </tr>
           ))}
         </tbody>
@@ -372,7 +372,7 @@ const Settings = () => {
               <button className="btn btn-secondary" onClick={() => toggleKeyVisibility(k.id)} style={{padding:'0.4rem 0.75rem', fontSize:'0.85rem'}}>
                 {showKeys[k.id] ? <EyeOff size={14}/> : <Eye size={14}/>} {showKeys[k.id] ? 'Hide' : 'Reveal'}
               </button>
-              <button className="btn btn-secondary" style={{padding:'0.4rem 0.75rem', fontSize:'0.85rem', color:'#ef4444'}}>Revoke</button>
+              <button className="btn btn-secondary" style={{padding:'0.4rem 0.75rem', fontSize:'0.85rem', color:'var(--coral-pulse)'}}>Revoke</button>
             </div>
           </div>
         ))}
@@ -431,11 +431,11 @@ const Settings = () => {
           <tr><th>Timestamp</th><th>User</th><th>Action</th><th>Entity</th></tr>
         </thead>
         <tbody>
-          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>2 mins ago</td><td>admin@markova.tech</td><td><span style={{color:'#10b981'}}>AGENT_UPDATED</span></td><td>Inbound Qualifier</td></tr>
+          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>2 mins ago</td><td>admin@markova.tech</td><td><span style={{color:'var(--live-amber)'}}>AGENT_UPDATED</span></td><td>Inbound Qualifier</td></tr>
           <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>15 mins ago</td><td>admin@markova.tech</td><td><span style={{color:'#3b82f6'}}>FLOW_DEPLOYED</span></td><td>Main Inbound Flow</td></tr>
-          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>1 hour ago</td><td>sarah@markova.tech</td><td><span style={{color:'#f59e0b'}}>INTEGRATION_CONNECTED</span></td><td>HubSpot CRM</td></tr>
-          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>3 hours ago</td><td>admin@markova.tech</td><td><span style={{color:'#8b5cf6'}}>NUMBER_PROVISIONED</span></td><td>+1 (415) 555-0198</td></tr>
-          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>Yesterday</td><td>admin@markova.tech</td><td><span style={{color:'#10b981'}}>AGENT_CREATED</span></td><td>Outbound Closer</td></tr>
+          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>1 hour ago</td><td>sarah@markova.tech</td><td><span style={{color:'var(--live-amber)'}}>INTEGRATION_CONNECTED</span></td><td>HubSpot CRM</td></tr>
+          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>3 hours ago</td><td>admin@markova.tech</td><td><span style={{color:'var(--slate-wire)'}}>NUMBER_PROVISIONED</span></td><td>+1 (415) 555-0198</td></tr>
+          <tr><td style={{color:'var(--gray)', fontSize:'0.85rem'}}>Yesterday</td><td>admin@markova.tech</td><td><span style={{color:'var(--live-amber)'}}>AGENT_CREATED</span></td><td>Outbound Closer</td></tr>
         </tbody>
       </table>
     </div>
@@ -445,7 +445,7 @@ const Settings = () => {
     <div className="settings-section">
       <h3>Billing & Plan</h3>
       <p style={{ color: 'var(--gray)', marginBottom: '1.5rem' }}>Manage your subscription, usage, and payment methods.</p>
-      <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(59, 130, 246, 0.1))', borderRadius: '1rem', border: '1px solid rgba(16, 185, 129, 0.2)', marginBottom: '2rem' }}>
+      <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, rgba(232, 163, 61, 0.1), rgba(59, 130, 246, 0.1))', borderRadius: '1rem', border: '1px solid rgba(232, 163, 61, 0.2)', marginBottom: '2rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div>
             <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '0.25rem' }}>Current Plan</div>
@@ -526,8 +526,8 @@ const Settings = () => {
           <input type="number" value={settings.failedLoginAttempts} onChange={e => setSettings(s => ({...s, failedLoginAttempts: parseInt(e.target.value)}))} />
         </div>
       </div>
-      <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.2)', borderRadius: '0.5rem' }}>
-        <div style={{ color: '#f59e0b', fontWeight: 600, marginBottom: '0.25rem' }}>⚠ Security Recommendation</div>
+      <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(232, 163, 61, 0.1)', border: '1px solid rgba(232, 163, 61, 0.2)', borderRadius: '0.5rem' }}>
+        <div style={{ color: 'var(--live-amber)', fontWeight: 600, marginBottom: '0.25rem' }}>⚠ Security Recommendation</div>
         <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Enable 2FA for all users and set session timeouts to 30 minutes or less for compliance.</div>
       </div>
     </div>

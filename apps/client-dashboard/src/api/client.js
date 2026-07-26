@@ -1,110 +1,148 @@
 import axios from 'axios';
 
+// Single gateway. Dev: '' -> Vite proxies /v1 to :8000. Prod: set VITE_API_URL to the gateway.
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: `${API_BASE}/v1`,
 });
 
-// Inject auth token from localStorage on every request
+// --- Token storage (single source of truth) ---
+export const tokenStore = {
+  get: () => localStorage.getItem('token'),
+  getRefresh: () => localStorage.getItem('refreshToken'),
+  set: (token, refreshToken) => {
+    if (token) localStorage.setItem('token', token);
+    if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+  },
+  clear: () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('user');
+  },
+};
+
+// Sandbox vs live is a real request dimension, not a UI badge: the gateway
+// scopes reads and refuses billable writes based on this header.
+export const ENVIRONMENT_STORAGE_KEY = 'markova_environment';
+export const currentEnvironment = () =>
+  localStorage.getItem(ENVIRONMENT_STORAGE_KEY) === 'live' ? 'live' : 'test';
+
+// Attach bearer JWT and the active environment on every request.
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
+  const token = tokenStore.get();
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  config.headers['x-markova-env'] = currentEnvironment();
   return config;
 });
 
-// Auto-logout on 401
+// On 401: try one silent refresh, replay the request, else log out.
+let refreshing = null;
 api.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+  (r) => r,
+  async (error) => {
+    const original = error.config;
+    const status = error.response?.status;
+    const refreshToken = tokenStore.getRefresh();
+
+    if (status === 401 && refreshToken && original && !original._retried && !original.url?.includes('/auth/')) {
+      original._retried = true;
+      try {
+        refreshing = refreshing || axios.post(`${API_BASE}/v1/auth/refresh`, { refreshToken });
+        const { data } = await refreshing;
+        refreshing = null;
+        tokenStore.set(data.token);
+        original.headers.Authorization = `Bearer ${data.token}`;
+        return api(original);
+      } catch {
+        refreshing = null;
+      }
+    }
+
+    if (status === 401) {
+      tokenStore.clear();
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
 );
 
-// Auth
-export const login = (email, password) =>
-  api.post('/auth/login', { email, password });
+// ---------- Auth ----------
+export const register = (data) => api.post('/auth/register', data); // {name, companyName, email, password}
+export const login = (email, password) => api.post('/auth/login', { email, password });
+export const refresh = (refreshToken) => api.post('/auth/refresh', { refreshToken });
+export const logout = () => api.post('/auth/logout');
+export const getMe = () => api.get('/auth/me');
 
-export const register = (data) =>
-  api.post('/auth/register', data);
+// ---------- API Keys ----------
+export const listKeys = () => api.get('/keys');
+export const createKey = (name, environment = 'test') => api.post('/keys', { name, environment });
+export const deleteKey = (id) => api.delete(`/keys/${id}`);
 
-// Teams
-export const listTeams = () => api.get('/builder/teams');
-export const createTeam = (data) => api.post('/builder/teams', data);
-export const getCommander = (teamId) => api.get(`/builder/teams/${teamId}/commander`);
+// ---------- Agents ----------
+export const listAgents = () => api.get('/agents');
+export const getAgent = (id) => api.get(`/agents/${id}`);
+export const createAgent = (data) => api.post('/agents', data);
+export const updateAgent = (id, data) => api.put(`/agents/${id}`, data);
+export const deleteAgent = (id) => api.delete(`/agents/${id}`);
+export const getAgentVersions = (id) => api.get(`/agents/${id}/versions`);
+export const rollbackAgent = (id, versionId) => api.post(`/agents/${id}/versions/${versionId}/rollback`);
+export const testCallAgent = (id, to_number) => api.post(`/agents/${id}/test-call`, { to_number });
 
-// Agents
-export const listAgents = () => api.get('/builder/agents');
-export const getAgent = (id) => api.get(`/builder/agents/${id}`);
-export const createAgent = (data) => api.post('/builder/agents', data);
-export const updateAgent = (id, data) => api.put(`/builder/agents/${id}`, data);
-export const deleteAgent = (id) => api.delete(`/builder/agents/${id}`);
-export const getAgentVersions = (id) => api.get(`/builder/agents/${id}/versions`);
-export const rollbackAgent = (id, versionId) =>
-  api.post(`/builder/agents/${id}/rollback/${versionId}`);
+// ---------- Calls ----------
+export const listCalls = (params) => api.get('/calls', { params }); // {agent_id?, status?}
+export const placeCall = (data) => api.post('/calls', data); // {agent_id, to_number, sandbox?}
+export const getCall = (id) => api.get(`/calls/${id}`);
+export const getCallTranscript = (id) => api.get(`/calls/${id}/transcript`);
+export const getCallRecording = (id) => api.get(`/calls/${id}/recording`);
+export const transferCall = (id, data) => api.post(`/calls/${id}/transfer`, data);
+export const getTransferContext = (id) => api.get(`/calls/${id}/transfer-context`);
 
-// Tools
-export const listTools = (agentId) => api.get('/tools', { params: { agentId } });
+// ---------- Numbers ----------
+export const searchNumbers = (data) => api.post('/numbers/search', data); // {country?, area_code?}
+export const listNumbers = () => api.get('/numbers');
+export const provisionNumber = (data) => api.post('/numbers', data); // {phone_number, agent_id?, provider?, settings?}
+export const updateNumber = (id, data) => api.put(`/numbers/${id}`, data);
+export const deleteNumber = (id) => api.delete(`/numbers/${id}`);
+export const listRoutingRules = (id) => api.get(`/numbers/${id}/routing-rules`);
+export const createRoutingRules = (id, rules) => api.post(`/numbers/${id}/routing-rules`, { rules });
+export const updateRoutingRule = (id, ruleId, data) => api.put(`/numbers/${id}/routing-rules/${ruleId}`, data);
+export const deleteRoutingRule = (id, ruleId) => api.delete(`/numbers/${id}/routing-rules/${ruleId}`);
+
+// ---------- Knowledge ----------
+export const listKnowledgeSources = () => api.get('/knowledge/sources');
+export const createKnowledgeSource = (data) => api.post('/knowledge/sources', data); // {name, type, config?}
+export const listKnowledgeDocuments = (id) => api.get(`/knowledge/sources/${id}/documents`);
+export const uploadKnowledgeDocument = (id, formData) =>
+  api.post(`/knowledge/sources/${id}/documents`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+export const searchKnowledge = (query, limit = 10) => api.post('/knowledge/search', { query, limit });
+
+// ---------- Tools & Workflow ----------
+export const listTools = () => api.get('/tools');
 export const createTool = (data) => api.post('/tools', data);
 export const updateTool = (id, data) => api.put(`/tools/${id}`, data);
 export const deleteTool = (id) => api.delete(`/tools/${id}`);
+export const executeTool = (id, data) => api.post(`/tools/${id}/execute`, data);
+export const getWorkflowSettings = () => api.get('/workflow-settings');
+export const updateWorkflowSettings = (data) => api.put('/workflow-settings', data);
 
-// Connector Hub
-export const listConnectorTypes = () => api.get('/connectors/types');
-export const listIntegrations = () => api.get('/connectors/integrations');
-export const createIntegration = (data) => api.post('/connectors/integrations', data);
-export const deleteIntegration = (id) => api.delete(`/connectors/integrations/${id}`);
-export const previewIntegration = (id) => api.get(`/connectors/integrations/${id}/preview`);
-export const uploadFile = (id, formData) =>
-  api.post(`/connectors/integrations/${id}/upload`, formData, {
+// ---------- Connectors ----------
+export const listConnectors = () => api.get('/connectors');
+export const createConnector = (data) => api.post('/connectors', data);
+export const uploadConnectorFile = (id, formData) =>
+  api.post(`/connectors/${id}/upload`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 
-// Knowledge Center
-export const listKnowledgeSources = (scope, teamId) => api.get('/knowledge/sources', { params: { scope, teamId } });
-export const createKnowledgeSource = (data) => api.post('/knowledge/sources', data);
-
-// Phone Numbers, Channels & Routing
-export const listPhoneNumbers = () => api.get('/tenant/phone-numbers');
-export const createPhoneNumber = (data) => api.post('/tenant/phone-numbers', data);
-export const updatePhoneNumber = (id, data) => api.put(`/tenant/phone-numbers/${id}`, data);
-
-export const listChannels = () => api.get('/tenant/channels');
-export const createChannel = (data) => api.post('/tenant/channels', data);
-export const updateChannel = (id, data) => api.put(`/tenant/channels/${id}`, data);
-export const deleteChannel = (id) => api.delete(`/tenant/channels/${id}`);
-
-export const testSipConnection = (data) => api.post('/tenant/channels/sip/test', data);
-export const testBotConnection = (type, data) => api.post(`/tenant/channels/bot/${type}/test`, data);
-
-// Pipelines (Flow Builder)
-export const listPipelines = () => api.get('/builder/pipelines');
-export const createPipeline = (data) => api.post('/builder/pipelines', data);
-export const updatePipeline = (id, data) => api.put(`/builder/pipelines/${id}`, data);
-export const deletePipeline = (id) => api.delete(`/builder/pipelines/${id}`);
-
-// CRM
-export const listContacts = () => api.get('/crm/contacts');
-export const listOpportunities = () => api.get('/crm/opportunities');
-export const listAppointments = () => api.get('/crm/appointments');
-export const listLeads = () => api.get('/crm/leads');
-
-// Analytics
-export const getAgentAnalytics = () => api.get('/tenant/analytics/agents');
-export const getTeamAnalytics = () => api.get('/tenant/analytics/teams');
-export const getCallAnalytics = () => api.get('/tenant/analytics/calls');
-export const getBusinessAnalytics = () => api.get('/tenant/analytics/business');
-export const getCostAnalytics = () => api.get('/tenant/analytics/costs');
-export const getUsageAnalytics = () => api.get('/tenant/analytics/usage');
-
-// Calls & Stats
-export const listCalls = () => api.get('/orchestrator/calls');
-export const getCallTranscript = (id) => api.get(`/orchestrator/calls/${id}/transcript`);
-export const getStats = () => api.get('/tenant/stats');
+// ---------- Usage & Billing ----------
+export const getUsage = () => api.get('/usage');
+export const getUsageHistory = () => api.get('/usage/history');
+export const getInvoices = () => api.get('/billing/invoices');
+// Public — no login wall on pricing.
+export const getPricing = () => api.get('/pricing');
 
 export default api;

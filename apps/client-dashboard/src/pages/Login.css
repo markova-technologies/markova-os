@@ -213,7 +213,7 @@
   outline: none;
   border-color: var(--primary);
   background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.1);
 }
 
 .input-wrapper input::placeholder {

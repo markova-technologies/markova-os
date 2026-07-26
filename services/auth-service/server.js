@@ -1,13 +1,11 @@
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const { Pool } = require('pg');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { createClient } = require('redis');
-const SSOAdapter = require('../../kernel/identity/sso-adapter');
-const SAMLStrategy = require('../../kernel/identity/saml-strategy');
-const SCIMProvisioning = require('../../kernel/identity/scim-provisioning');
 const requestLogger = require('../../kernel/identity/request-logger');
 const { validate, schemas } = require('../../packages/shared-validation');
 require('dotenv').config();
@@ -23,9 +21,17 @@ const PRIVATE_KEY = jwtKeyManager.getPrivateKey();
 const PUBLIC_KEY = jwtKeyManager.getPublicKey();
 
 // Export the public key endpoint for other services (Phase 0 API Gateway hardening)
-app.get('/api/auth/public-key', (req, res) => {
+app.get(['/api/auth/public-key', '/v1/auth/public-key'], (req, res) => {
   res.json({ publicKey: PUBLIC_KEY });
 });
+
+// Legacy client-dashboard signup sends `company` instead of `companyName`
+function normalizeClientRegisterBody(req, _res, next) {
+  if (req.body && req.body.company && !req.body.companyName) {
+    req.body.companyName = req.body.company;
+  }
+  next();
+}
 
 
 app.use(cors());
@@ -35,10 +41,6 @@ app.use(express.json());
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
 });
-
-const ssoAdapter = new SSOAdapter(pool);
-const samlStrategy = new SAMLStrategy(ssoAdapter);
-const scimProvisioning = new SCIMProvisioning(pool);
 
 // Redis client setup for rate limiting
 const redisClient = createClient({
@@ -77,7 +79,13 @@ async function initializeServices(retries = 10, delay = 3000) {
 initializeServices();
 
 // Register Company & Admin User (Atomic Transaction)
-app.post('/api/auth/register', validate(schemas.register), async (req, res) => {
+// Paths: /api/auth/* (legacy), /v1/auth/* (canonical), /api/clients/* (client-dashboard)
+app.post(
+  ['/api/auth/register', '/v1/auth/register', '/api/clients/register'],
+  normalizeClientRegisterBody,
+  validate(schemas.register),
+  async (req, res) => {
+
   const { name, companyName, email, password } = req.body;
 
   if (!name || !companyName || !email || !password) {
@@ -108,10 +116,19 @@ app.post('/api/auth/register', validate(schemas.register), async (req, res) => {
     );
     const companyId = companyRes.rows[0].id;
 
-    // Emit event
-    const EventBus = require('../../kernel/events/bus');
-    const eventBus = new EventBus(process.env.REDIS_URL || 'redis://redis:6379');
-    await eventBus.publish('tenant.created', { companyId, companyName });
+    // Emit event (best-effort — must not fail registration)
+    try {
+      const EventBus = require('../../kernel/events/bus');
+      const { EventTypes } = require('../../kernel/events/registry');
+      const eventBus = new EventBus(process.env.REDIS_URL || 'redis://redis:6379');
+      await eventBus.publish(EventTypes.TENANT_CREATED, {
+        tenantId: companyId,
+        companyId,
+        companyName
+      });
+    } catch (eventErr) {
+      console.warn('tenant.created event publish skipped:', eventErr.message);
+    }
 
     // 2. Hash Password
     const passwordHash = await bcrypt.hash(password, 10);
@@ -160,7 +177,11 @@ app.post('/api/auth/register', validate(schemas.register), async (req, res) => {
 });
 
 // Login User
-app.post('/api/auth/login', validate(schemas.login), async (req, res) => {
+app.post(
+  ['/api/auth/login', '/v1/auth/login', '/api/clients/login'],
+  validate(schemas.login),
+  async (req, res) => {
+
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -250,18 +271,25 @@ app.post('/api/auth/login', validate(schemas.login), async (req, res) => {
       [user.company_id, user.id, 'USER_LOGIN', 'user', user.id]
     );
 
-    res.json({
+    const userPayload = {
+      id: user.id,
+      company_id: user.company_id,
+      name: user.name,
+      email: user.email,
+      role: user.role
+    };
+    // Canonical shape uses `user`. Legacy /api/clients/login also includes `client`
+    // so the frozen client-dashboard Login.jsx keeps working without a frontend change.
+    const body = {
       success: true,
       token,
       refreshToken,
-      user: {
-        id: user.id,
-        company_id: user.company_id,
-        name: user.name,
-        email: user.email,
-        role: user.role
-      }
-    });
+      user: userPayload
+    };
+    if (req.path.startsWith('/api/clients/')) {
+      body.client = userPayload;
+    }
+    res.json(body);
   } catch (error) {
     console.error('Login Error:', error);
     res.status(500).json({ error: 'Internal Server Error during login' });
@@ -269,7 +297,7 @@ app.post('/api/auth/login', validate(schemas.login), async (req, res) => {
 });
 
 // Token Verification Endpoint
-app.post('/api/auth/verify-token', async (req, res) => {
+app.post(['/api/auth/verify-token', '/v1/auth/verify-token'], async (req, res) => {
   const { token } = req.body;
 
   if (!token) {
@@ -297,7 +325,7 @@ app.post('/api/auth/verify-token', async (req, res) => {
 });
 
 // Refresh Token Endpoint
-app.post('/api/auth/refresh-token', async (req, res) => {
+app.post(['/api/auth/refresh-token', '/v1/auth/refresh', '/v1/auth/refresh-token'], async (req, res) => {
   const { refreshToken } = req.body;
   if (!refreshToken) return res.status(400).json({ error: 'Refresh token is required' });
 
@@ -354,53 +382,10 @@ app.post('/api/auth/refresh-token', async (req, res) => {
   }
 });
 
-// ==========================================
-// Enterprise SSO & SCIM
-// ==========================================
-
-// Initiate SSO Login
-app.get('/api/auth/sso/login/:companyId', async (req, res) => {
-  try {
-    const { loginUrl, samlRequest } = await samlStrategy.generateAuthRequest(req.params.companyId);
-    // In reality, we'd redirect with the SAML request
-    res.json({ loginUrl, samlRequest });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-// Consume SAML Response (ACS URL)
-app.post('/api/auth/sso/callback/:companyId', async (req, res) => {
-  try {
-    const result = await samlStrategy.consumeResponse(req.params.companyId, req.body.SAMLResponse);
-    if (result.success) {
-      // Find or create user, issue Markova JWT
-      res.json({ success: true, message: 'SSO Login successful', user: result });
-    }
-  } catch (err) {
-    res.status(401).json({ error: 'SSO verification failed' });
-  }
-});
-
-// SCIM 2.0 Provisioning Endpoint
-app.post('/api/scim/v2/Users', async (req, res) => {
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).send();
-    const token = authHeader.split(' ')[1];
-    
-    const { companyId, valid } = await scimProvisioning.verifyToken(token);
-    if (!valid) return res.status(401).send();
-
-    const user = await scimProvisioning.createUser(companyId, req.body);
-    res.status(201).json(user);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// SSO/SCIM mock routes removed in Phase 0 (quarantined under _quarantine/kernel/identity/).
 
 // Logout User
-app.post('/api/auth/logout', async (req, res) => {
+app.post(['/api/auth/logout', '/v1/auth/logout'], async (req, res) => {
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(400).json({ error: 'Token is required' });
@@ -417,6 +402,60 @@ app.post('/api/auth/logout', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Current authenticated user (Phase 1 — was missing)
+app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Unauthorized: Bearer token required' });
+  }
+
+  const token = authHeader.split(' ')[1];
+  try {
+    const decoded = jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] });
+
+    if (decoded.sessionId) {
+      const isRevoked = await redisClient.get(`session_revoked:${decoded.sessionId}`);
+      if (isRevoked) {
+        return res.status(401).json({ error: 'Session has been revoked' });
+      }
+      const sessionRes = await pool.query(
+        'SELECT revoked_at FROM sessions WHERE id = $1',
+        [decoded.sessionId]
+      );
+      if (sessionRes.rows.length === 0 || sessionRes.rows[0].revoked_at) {
+        return res.status(401).json({ error: 'Session has been revoked' });
+      }
+    }
+
+    const userRes = await pool.query(
+      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.status, c.name AS company_name, c.plan
+       FROM users u
+       JOIN companies c ON c.id = u.company_id
+       WHERE u.id = $1`,
+      [decoded.userId]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const row = userRes.rows[0];
+    res.json({
+      id: row.id,
+      company_id: row.company_id,
+      company_name: row.company_name,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      status: row.status,
+      plan: row.plan,
+      permissions: decoded.permissions || []
+    });
+  } catch (err) {
+    return res.status(401).json({ error: 'Token invalid or expired' });
   }
 });
 

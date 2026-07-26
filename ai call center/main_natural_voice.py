@@ -2682,10 +2682,15 @@ async def commerce_voice_order_status(
 
 # --- Dashboard API Endpoints ---
 
-DASHBOARD_API_KEY = os.getenv('DASHBOARD_API_KEY', 'default-secret-key')
+DASHBOARD_API_KEY = os.getenv('DASHBOARD_API_KEY')  # required — no default secret
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 async def get_api_key(api_key_header: str = Security(api_key_header)):
+    if not DASHBOARD_API_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="DASHBOARD_API_KEY is not configured on the server",
+        )
     if api_key_header == DASHBOARD_API_KEY:
         return api_key_header
     raise HTTPException(status_code=403, detail="Could not validate credentials")

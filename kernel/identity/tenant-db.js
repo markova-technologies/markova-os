@@ -22,8 +22,11 @@ class TenantDb {
       await client.query('BEGIN');
 
       // Only set tenant if we have one (service accounts might bypass RLS or use default)
+      // Use set_config — SET LOCAL does not accept parameterized $1 placeholders.
       if (securityContext.tenantId) {
-        await client.query("SET LOCAL app.current_tenant = $1", [securityContext.tenantId]);
+        await client.query("SELECT set_config('app.current_tenant', $1, true)", [
+          securityContext.tenantId
+        ]);
       }
 
       // Execute the actual query/logic

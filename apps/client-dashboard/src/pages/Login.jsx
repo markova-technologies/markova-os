@@ -1,12 +1,11 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
-import axios from 'axios'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Phone, Mail, Lock, Eye, EyeOff, ArrowRight, BarChart3, Brain, Shield } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, ArrowRight, BarChart3, Brain, Shield } from 'lucide-react'
+import { login as loginRequest, tokenStore } from '../api/client'
 import './Login.css'
 
-const Login = ({ onLogin, onSwitchToSignup }) => {
-  const navigate = useNavigate()
+const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
@@ -14,8 +13,6 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
     password: ''
   })
   const [isLoading, setIsLoading] = useState(false)
-  const [isSsoMode, setIsSsoMode] = useState(false)
-  const [ssoCompanyId, setSsoCompanyId] = useState('')
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -23,46 +20,19 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
     setError('') // Clear previous errors
 
     try {
-      const response = await axios.post(`${import.meta.env.VITE_SYSTEM_DASHBOARD_URL}/api/clients/login`, {
-        email: formData.email,
-        password: formData.password
-      })
+      const { data } = await loginRequest(formData.email, formData.password)
+      const { token, refreshToken, user } = data
 
-      const { token, client } = response.data
+      tokenStore.set(token, refreshToken)
+      localStorage.setItem('user', JSON.stringify(user))
 
-      // Store token and user data
-      localStorage.setItem('token', token)
-      localStorage.setItem('user', JSON.stringify(client))
-
-      // Update parent state
-      onLogin(client)
-      navigate('/dashboard')
-
+      onLogin(user)
     } catch (err) {
-      if (err.response?.status === 403) {
-        setError('Your account is pending approval. Please wait for admin confirmation.')
-      } else if (err.response?.status === 401) {
-        setError('Invalid email or password')
+      if (err.response?.status === 401) {
+        setError('That email and password don’t match. Try again.')
       } else {
-        setError(err.message || 'Login failed. Please try again.')
+        setError('We couldn’t sign you in just now. Try again in a moment.')
       }
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleSsoSubmit = async (e) => {
-    e.preventDefault()
-    if (!ssoCompanyId) return setError('Company ID is required for SSO')
-    setIsLoading(true)
-    setError('')
-    try {
-      const response = await axios.get(`${import.meta.env.VITE_SYSTEM_DASHBOARD_URL || 'http://localhost:8000'}/api/auth/sso/login/${ssoCompanyId}`)
-      if (response.data.loginUrl) {
-        window.location.href = response.data.loginUrl // Redirect to IdP
-      }
-    } catch (err) {
-      setError('SSO not configured for this company ID')
     } finally {
       setIsLoading(false)
     }
@@ -154,8 +124,7 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
               </motion.div>
             )}
 
-            {!isSsoMode ? (
-              <form onSubmit={handleSubmit} className="login-form">
+            <form onSubmit={handleSubmit} className="login-form">
                 <div className="form-group">
                 <label htmlFor="email">Email Address</label>
                 <div className="input-wrapper">
@@ -221,55 +190,9 @@ const Login = ({ onLogin, onSwitchToSignup }) => {
                 )}
                   </motion.button>
                 </form>
-              ) : (
-                <form onSubmit={handleSsoSubmit} className="login-form">
-                  <div className="form-group">
-                    <label htmlFor="ssoCompanyId">Company ID</label>
-                    <div className="input-wrapper">
-                      <Shield className="input-icon" size={18} />
-                      <input
-                        type="text"
-                        id="ssoCompanyId"
-                        name="ssoCompanyId"
-                        value={ssoCompanyId}
-                        onChange={(e) => setSsoCompanyId(e.target.value)}
-                        placeholder="e.g. markova-inc"
-                        required
-                      />
-                    </div>
-                  </div>
-                  <motion.button
-                    type="submit"
-                    className="login-button sso-button mt-4"
-                    disabled={isLoading}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    style={{ background: 'linear-gradient(135deg, #10b981, #059669)' }}
-                  >
-                    {isLoading ? <div className="spinner"></div> : 'Continue with SAML SSO'}
-                  </motion.button>
-                </form>
-              )}
-
-            <div className="text-center mt-6">
-              <button 
-                onClick={() => setIsSsoMode(!isSsoMode)} 
-                className="text-sm text-gray-400 hover:text-white transition-colors"
-              >
-                {isSsoMode ? '← Back to Email Login' : 'Enterprise SSO Login'}
-              </button>
-            </div>
 
             <div className="login-footer">
-              <p>Don't have an account? <button onClick={onSwitchToSignup} className="link-button">Create Account</button></p>
-              
-              <button 
-                onClick={() => onLogin({ name: "Dev User", email: "dev@markova.test", id: "dev-1" })}
-                className="mt-4 px-4 py-2 w-full border border-dashed border-primary-500 text-primary-500 rounded-lg hover:bg-primary-500/10 text-sm font-semibold transition-colors"
-                type="button"
-              >
-                🛠️ Bypass Login (Dev Mode)
-              </button>
+              <p>Don't have an account? <Link to="/signup" className="link-button">Create Account</Link></p>
             </div>
           </div>
         </motion.div>

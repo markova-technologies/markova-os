@@ -196,15 +196,56 @@ setInterval(async () => {
   }
 }, 10000);
 
-// Endpoint: Execute Tool
-app.post('/api/tools/execute', async (req, res) => {
+function planAllowsExecution(plan) {
+  const p = String(plan || 'starter').toLowerCase();
+  return p === 'pro' || p === 'plus';
+}
+
+function thresholdForAction(workflowSettings, actionType) {
+  const thresholds = (workflowSettings && workflowSettings.confidence_thresholds) || {};
+  const key = String(actionType || 'default').toLowerCase();
+  const raw = thresholds[key] != null ? thresholds[key] : thresholds.default;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : 0.85;
+}
+
+async function writeToolAudit(ctx, companyId, userId, action, toolId, details) {
+  const uid =
+    userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)
+      ? userId
+      : null;
+  await tenantDb.query(
+    ctx,
+    `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, new_value, reason)
+     VALUES ($1, $2, $3, 'tool', $4, $5::jsonb, $6)`,
+    [companyId, uid, action, toolId, JSON.stringify(details || {}), details?.reason || null]
+  );
+}
+
+// Endpoint: Execute Tool (body.toolId) + /v1 alias POST /api/tools/:id/execute
+async function executeToolHandler(req, res, toolIdOverride) {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
-  const { toolId, payload } = req.body;
+  const userId = ctx.userId || null;
+  const toolId = toolIdOverride || req.body.toolId;
+  const payload = req.body.payload || req.body;
+  const confidence = Number(req.body.confidence ?? payload.confidence ?? 1);
+  const actionType = req.body.action_type || payload.action_type || 'default';
+  const callId = req.body.call_id || payload.call_id || null;
 
   if (!toolId) return res.status(400).json({ error: 'Tool ID is required' });
 
   try {
+    const companyRes = await tenantDb.query(
+      ctx,
+      'SELECT plan, workflow_settings FROM companies WHERE id = $1',
+      [companyId]
+    );
+    if (companyRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Company not found' });
+    }
+    const { plan, workflow_settings: workflowSettings } = companyRes.rows[0];
+
     // 1. Fetch Tool config
     const result = await tenantDb.query(
       ctx,
@@ -217,30 +258,120 @@ app.post('/api/tools/execute', async (req, res) => {
     }
 
     const tool = result.rows[0];
+    const threshold = thresholdForAction(workflowSettings, actionType);
+    const conf = Number.isFinite(confidence) ? confidence : 0;
+
+    // Basic/starter: propose only — never auto-execute on the business system
+    if (!planAllowsExecution(plan)) {
+      await writeToolAudit(ctx, companyId, userId, 'TOOL_PROPOSED', toolId, {
+        plan,
+        confidence: conf,
+        threshold,
+        action_type: actionType,
+        call_id: callId,
+        payload,
+        reason: 'Plan does not include workflow execution (upgrade to Pro/Plus)',
+      });
+      return res.status(202).json({
+        success: false,
+        executed: false,
+        status: 'proposed',
+        plan,
+        message: 'Action recorded for dashboard review. Execution requires Pro or Plus.',
+        confidence: conf,
+        threshold,
+      });
+    }
+
+    // Below confidence threshold → human approval queue
+    if (conf < threshold) {
+      const approval = await tenantDb.query(
+        ctx,
+        `INSERT INTO approval_queue
+           (company_id, requester_id, requester_type, action, context, reason, status)
+         VALUES ($1, $2, 'agent', $3, $4::jsonb, $5, 'pending')
+         RETURNING id, status, created_at`,
+        [
+          companyId,
+          null,
+          `tool.execute:${tool.name}`,
+          JSON.stringify({ tool_id: toolId, call_id: callId, action_type: actionType, confidence: conf, threshold, payload }),
+          `Confidence ${conf} below threshold ${threshold} for action_type=${actionType}`,
+        ]
+      );
+      await writeToolAudit(ctx, companyId, userId, 'TOOL_PENDING_APPROVAL', toolId, {
+        plan,
+        confidence: conf,
+        threshold,
+        action_type: actionType,
+        call_id: callId,
+        approval_id: approval.rows[0].id,
+        payload,
+        reason: 'Below confidence threshold',
+      });
+      return res.status(202).json({
+        success: false,
+        executed: false,
+        status: 'pending_approval',
+        approval_id: approval.rows[0].id,
+        confidence: conf,
+        threshold,
+        action_type: actionType,
+      });
+    }
 
     // 2. Dispatch execution to appropriate plugin
-    const pluginType = tool.type || 'webhook'; // Default to webhook for backward compatibility
+    const pluginType = tool.type || 'webhook';
     const plugin = plugins[pluginType];
-    
+
     if (!plugin) {
       return res.status(400).json({ error: `Unsupported tool type: ${pluginType}` });
     }
-    
+
     try {
       const responseData = await plugin.execute(tool, payload);
-      
+
+      await writeToolAudit(ctx, companyId, userId, 'TOOL_EXECUTED', toolId, {
+        plan,
+        confidence: conf,
+        threshold,
+        action_type: actionType,
+        call_id: callId,
+        response: responseData,
+        reason: 'Auto-executed above confidence threshold',
+      });
+
       await eventBus.publish(EventTypes.TOOL_EXECUTED, {
         tenantId: companyId,
         toolId: toolId,
         agentId: payload.agentId || 'unknown',
         success: true,
-        executionTimeMs: 100 // Mocked for now
+        callId,
+        confidence: conf,
+        executionTimeMs: 100
       }, { source: 'tool-engine' });
 
-      res.json({ success: true, response: responseData });
+      res.json({
+        success: true,
+        executed: true,
+        status: 'executed',
+        confidence: conf,
+        threshold,
+        response: responseData,
+      });
     } catch (err) {
       console.error(`Tool Execution Failed: ${err.message}. Enqueueing retry job...`);
-      
+
+      await writeToolAudit(ctx, companyId, userId, 'TOOL_FAILED', toolId, {
+        plan,
+        confidence: conf,
+        threshold,
+        action_type: actionType,
+        call_id: callId,
+        error: err.message,
+        reason: 'Execution failed; retry scheduled',
+      });
+
       await eventBus.publish(EventTypes.TOOL_FAILED, {
         tenantId: companyId,
         toolId: toolId,
@@ -249,12 +380,12 @@ app.post('/api/tools/execute', async (req, res) => {
         error: err.message
       }, { source: 'tool-engine' });
 
-      // Schedule Async Retry in Redis
       await queueRetry(companyId, toolId, payload, 1);
-      
-      // Return immediate response to the Orchestrator with acknowledgment
-      res.status(202).json({ 
-        success: false, 
+
+      res.status(202).json({
+        success: false,
+        executed: false,
+        status: 'retry_scheduled',
         message: 'Tool execution timed out or failed. Scheduled for retry.',
         retryScheduled: true
       });
@@ -263,7 +394,10 @@ app.post('/api/tools/execute', async (req, res) => {
     console.error('Execute Tool Router Error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
-});
+}
+
+app.post('/api/tools/execute', (req, res) => executeToolHandler(req, res));
+app.post('/api/tools/:id/execute', (req, res) => executeToolHandler(req, res, req.params.id));
 
 // --- STANDARD CRUD ENDPOINTS ---
 
@@ -284,11 +418,18 @@ app.get('/api/tools', async (req, res) => {
   }
 });
 
+function auditUserId(userId) {
+  if (!userId) return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)
+    ? userId
+    : null;
+}
+
 // Create Tool
 app.post('/api/tools', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
-  const userId = ctx.userId || null;
+  const userId = auditUserId(ctx.userId);
   const { name, description, webhook_url, method } = req.body;
 
   if (!name || !webhook_url) return res.status(400).json({ error: 'Name and Webhook URL are required' });

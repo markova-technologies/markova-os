@@ -5,7 +5,9 @@ import rateLimit from 'express-rate-limit';
 import * as jwt from 'jsonwebtoken';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Proxy gateway: do not parse bodies here — multipart uploads and raw streams
+  // must reach upstream services intact (express-http-proxy streams them).
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
   // Helmet for security headers
   const helmet = require('helmet');
   app.use(helmet());

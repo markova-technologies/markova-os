@@ -1,305 +1,220 @@
-import React, { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate, Link } from 'react-router-dom'
-import axios from 'axios'
-import { listAgents, listIntegrations, listKnowledgeSources } from '../api/client'
-import Skeleton from '../components/Skeleton'
 import {
-  PhoneCall,
-  Bot,
-  Users,
-  CalendarCheck,
-  Activity,
-  Plus,
-  BookOpen,
-  Plug,
-  Sparkles,
   ArrowRight,
-  PhoneForwarded,
-  CheckCircle2,
-  AlertTriangle,
-  Server
+  Bot,
+  Info,
+  Key,
+  Phone,
+  PhoneCall,
+  Plus,
 } from 'lucide-react'
+import { listAgents, listCalls, getUsage } from '../api/client'
+import { useEnvironment } from '../contexts/EnvironmentContext'
+import Skeleton from '../components/Skeleton'
 import './CommandCenter.css'
 
+const PLAN_LABEL = { basic: 'Basic', starter: 'Basic', pro: 'Pro', plus: 'Plus' }
+
+const formatMinutes = (n) => (Math.round((n || 0) * 10) / 10).toLocaleString()
+
+const relativeTime = (iso) => {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const mins = Math.round(diff / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins} min ago`
+  const hours = Math.round(mins / 60)
+  if (hours < 24) return `${hours} hr ago`
+  return new Date(iso).toLocaleDateString()
+}
+
 const CommandCenter = () => {
-  const navigate = useNavigate();
-  const [dashboardStats, setDashboardStats] = useState({
-    activeCalls: 0,
-    activeAgents: 0,
-    activeTeams: 0,
-    newLeads: 0,
-    appointmentsBooked: 0
-  });
+  const navigate = useNavigate()
+  const { environment } = useEnvironment()
+  const [agents, setAgents] = useState([])
+  const [calls, setCalls] = useState([])
+  const [usage, setUsage] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
 
-  const [systemHealth, setSystemHealth] = useState({
-    gateway: 'loading',
-    tenant: 'loading',
-    orchestrator: 'loading'
-  });
-
-  const [recommendations, setRecommendations] = useState([]);
-  const [recentActivity, setRecentActivity] = useState([]);
-
-  const [loading, setLoading] = useState(true);
+  const user = (() => {
+    try { return JSON.parse(localStorage.getItem('user') || '{}') } catch { return {} }
+  })()
+  const plan = (user.plan || 'basic').toLowerCase()
+  const isBasic = plan === 'basic' || plan === 'starter'
 
   useEffect(() => {
-    const fetchStats = async () => {
+    let cancelled = false
+
+    const load = async () => {
       try {
-        const token = localStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        
-        const [statsRes, activityRes, agentsRes, integrationsRes, knowledgeRes] = await Promise.all([
-          axios.get(`${baseUrl}/api/tenant/stats`, { headers: { Authorization: `Bearer ${token}` } }),
-          axios.get(`${baseUrl}/api/tenant/activity`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: [] })),
-          listAgents().catch(() => ({ data: [] })),
-          listIntegrations().catch(() => ({ data: [] })),
-          listKnowledgeSources().catch(() => ({ data: [] }))
-        ]);
-        
-        setDashboardStats(statsRes.data);
-        
-        // Generate dynamic recommendations based on stats
-        const recs = [];
-        const hasCrmIntegration = integrationsRes.data?.some(i => ['hubspot', 'salesforce', 'zendesk'].includes(i.type));
-        
-        if (statsRes.data.newLeads > 0 && statsRes.data.abandonedLeads > 0) {
-          recs.push({
-            title: 'Follow up with abandoned leads',
-            desc: `You have ${statsRes.data.abandonedLeads} leads from yesterday that dropped off mid-conversation. Create a quick outbound flow to re-engage them.`,
-            action: 'Create Flow'
-          });
-        }
-        if (!hasCrmIntegration && integrationsRes.data) {
-          recs.push({
-            title: 'Missing CRM Integration',
-            desc: 'Your Support Team is taking calls, but tickets aren\'t syncing. Connect Zendesk or HubSpot to automatically log issues.',
-            action: 'Connect CRM'
-          });
-        }
-
-        const idleAgents = agentsRes.data?.filter(a => a.status === 'idle' || a.status === 'inactive') || [];
-        if (idleAgents.length > 0) {
-          recs.push({
-            title: 'Idle Agents Detected',
-            desc: `You have ${idleAgents.length} agent(s) currently not handling any calls. Consider expanding their routing rules.`,
-            action: 'View Agents'
-          });
-        }
-
-        const staleKnowledge = knowledgeRes.data?.filter(k => k.status === 'error' || k.status === 'stale') || [];
-        if (staleKnowledge.length > 0) {
-          recs.push({
-            title: 'Stale Knowledge Sources',
-            desc: `Some of your knowledge bases have failed to sync or are stale. Review them to ensure accurate answers.`,
-            action: 'View Knowledge'
-          });
-        }
-
-        if (recs.length === 0) {
-          recs.push({
-            title: 'System Optimal',
-            desc: 'Your AI workforce is running smoothly with no outstanding issues.',
-            action: 'View Analytics'
-          });
-        }
-        setRecommendations(recs);
-        
-        if (activityRes.data && activityRes.data.length > 0) {
-          setRecentActivity(activityRes.data);
-        } else {
-          setRecentActivity([
-            { title: 'Inbound Call - Support Team', time: '2 mins ago', status: 'Resolved', type: 'success' },
-            { title: 'Outbound Call - Sales Team', time: '15 mins ago', status: 'Voicemail', type: 'warning' },
-            { title: 'Commander Agent Routed Call', time: '18 mins ago', status: 'Success', type: 'success' },
-            { title: 'Agent "Sales-Bot-1" Updated', time: '1 hour ago', status: 'Deployed', type: 'success' },
-          ]); // Fallback mock data
-        }
-      } catch (error) {
-        console.error('Failed to fetch stats:', error);
+        const [agentsRes, callsRes, usageRes] = await Promise.all([
+          listAgents(),
+          listCalls(),
+          getUsage(),
+        ])
+        if (cancelled) return
+        setAgents(Array.isArray(agentsRes.data) ? agentsRes.data : [])
+        setCalls(Array.isArray(callsRes.data) ? callsRes.data : [])
+        setUsage(usageRes.data || null)
+        setLoadError(null)
+      } catch {
+        if (!cancelled) setLoadError('We couldn’t load your dashboard. Refresh to try again.')
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false)
       }
-    };
+    }
 
-    const fetchHealth = async () => {
-      try {
-        const token = localStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-        // Ping a few key services
-        const [gateway, tenant] = await Promise.all([
-          axios.get(`${baseUrl}/health`).catch(() => ({ data: { status: 'DOWN' }})),
-          axios.get(`${baseUrl}/api/tenant/health`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => ({ data: { status: 'DOWN' }})),
-        ]);
-        
-        setSystemHealth({
-          gateway: gateway.data.status === 'OK' ? 'healthy' : 'down',
-          tenant: tenant.data.status === 'OK' ? 'healthy' : 'down',
-          orchestrator: 'healthy' // Assume healthy if gateway is up for demo
-        });
-      } catch (e) {
-        console.error(e);
-      }
-    };
+    load()
+    const timer = setInterval(load, 30000)
+    return () => { cancelled = true; clearInterval(timer) }
+  }, [environment])
 
-    fetchStats();
-    fetchHealth();
-    
-    // Poll every 10 seconds for real-time feel
-    const interval = setInterval(() => {
-      fetchStats();
-      fetchHealth();
-    }, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  const activeCalls = calls.filter((c) => c.status === 'active').length
+  const minutesUsed = usage?.call_minutes || 0
+  const minutesLimit = usage?.minutes_limit || usage?.limit || null
+  const pctUsed = minutesLimit ? Math.min(100, (minutesUsed / minutesLimit) * 100) : null
+  const recentCalls = calls.slice(0, 5)
 
   const stats = [
-    { title: 'Active Calls', value: dashboardStats.activeCalls.toString(), trend: 'Live', isPositive: true, icon: PhoneCall, color: 'emerald' },
-    { title: 'Active Agents', value: dashboardStats.activeAgents.toString(), trend: 'Stable', isPositive: null, icon: Bot, color: 'purple' },
-    { title: 'Active Teams', value: (dashboardStats.activeTeams || 0).toString(), trend: 'Stable', isPositive: null, icon: Users, color: 'indigo' },
-    { title: 'New Leads (Today)', value: dashboardStats.newLeads.toString(), trend: '+24%', isPositive: true, icon: Users, color: 'blue' },
-    { title: 'Appointments Booked', value: dashboardStats.appointmentsBooked.toString(), trend: '+8%', isPositive: true, icon: CalendarCheck, color: 'amber' },
-  ];
+    { title: 'Calls happening now', value: activeCalls, icon: PhoneCall },
+    { title: 'Agents', value: agents.length, icon: Bot },
+    { title: 'Calls this period', value: calls.length, icon: Phone },
+  ]
 
   return (
     <div className="command-center">
-      {/* Header */}
-      <motion.div 
+      <motion.header
         className="cc-header"
-        initial={{ opacity: 0, y: -20 }}
+        initial={{ opacity: 0, y: -12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
       >
-        <div className="cc-header-title">
-          <h1>Command Center</h1>
-          <p>Real-time overview of your AI workforce and operations</p>
+        <div>
+          <h1>Overview</h1>
+          <p>
+            {environment === 'live'
+              ? 'You’re in live mode — these are real calls and real spend.'
+              : 'You’re in sandbox — test freely, nothing here is billed.'}
+          </p>
         </div>
         <div className="cc-quick-actions">
-          <button className="btn-quick primary" onClick={() => navigate('/agent-studio')}><Plus size={16} /> Create Agent</button>
-          <button className="btn-quick" onClick={() => navigate('/agent-studio')}><Users size={16} /> New Team</button>
-          <button className="btn-quick" onClick={() => navigate('/knowledge')}><BookOpen size={16} /> Add Knowledge</button>
-          <button className="btn-quick" onClick={() => navigate('/integrations')}><Plug size={16} /> Connect App</button>
+          <button className="btn-quick primary" onClick={() => navigate('/agent-studio')}>
+            <Plus size={15} /> Create agent
+          </button>
+          <button className="btn-quick" onClick={() => navigate('/numbers')}>
+            <Phone size={15} /> Provision a number
+          </button>
+          <button className="btn-quick" onClick={() => navigate('/keys')}>
+            <Key size={15} /> View keys
+          </button>
         </div>
-      </motion.div>
+      </motion.header>
 
-      {/* Stats Grid */}
-      <motion.div 
+      {loadError && <div className="cc-error">{loadError}</div>}
+
+      <motion.div
         className="cc-stats-grid"
-        initial={{ opacity: 0, y: 20 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
+        transition={{ delay: 0.05 }}
       >
-        {stats.map((stat, i) => {
-          const Icon = stat.icon;
-          return (
-            <div className="stat-card" key={i}>
-              <div className="stat-header">
-                <span className="stat-title">{stat.title}</span>
-              </div>
-              {loading ? (
-                 <Skeleton variant="text" height="36px" width="60%" className="mt-2" />
-              ) : (
-                <>
-                  <div className="stat-value">{stat.value}</div>
-                  <div className={`stat-trend ${stat.isPositive === true ? 'positive' : stat.isPositive === false ? 'negative' : 'neutral'}`}>
-                    {stat.trend} vs yesterday
-                  </div>
-                </>
-              )}
+        {stats.map((stat) => (
+          <div className="stat-card" key={stat.title}>
+            <div className="stat-header">
+              <stat.icon size={15} />
+              <span className="stat-title">{stat.title}</span>
             </div>
-          )
-        })}
+            {loading
+              ? <Skeleton variant="text" height="34px" width="60%" />
+              : <div className="stat-value">{stat.value}</div>}
+          </div>
+        ))}
+
+        <div className="stat-card">
+          <div className="stat-header">
+            <span className="stat-title">Minutes used</span>
+          </div>
+          {loading ? (
+            <Skeleton variant="text" height="34px" width="60%" />
+          ) : (
+            <>
+              <div className="stat-value">
+                {formatMinutes(minutesUsed)}
+                {minutesLimit && <span className="stat-limit"> / {formatMinutes(minutesLimit)}</span>}
+              </div>
+              {pctUsed !== null && (
+                <div className="cc-meter"><span style={{ width: `${pctUsed}%` }} /></div>
+              )}
+            </>
+          )}
+        </div>
       </motion.div>
 
-      {/* Main Layout Grid */}
       <div className="cc-main-grid">
-        
-        {/* Left Column */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-          {/* AI Recommendations */}
-          <motion.div 
-            className="cc-section"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            <div className="cc-section-header">
-              <h3 className="cc-section-title">Smart Insights</h3>
-            </div>
-            <div>
-              {recommendations.map((rec, i) => (
-                <div className="ai-recommendation" key={i}>
-                  <div className="ai-rec-content">
-                    <h4>{rec.title}</h4>
-                    <p>{rec.desc}</p>
-                    <button className="ai-rec-action" onClick={() => navigate('/flow-builder')}>
-                      {rec.action} <ArrowRight size={14} />
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-
-          <motion.div 
-            className="cc-section"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            style={{ flex: 1 }}
-          >
-             <div className="cc-section-header">
-              <h3 className="cc-section-title"><Activity size={18} /> System Health</h3>
-              <Link to="/analytics" style={{ fontSize: '0.85rem', color: 'var(--primary)', textDecoration: 'none' }}>View full report</Link>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Server size={16} /> API Gateway</div>
-                <div style={{ color: systemHealth.gateway === 'healthy' ? '#10b981' : '#f43f5e', fontWeight: 500 }}>{systemHealth.gateway.toUpperCase()}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Server size={16} /> Tenant Service</div>
-                <div style={{ color: systemHealth.tenant === 'healthy' ? '#10b981' : '#f43f5e', fontWeight: 500 }}>{systemHealth.tenant.toUpperCase()}</div>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'var(--bg-secondary)', borderRadius: '0.5rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Server size={16} /> Orchestrator</div>
-                <div style={{ color: systemHealth.orchestrator === 'healthy' ? '#10b981' : '#f43f5e', fontWeight: 500 }}>{systemHealth.orchestrator.toUpperCase()}</div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Right Column */}
-        <motion.div 
+        <motion.section
           className="cc-section"
-          initial={{ opacity: 0, x: 20 }}
+          initial={{ opacity: 0, x: -12 }}
           animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.5, delay: 0.4 }}
+          transition={{ delay: 0.1 }}
         >
           <div className="cc-section-header">
-            <h3 className="cc-section-title">Recent Activity</h3>
-            <Link to="/call-center" style={{ fontSize: '0.85rem', color: 'var(--primary)', textDecoration: 'none' }}>View all</Link>
+            <h3 className="cc-section-title">Recent calls</h3>
+            <Link to="/call-center">View all</Link>
           </div>
-          <div className="activity-list">
-            {recentActivity.map((activity, i) => (
-              <div className="activity-item" key={i}>
-                <div className="activity-icon">
-                  {activity.type === 'success' ? <CheckCircle2 size={16} color="#10b981" /> : 
-                   activity.type === 'warning' ? <AlertTriangle size={16} color="#f59e0b" /> : 
-                   <PhoneForwarded size={16} />}
-                </div>
-                <div className="activity-details">
-                  <div className="activity-title">{activity.title}</div>
-                  <div className="activity-time">{activity.time}</div>
-                </div>
-                <div className={`activity-status status-${activity.type}`}>
-                  {activity.status}
-                </div>
-              </div>
-            ))}
-          </div>
-        </motion.div>
 
+          {loading ? (
+            <div className="cc-skeleton-list">
+              {[0, 1, 2].map((i) => <Skeleton key={i} variant="text" height="46px" />)}
+            </div>
+          ) : recentCalls.length === 0 ? (
+            <div className="cc-empty">
+              <p>No calls yet — create an agent and place a test call to see it here.</p>
+              <button className="btn-quick primary" onClick={() => navigate('/agent-studio')}>
+                <Plus size={15} /> Create agent
+              </button>
+            </div>
+          ) : (
+            <ul className="cc-call-list">
+              {recentCalls.map((call) => (
+                <li key={call.id}>
+                  <Link to={`/call-center/${call.id}`}>
+                    <span className="cc-call-number mono">{call.caller_number || 'Unknown caller'}</span>
+                    <span className="cc-call-agent">{call.agent_name || '—'}</span>
+                    <span className="cc-call-time">{relativeTime(call.start_time)}</span>
+                    <span className={`cc-call-status ${call.status}`}>{call.status}</span>
+                    <ArrowRight size={14} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </motion.section>
+
+        <motion.section
+          className="cc-section"
+          initial={{ opacity: 0, x: 12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ delay: 0.15 }}
+        >
+          <div className="cc-section-header">
+            <h3 className="cc-section-title">Your plan</h3>
+            <Link to="/billing">Compare plans</Link>
+          </div>
+          <p className="cc-plan-name">{PLAN_LABEL[plan] || 'Basic'}</p>
+
+          {isBasic && (
+            <div className="cc-plan-note">
+              <Info size={15} />
+              <p>
+                On Basic, your agent answers callers but doesn’t carry out actions in your other
+                systems. Calls where an action was recognised are marked in the call detail, so you
+                can see what Pro would have handled before deciding to move up.
+              </p>
+            </div>
+          )}
+        </motion.section>
       </div>
     </div>
   )

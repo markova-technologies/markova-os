@@ -72,9 +72,9 @@ const OnboardingModal = ({ onComplete }) => {
           <div style={{ textAlign: 'center', padding: '2rem 0' }}>
             <div style={{
               width: '80px', height: '80px', borderRadius: '50%',
-              background: 'linear-gradient(135deg, #10b981, #059669)',
+              background: 'linear-gradient(135deg, var(--live-amber), #C9852E)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              margin: '0 auto 1.5rem', boxShadow: '0 8px 32px rgba(16, 185, 129, 0.3)'
+              margin: '0 auto 1.5rem', boxShadow: '0 8px 32px rgba(232, 163, 61, 0.3)'
             }}>
               <Sparkles size={36} color="white" />
             </div>
@@ -213,7 +213,7 @@ const OnboardingModal = ({ onComplete }) => {
             {steps.map((_, i) => (
               <div key={i} style={{
                 flex: 1, height: '4px', borderRadius: '4px',
-                background: i <= step ? 'linear-gradient(90deg, #10b981, #059669)' : 'var(--border-main)',
+                background: i <= step ? 'linear-gradient(90deg, var(--live-amber), #C9852E)' : 'var(--border-main)',
                 transition: 'all 0.3s ease'
               }} />
             ))}
@@ -254,10 +254,10 @@ const OnboardingModal = ({ onComplete }) => {
               <button onClick={handleNext} style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
                 padding: '0.75rem 1.5rem', borderRadius: '0.75rem',
-                background: 'linear-gradient(90deg, #10b981, #059669)',
+                background: 'linear-gradient(90deg, var(--live-amber), #C9852E)',
                 border: 'none', color: 'white', cursor: 'pointer',
                 fontSize: '0.9rem', fontWeight: 600,
-                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                boxShadow: '0 4px 12px rgba(232, 163, 61, 0.3)'
               }}>
                 {step === 0 ? "Let's Go" : 'Next'} <ArrowRight size={16} />
               </button>
@@ -265,10 +265,10 @@ const OnboardingModal = ({ onComplete }) => {
               <button onClick={handleFinish} style={{
                 display: 'flex', alignItems: 'center', gap: '0.5rem',
                 padding: '0.75rem 1.5rem', borderRadius: '0.75rem',
-                background: 'linear-gradient(90deg, #10b981, #059669)',
+                background: 'linear-gradient(90deg, var(--live-amber), #C9852E)',
                 border: 'none', color: 'white', cursor: 'pointer',
                 fontSize: '0.9rem', fontWeight: 600,
-                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                boxShadow: '0 4px 12px rgba(232, 163, 61, 0.3)'
               }}>
                 <Check size={16} /> Finish Setup
               </button>

@@ -58,7 +58,7 @@ async function TenantGuard(req, res, next) {
       const client = await pool.connect();
       try {
         await client.query('BEGIN');
-        await client.query("SET LOCAL app.current_tenant = $1", [context.tenantId]);
+        await client.query("SELECT set_config('app.current_tenant', $1, true)", [context.tenantId]);
         const result = await callback(client);
         await client.query('COMMIT');
         return result;

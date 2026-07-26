@@ -1,0 +1,63 @@
+.waveform {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.waveform-bar {
+  flex: 1 0 auto;
+  width: 3px;
+  border-radius: 2px;
+  height: calc(var(--base, 0.4) * 100%);
+  transform-origin: center;
+  animation: waveform-idle 2.6s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.045s);
+}
+
+/* Sizes */
+.waveform-strip { height: 28px; width: 100%; padding: 0 1.25rem; }
+.waveform-callscreen { height: 72px; width: 100%; }
+.waveform-chart { height: 140px; width: 100%; gap: 2px; align-items: flex-end; }
+
+/* Chart job: bars are data points, so they hold their height instead of pulsing. */
+.waveform.is-data .waveform-bar {
+  animation: none;
+  transform: none;
+  opacity: 0.85;
+}
+.waveform.is-data .waveform-bar:hover { opacity: 1; }
+
+/* Env tone (ambient, when no call is active) */
+.env-test .waveform-bar { background: var(--slate-wire); opacity: 0.45; }
+.env-live .waveform-bar { background: var(--coral-pulse); opacity: 0.5; }
+
+/* Active call in progress — "agent is speaking" always reads Live Amber */
+.waveform.is-active .waveform-bar {
+  background: var(--live-amber);
+  opacity: 0.95;
+  animation-name: waveform-active;
+  animation-duration: 0.9s;
+}
+
+.waveform.is-idle .waveform-bar {
+  animation-name: waveform-idle;
+  animation-duration: 2.6s;
+}
+
+@keyframes waveform-idle {
+  0%, 100% { transform: scaleY(0.85); }
+  50% { transform: scaleY(1); }
+}
+
+@keyframes waveform-active {
+  0%, 100% { transform: scaleY(0.5); }
+  50% { transform: scaleY(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .waveform-bar {
+    animation: none !important;
+    transform: scaleY(0.9) !important;
+  }
+}

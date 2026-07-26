@@ -39,15 +39,39 @@ async function connectDb() {
 
 connectDb();
 
+function auditUserId(ctx) {
+  const id = ctx && ctx.userId;
+  return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    ? id
+    : null;
+}
+
+function normalizeAgentBody(body = {}) {
+  const voice = body.voice_config || {};
+  const model = body.model_config || {};
+  return {
+    name: body.name,
+    prompt: body.prompt,
+    language: body.language || 'am',
+    voice_provider: body.voice_provider || voice.provider || voice.voice_provider,
+    voice_id: body.voice_id || voice.voice_id || voice.id,
+    model_provider: body.model_provider || model.provider || model.model_provider,
+    model_id: body.model_id || model.model_id || model.id,
+  };
+}
+
 // Create Agent
 app.post('/api/builder/agents', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
-  const userId = ctx.userId || null;
-  const { name, prompt, voice_provider, voice_id, model_provider, model_id } = req.body;
+  const userId = auditUserId(ctx);
+  const { name, prompt, voice_provider, voice_id, model_provider, model_id, language } = normalizeAgentBody(req.body);
 
   if (!name || !prompt || !voice_provider || !voice_id || !model_provider || !model_id) {
-    return res.status(400).json({ error: 'Missing required agent fields' });
+    return res.status(400).json({
+      error: 'Missing required agent fields',
+      required: ['name', 'prompt', 'voice_config|voice_provider+voice_id', 'model_config|model_provider+model_id'],
+    });
   }
 
   try {
@@ -78,7 +102,12 @@ app.post('/api/builder/agents', async (req, res) => {
       return agent;
     });
 
-    res.status(201).json(agent);
+    res.status(201).json({
+      ...agent,
+      language: language || 'am',
+      voice_config: { provider: agent.voice_provider, voice_id: agent.voice_id },
+      model_config: { provider: agent.model_provider, model_id: agent.model_id },
+    });
   } catch (error) {
     console.error('Create Agent Error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -129,7 +158,7 @@ app.get('/api/builder/agents/:id', async (req, res) => {
 app.put('/api/builder/agents/:id', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
-  const userId = ctx.userId || null;
+  const userId = auditUserId(ctx);
   const { id } = req.params;
   const { name, prompt, voice_provider, voice_id, model_provider, model_id } = req.body;
 
@@ -236,7 +265,7 @@ app.get('/api/builder/agents/:id/versions', async (req, res) => {
 app.post('/api/builder/agents/:id/versions/:versionId/rollback', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
-  const userId = ctx.userId || null;
+  const userId = auditUserId(ctx);
   const { id, versionId } = req.params;
 
   try {
@@ -318,11 +347,69 @@ app.post('/api/builder/agents/:id/versions/:versionId/rollback', async (req, res
   }
 });
 
+// Sandbox test-call (Phase 2) — no billing; requires test env (enforced at gateway for API keys)
+app.post('/api/builder/agents/:id/test-call', async (req, res) => {
+  const ctx = req.securityContext;
+  const { id } = req.params;
+  const { to_number } = req.body || {};
+  const env = req.headers['x-markova-env'] || 'test';
+
+  if (!to_number) {
+    return res.status(400).json({ error: 'to_number is required' });
+  }
+  if (env === 'live') {
+    return res.status(403).json({ error: 'test-call is sandbox-only' });
+  }
+
+  try {
+    const agentRes = await tenantDb.query(
+      ctx,
+      'SELECT id, name FROM agents WHERE id = $1 AND company_id = $2',
+      [id, ctx.tenantId]
+    );
+    if (agentRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Agent not found' });
+    }
+
+    const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://orchestrator:6000';
+    const axios = require('axios');
+    const response = await axios.post(
+      `${orchestratorUrl}/v1/calls`,
+      { agent_id: id, to_number, sandbox: true },
+      {
+        headers: {
+          'x-tenant-id': ctx.tenantId,
+          'x-company-id': ctx.tenantId,
+          'x-markova-env': 'test',
+          'content-type': 'application/json',
+        },
+        timeout: 15000,
+        validateStatus: () => true,
+      }
+    );
+
+    if (response.status >= 400) {
+      return res.status(response.status).json(response.data);
+    }
+
+    res.status(201).json({
+      success: true,
+      sandbox: true,
+      billed: false,
+      agent: agentRes.rows[0],
+      call: response.data,
+    });
+  } catch (error) {
+    console.error('test-call error:', error.message);
+    res.status(502).json({ error: 'Failed to place sandbox test call', detail: error.message });
+  }
+});
+
 // Delete Agent
 app.delete('/api/builder/agents/:id', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
-  const userId = ctx.userId || null;
+  const userId = auditUserId(ctx);
   const { id } = req.params;
 
   try {

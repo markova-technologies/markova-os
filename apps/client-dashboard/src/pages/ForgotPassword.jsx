@@ -61,12 +61,12 @@ const ForgotPassword = () => {
             <div className="signup-container">
                 <div className="signup-content">
                     <div className="signup-form-container text-center" style={{ padding: '2rem' }}>
-                        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-                            <IoCheckmarkCircle style={{ width: 36, height: 36, color: '#10b981' }} />
+                        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(232, 163, 61,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+                            <IoCheckmarkCircle style={{ width: 36, height: 36, color: 'var(--live-amber)' }} />
                         </div>
                         <h3 style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Request Approved!</h3>
-                        <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
-                            A password reset link has been sent to <strong style={{ color: '#e2e8f0' }}>{email}</strong>. Check your inbox.
+                        <p style={{ color: 'var(--slate-wire)', marginBottom: '1.5rem' }}>
+                            A password reset link has been sent to <strong style={{ color: 'var(--slate-wire)' }}>{email}</strong>. Check your inbox.
                         </p>
                         <Link to="/login" className="signup-button" style={{ display: 'block', textAlign: 'center', textDecoration: 'none' }}>
                             Back to Login
@@ -83,14 +83,14 @@ const ForgotPassword = () => {
             <div className="signup-container">
                 <div className="signup-content">
                     <div className="signup-form-container text-center" style={{ padding: '2rem' }}>
-                        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-                            <IoCloseCircle style={{ width: 36, height: 36, color: '#ef4444' }} />
+                        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(232, 92, 74,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+                            <IoCloseCircle style={{ width: 36, height: 36, color: 'var(--coral-pulse)' }} />
                         </div>
-                        <h3 style={{ color: '#f87171', fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Not Approved by Admin</h3>
-                        <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>
+                        <h3 style={{ color: 'var(--coral-pulse)', fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Not Approved by Admin</h3>
+                        <p style={{ color: 'var(--slate-wire)', marginBottom: '1.5rem' }}>
                             Your password reset request was declined. Please contact support or try again later.
                         </p>
-                        <Link to="/login" className="signup-button" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, #ef4444, #b91c1c)' }}>
+                        <Link to="/login" className="signup-button" style={{ display: 'block', textAlign: 'center', textDecoration: 'none', background: 'linear-gradient(135deg, var(--coral-pulse), #B23A2C)' }}>
                             Back to Login
                         </Link>
                     </div>
@@ -105,14 +105,14 @@ const ForgotPassword = () => {
             <div className="signup-container">
                 <div className="signup-content">
                     <div className="signup-form-container text-center" style={{ padding: '2rem' }}>
-                        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(99,102,241,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
-                            <IoTimeOutline style={{ width: 36, height: 36, color: '#818cf8' }} />
+                        <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(91, 100, 120,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1rem' }}>
+                            <IoTimeOutline style={{ width: 36, height: 36, color: 'var(--live-amber)' }} />
                         </div>
                         <h3 style={{ color: '#fff', fontSize: '1.25rem', fontWeight: 700, marginBottom: '0.5rem' }}>Waiting for Admin Approval</h3>
-                        <p style={{ color: '#94a3b8', marginBottom: '0.5rem' }}>
-                            Your request for <strong style={{ color: '#e2e8f0' }}>{email}</strong> has been submitted.
+                        <p style={{ color: 'var(--slate-wire)', marginBottom: '0.5rem' }}>
+                            Your request for <strong style={{ color: 'var(--slate-wire)' }}>{email}</strong> has been submitted.
                         </p>
-                        <p style={{ color: '#64748b', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
+                        <p style={{ color: 'var(--slate-wire)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
                             This page will update automatically when the admin responds...
                         </p>
                         {/* Animated spinner dots */}
@@ -120,7 +120,7 @@ const ForgotPassword = () => {
                             {[0, 1, 2].map(i => (
                                 <div key={i} style={{
                                     width: 8, height: 8, borderRadius: '50%',
-                                    background: '#818cf8',
+                                    background: 'var(--live-amber)',
                                     animation: `pulse 1.4s ease-in-out ${i * 0.2}s infinite`
                                 }} />
                             ))}

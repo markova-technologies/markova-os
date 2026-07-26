@@ -1,95 +1,132 @@
-import React, { useState, useEffect } from 'react'
-import { CreditCard, Activity, CheckCircle, ShieldAlert } from 'lucide-react'
-import axios from 'axios'
+import React, { useEffect, useState } from 'react'
+import { Check, CreditCard, ExternalLink, Receipt } from 'lucide-react'
+import { getInvoices, getMe, getPricing } from '../api/client'
 import './BillingCenter.css'
 
+// Amounts are ETB per the pricing contract — the API returns `currency` and
+// `amount_etb`, so nothing here converts or assumes dollars.
+const formatEtb = (value) =>
+  `${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} ETB`
+
 const BillingCenter = () => {
-  const [billingData, setBillingData] = useState({
-    usage: [],
-    lineItems: [],
-    totalAiCost: 0
-  })
-  const [isLoading, setIsLoading] = useState(true)
+  const [invoices, setInvoices] = useState([])
+  const [currency, setCurrency] = useState('ETB')
+  const [pricing, setPricing] = useState(null)
+  const [plan, setPlan] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
 
   useEffect(() => {
-    const fetchBilling = async () => {
+    const load = async () => {
       try {
-        const response = await axios.get(`${import.meta.env.VITE_SYSTEM_DASHBOARD_URL || 'http://localhost:8000'}/api/billing/invoice`, {
-          headers: {
-            'x-tenant-id': JSON.parse(localStorage.getItem('user'))?.company_id || 'test-company-id'
-          }
-        })
-        setBillingData({
-          usage: response.data.usage || [],
-          lineItems: response.data.lineItems || [],
-          totalAiCost: response.data.totalUnbilledAiCost || 0
-        })
-      } catch (err) {
-        console.error('Failed to fetch billing data', err)
+        const [invoiceRes, pricingRes, meRes] = await Promise.all([
+          getInvoices(),
+          getPricing().catch(() => ({ data: null })),
+          getMe().catch(() => ({ data: null })),
+        ])
+        setInvoices(invoiceRes.data?.invoices || [])
+        setCurrency(invoiceRes.data?.currency || 'ETB')
+        setPricing(pricingRes.data)
+        setPlan(meRes.data?.plan || meRes.data?.company?.plan || null)
+      } catch {
+        setLoadError("We couldn't load your billing details just now. Try again in a moment.")
       } finally {
-        setIsLoading(false)
+        setLoading(false)
       }
     }
-    fetchBilling()
+    load()
   }, [])
+
+  const outstanding = invoices
+    .filter((i) => i.status !== 'paid')
+    .reduce((sum, i) => sum + Number(i.amount_etb ?? i.amount_usd ?? 0), 0)
+
+  if (loading) {
+    return (
+      <div className="billing-center">
+        <header className="page-header">
+          <h1>Billing</h1>
+          <p>Your plan, what you owe, and every line item behind it.</p>
+        </header>
+        <div className="billing-skeletons">
+          <div className="billing-skeleton" />
+          <div className="billing-skeleton" />
+          <div className="billing-skeleton wide" />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="billing-center">
       <header className="page-header">
-        <h1>Billing & Quotas</h1>
-        <p>Manage your enterprise subscription, AI inference limits, and invoices.</p>
+        <h1>Billing</h1>
+        <p>Your plan, what you owe, and every line item behind it.</p>
       </header>
 
-      {isLoading ? (
-        <div className="loading">Loading billing data...</div>
-      ) : (
-        <div className="billing-dashboard">
-          
-          <div className="billing-card summary-card">
-            <div className="card-header">
-              <CreditCard size={24} />
-              <h2>Current AI Usage (Unbilled)</h2>
-            </div>
-            <div className="amount-display">
-              <span className="currency">$</span>
-              <span className="amount">{Number(billingData.totalAiCost).toFixed(4)}</span>
-              <span className="period">/ this cycle</span>
-            </div>
-            <button className="pay-button">Pay Now</button>
-          </div>
+      {loadError && <div className="billing-error">{loadError}</div>}
 
-          <div className="billing-card limits-card">
-            <div className="card-header">
-              <Activity size={24} />
-              <h2>Resource Quotas</h2>
-            </div>
-            <div className="quota-list">
-              {billingData.usage.length === 0 ? (
-                <p className="no-data">No active quotas found. You have unlimited resources on this plan.</p>
-              ) : (
-                billingData.usage.map(u => (
-                  <div key={u.id} className="quota-item">
-                    <div className="quota-info">
-                      <span className="quota-name">{u.resource_type.replace('_', ' ').toUpperCase()}</span>
-                      <span className="quota-numbers">{u.current_usage} / {u.max_limit === 0 ? '∞' : u.max_limit}</span>
+      <div className="billing-dashboard">
+        <div className="billing-card summary-card">
+          <div className="card-header">
+            <CreditCard size={20} />
+            <h2>Outstanding this cycle</h2>
+          </div>
+          <div className="amount-display">
+            <span className="amount">{Number(outstanding).toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+            <span className="currency">{currency}</span>
+          </div>
+          <p className="billing-note">
+            Minutes over your plan are billed automatically rather than cutting a call off mid-conversation.
+          </p>
+        </div>
+
+        <div className="billing-card plan-card">
+          <div className="card-header">
+            <Receipt size={20} />
+            <h2>Your plan</h2>
+          </div>
+          {pricing ? (
+            <div className="plan-list">
+              {pricing.tiers?.map((tier) => {
+                const isCurrent = plan && String(plan).toLowerCase() === tier.id
+                return (
+                  <div key={tier.id} className={`plan-row ${isCurrent ? 'is-current' : ''}`}>
+                    <div className="plan-row-head">
+                      <span className="plan-name">{tier.name}</span>
+                      {isCurrent && (
+                        <span className="plan-current">
+                          <Check size={12} /> Current
+                        </span>
+                      )}
                     </div>
-                    <div className="progress-bar">
-                      <div 
-                        className={`progress-fill ${u.max_limit > 0 && (u.current_usage / u.max_limit) > 0.9 ? 'danger' : ''}`}
-                        style={{ width: u.max_limit === 0 ? '10%' : `${Math.min((u.current_usage / u.max_limit) * 100, 100)}%` }}
-                      ></div>
+                    <div className="plan-price">
+                      {tier.price_etb_per_minute_inbound} {pricing.currency}
+                      <span className="plan-price-unit">/ inbound minute</span>
                     </div>
+                    <p className="plan-summary">{tier.summary}</p>
                   </div>
-                ))
-              )}
+                )
+              })}
             </div>
-          </div>
+          ) : (
+            <p className="billing-note">Pricing is unavailable right now. Reload to try again.</p>
+          )}
+          <a className="plan-link" href="/pricing" target="_blank" rel="noreferrer">
+            See full pricing <ExternalLink size={13} />
+          </a>
+        </div>
 
-          <div className="billing-card invoice-card full-width">
-            <div className="card-header">
-              <ShieldAlert size={24} />
-              <h2>Recent Line Items</h2>
-            </div>
+        <div className="billing-card invoice-card full-width">
+          <div className="card-header">
+            <Receipt size={20} />
+            <h2>Line items</h2>
+          </div>
+          {invoices.length === 0 ? (
+            <p className="billing-empty">
+              Nothing billed yet — line items appear here once your agents handle live calls.
+            </p>
+          ) : (
             <table className="invoice-table">
               <thead>
                 <tr>
@@ -101,28 +138,24 @@ const BillingCenter = () => {
                 </tr>
               </thead>
               <tbody>
-                {billingData.lineItems.length === 0 ? (
-                  <tr>
-                    <td colSpan="5" className="text-center text-gray-500 py-4">No unbilled items</td>
+                {invoices.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.description}</td>
+                    <td>
+                      <span className="badge">{item.type}</span>
+                    </td>
+                    <td>
+                      <span className={`status ${item.status}`}>{item.status}</span>
+                    </td>
+                    <td className="amount-col">{formatEtb(item.amount_etb ?? item.amount_usd)}</td>
+                    <td>{item.created_at ? new Date(item.created_at).toLocaleDateString() : '—'}</td>
                   </tr>
-                ) : (
-                  billingData.lineItems.map(item => (
-                    <tr key={item.id}>
-                      <td>{item.description}</td>
-                      <td><span className={`badge ${item.type}`}>{item.type}</span></td>
-                      <td>
-                        {item.status === 'unbilled' ? <span className="status unbilled">Unbilled</span> : <CheckCircle size={16} className="text-green-500" />}
-                      </td>
-                      <td className="amount-col">${Number(item.amount_usd).toFixed(4)}</td>
-                      <td>{new Date(item.created_at).toLocaleDateString()}</td>
-                    </tr>
-                  ))
-                )}
+                ))}
               </tbody>
             </table>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 FS_HOST     = os.getenv("FREESWITCH_HOST", "127.0.0.1")
 FS_PORT     = int(os.getenv("FREESWITCH_ESL_PORT", "8021"))
-FS_PASSWORD = os.getenv("FREESWITCH_ESL_PASSWORD", "ClueCon")
+FS_PASSWORD = os.getenv("FREESWITCH_ESL_PASSWORD")  # required — no default (was ClueCon)
 
 
 class BargeInManager:
@@ -166,6 +166,10 @@ class BargeInManager:
     def start(self):
         if self._running:
             return
+        if not FS_PASSWORD:
+            raise RuntimeError(
+                "FREESWITCH_ESL_PASSWORD must be set in the environment (no default secret)."
+            )
         self._running = True
         self._thread = threading.Thread(
             target=self._run_esl_loop, daemon=True, name="BargeInESL"

@@ -16,6 +16,7 @@ Responsibilities:
 
 import asyncio
 import hashlib
+import hmac
 import json
 import os
 import re
@@ -38,7 +39,9 @@ load_dotenv()
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://markova:markova_pass@postgres:5432/markova_db")
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL must be set in the environment (no default password).")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 TOOL_ENGINE_URL = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
 PORT = int(os.getenv("PORT", 6000))
@@ -117,8 +120,10 @@ async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
     row = await db_pool.fetchrow(
         """
         SELECT 
+            pn.id as phone_number_id,
             pn.phone_number,
             pn.company_id,
+            pn.settings as phone_settings,
             a.id as agent_id,
             a.name as agent_name,
             a.prompt,
@@ -127,12 +132,38 @@ async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
             a.model_provider,
             a.model_id
         FROM phone_numbers pn
-        JOIN agents a ON a.id = pn.agent_id
+        LEFT JOIN agents a ON a.id = pn.agent_id
         WHERE pn.phone_number = $1 AND pn.status = 'active'
         """,
         phone_number
     )
-    return dict(row) if row else None
+    if not row:
+        return None
+    data = dict(row)
+    settings = data.get("phone_settings") or {}
+    if isinstance(settings, str):
+        settings = json.loads(settings)
+    data["phone_settings"] = settings
+    return data
+
+
+async def get_routing_rules_for_phone(phone_number_id: str, company_id: str) -> list:
+    rows = await db_pool.fetch(
+        """
+        SELECT rules FROM routing_rules
+        WHERE phone_number_id = $1 AND company_id = $2
+        ORDER BY created_at ASC
+        """,
+        uuid.UUID(phone_number_id), uuid.UUID(company_id),
+    )
+    out = []
+    for r in rows:
+        rules = r["rules"]
+        if isinstance(rules, str):
+            rules = json.loads(rules)
+        if isinstance(rules, list):
+            out.extend(rules)
+    return out
 
 
 async def get_provider_config(company_id: str, provider_type: str, provider_name: str) -> Optional[dict]:
@@ -150,17 +181,52 @@ async def get_provider_config(company_id: str, provider_type: str, provider_name
     return None
 
 
-async def create_call_record(company_id: str, agent_id: str, caller_number: str) -> str:
+async def create_call_record(
+    company_id: str,
+    agent_id: Optional[str],
+    caller_number: str,
+    phone_number_id: Optional[str] = None,
+) -> str:
     """Create a call record and return its ID."""
     call_id = uuid.uuid4()
     await db_pool.execute(
         """
-        INSERT INTO calls (id, company_id, agent_id, caller_number, status, turn_count)
-        VALUES ($1, $2, $3, $4, 'active', 0)
+        INSERT INTO calls (id, company_id, agent_id, phone_number_id, caller_number, status, turn_count)
+        VALUES ($1, $2, $3, $4, $5, 'active', 0)
         """,
-        call_id, uuid.UUID(company_id), uuid.UUID(agent_id) if agent_id else None, caller_number
+        call_id,
+        uuid.UUID(company_id),
+        uuid.UUID(agent_id) if agent_id else None,
+        uuid.UUID(phone_number_id) if phone_number_id else None,
+        caller_number,
     )
     return str(call_id)
+
+
+def _parse_phone_settings(settings) -> dict:
+    if not settings:
+        return {}
+    if isinstance(settings, str):
+        return json.loads(settings)
+    return dict(settings)
+
+
+def _ivr_prompt_from_settings(settings: dict, routing_rules: list) -> str:
+    menu = settings.get("ivr_menu")
+    if isinstance(menu, dict) and menu.get("prompt"):
+        return menu["prompt"]
+    if isinstance(menu, str) and menu.strip():
+        return menu
+    # Derive from routing rules with digit keys
+    lines = ["Please make a selection."]
+    for rule in routing_rules:
+        digit = rule.get("digit") or rule.get("dtmf")
+        label = rule.get("label") or rule.get("action") or "option"
+        if digit is not None:
+            lines.append(f"Press {digit} for {label}.")
+    if settings.get("voicemail_email"):
+        lines.append("Press 9 to leave a voicemail.")
+    return " ".join(lines) if len(lines) > 1 else "Please hold while we connect you."
 
 
 async def save_transcript(call_id: str, role: str, content: str):
@@ -192,7 +258,14 @@ async def end_call_record(call_id: str):
 
 async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0,
                       tts_characters: int = 0, call_minutes: int = 0):
-    """Record usage metrics per call."""
+    """
+    Append a usage event row (ledger). GET /v1/usage sums these for the current period.
+    Also notifies tenant-service so Redis cache stays consistent.
+    """
+    if not company_id:
+        return
+    if not any([llm_tokens, stt_seconds, tts_characters, call_minutes]):
+        return
     await db_pool.execute(
         """
         INSERT INTO usage_metrics (id, company_id, llm_tokens, stt_seconds, tts_characters, call_minutes)
@@ -200,6 +273,29 @@ async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0
         """,
         uuid.uuid4(), uuid.UUID(company_id), llm_tokens, stt_seconds, tts_characters, call_minutes
     )
+    # Best-effort cache sync via tenant-service internal increment
+    tenant_url = os.getenv("TENANT_SERVICE_URL", "http://tenant-service:5002")
+    secret = os.getenv("SERVICE_AUTH_SECRET")
+    if secret:
+        try:
+            timestamp = str(int(time.time() * 1000))
+            payload = f"orchestrator:{timestamp}"
+            signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                await client.post(
+                    f"{tenant_url}/api/tenant/usage/increment",
+                    json={
+                        "companyId": company_id,
+                        "callMinutes": call_minutes,
+                        "sttSeconds": stt_seconds,
+                        "ttsCharacters": tts_characters,
+                        "llmTokens": llm_tokens,
+                        "ledgerWritten": True,
+                    },
+                    headers={"x-service-auth": f"Service orchestrator:{timestamp}:{signature}"},
+                )
+        except Exception as e:
+            print(f"⚠️ usage cache sync skipped: {e}")
 
 async def publish_event(event_type: str, payload: dict, source: str = "orchestrator"):
     if not redis_client:
@@ -745,10 +841,31 @@ async def broadcast_log(company_id: str, log_data: dict):
 
 @app.websocket("/ws/flow-monitor/{company_id}")
 async def websocket_endpoint(websocket: WebSocket, company_id: str):
+    # Phase 2: require company-scoped token query param matching path company_id
+    token = websocket.query_params.get("token") or websocket.query_params.get("access_token")
+    if not token:
+        await websocket.close(code=4401)
+        return
+    # Lightweight check: token must be non-empty JWT-shaped; full verify is gateway's job
+    # for browser clients that already authenticated. Path company_id must match claim if present.
+    parts = token.split(".")
+    if len(parts) != 3:
+        await websocket.close(code=4401)
+        return
+    try:
+        import base64
+        payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+        claim_company = payload.get("companyId") or payload.get("company_id")
+        if claim_company and str(claim_company) != str(company_id):
+            await websocket.close(code=4403)
+            return
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
     await manager.connect(websocket, company_id)
     try:
         while True:
-            # We don't expect client to send much, but keep the connection open
             await websocket.receive_text()
     except WebSocketDisconnect:
         manager.disconnect(websocket, company_id)
@@ -758,6 +875,117 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
 @app.get("/health")
 async def health():
     return {"status": "OK", "service": "orchestrator", "version": "2.0.0"}
+
+
+async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) -> str:
+    """AI agent speech gather (post-IVR or direct)."""
+    agent_lang = "amharic"
+    prompt = (agent.get("prompt") or "")
+    if "english" in prompt.lower():
+        agent_lang = "english"
+
+    voice_config = TWILIO_VOICE_MAP.get(agent_lang, TWILIO_VOICE_MAP["amharic"])
+    voice = voice_config["voice"]
+    lang_code = voice_config["lang"]
+    stt_code = voice_config["stt"]
+
+    name = agent.get("agent_name") or "our assistant"
+    if agent_lang == "english":
+        welcome_text = f"Hello! You've reached {name}. How can I help you today?"
+    else:
+        welcome_text = "Hello, how can I help you today?"
+
+    recording_enabled = bool((state.get("phone_settings") or {}).get("recording_enabled", True))
+    record_verbs = ""
+    if recording_enabled:
+        base = str(request.base_url).rstrip("/")
+        record_verbs = (
+            f'<Start><Recording recordingStatusCallback="{base}/twilio/recording" /></Start>'
+        )
+
+    tts_config = await get_provider_config(
+        state["company_id"], "voice", agent.get("voice_provider") or "edge"
+    )
+    tts_key = tts_config.get("api_key") if tts_config else ""
+    audio_url = None
+    if agent.get("voice_provider") and agent.get("voice_id"):
+        audio_url = await get_audio_url_for_text(
+            agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request
+        )
+
+    if audio_url:
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {record_verbs}
+    <Play>{audio_url}</Play>
+    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
+        <Say voice="{voice}" language="{lang_code}">...</Say>
+    </Gather>
+    <Redirect>/twilio/respond</Redirect>
+</Response>"""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {record_verbs}
+    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
+        <Say voice="{voice}" language="{lang_code}">{welcome_text}</Say>
+    </Gather>
+    <Redirect>/twilio/respond</Redirect>
+</Response>"""
+
+
+async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) -> str:
+    """AI agent speech gather (post-IVR or direct)."""
+    agent_lang = "amharic"
+    prompt = (agent.get("prompt") or "")
+    if "english" in prompt.lower():
+        agent_lang = "english"
+
+    voice_config = TWILIO_VOICE_MAP.get(agent_lang, TWILIO_VOICE_MAP["amharic"])
+    voice = voice_config["voice"]
+    lang_code = voice_config["lang"]
+    stt_code = voice_config["stt"]
+
+    name = agent.get("agent_name") or "our assistant"
+    welcome_text = (
+        "Hello! You've reached {name}. How can I help you today?".format(name=name)
+        if agent_lang == "english"
+        else "ሰላም፣ እንዴት ልረዳዎ?"
+    )
+
+    recording_enabled = bool((state.get("phone_settings") or {}).get("recording_enabled", True))
+    record_verbs = ""
+    if recording_enabled:
+        base = str(request.base_url).rstrip("/")
+        record_verbs = f'<Start><Recording recordingStatusCallback="{base}/twilio/recording" /></Start>'
+
+    tts_config = await get_provider_config(
+        state["company_id"], "voice", agent.get("voice_provider") or "edge"
+    )
+    tts_key = tts_config.get("api_key") if tts_config else ""
+    audio_url = None
+    if agent.get("voice_provider") and agent.get("voice_id"):
+        audio_url = await get_audio_url_for_text(
+            agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request
+        )
+
+    if audio_url:
+        return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {record_verbs}
+    <Play>{audio_url}</Play>
+    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
+        <Say voice="{voice}" language="{lang_code}">...</Say>
+    </Gather>
+    <Redirect>/twilio/respond</Redirect>
+</Response>"""
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    {record_verbs}
+    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
+        <Say voice="{voice}" language="{lang_code}">{welcome_text}</Say>
+    </Gather>
+    <Redirect>/twilio/respond</Redirect>
+</Response>"""
 
 
 @app.post("/incoming-call")
@@ -770,15 +998,13 @@ async def handle_inbound_call(
 ):
     """
     Twilio inbound call webhook.
-    Step 1: Identify agent → Step 2: Create call record → Step 3: Gather speech
+    Resolve number → optional IVR → agent gather; honor recording toggle.
     """
     print(f"📞 Inbound call: From={From} To={To} SID={CallSid}")
 
-    # Look up which agent owns this number
     agent = await get_agent_by_phone(To)
 
     if not agent:
-        # No agent configured for this number
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>Sorry, this number is not currently configured. Please try again later.</Say>
@@ -786,72 +1012,248 @@ async def handle_inbound_call(
 </Response>"""
         return PlainTextResponse(content=twiml, media_type="application/xml")
 
-    # Create call record in DB
-    call_id = await create_call_record(
-        str(agent["company_id"]),
-        str(agent["agent_id"]),
-        From
+    settings = _parse_phone_settings(agent.get("phone_settings"))
+    phone_number_id = str(agent["phone_number_id"]) if agent.get("phone_number_id") else None
+    company_id = str(agent["company_id"])
+    agent_id = str(agent["agent_id"]) if agent.get("agent_id") else None
+
+    call_id = await create_call_record(company_id, agent_id, From, phone_number_id)
+    routing_rules = (
+        await get_routing_rules_for_phone(phone_number_id, company_id) if phone_number_id else []
     )
 
-    # Initialize conversation state
     state = {
-        "messages": [{"role": "system", "content": agent["prompt"]}],
+        "messages": [{"role": "system", "content": agent.get("prompt") or "You are a helpful voice agent."}],
         "turn_count": 0,
         "call_id": call_id,
-        "company_id": str(agent["company_id"]),
-        "agent_id": str(agent["agent_id"]),
-        "agent_name": agent["agent_name"],
-        "voice_provider": agent["voice_provider"],
-        "voice_id": agent["voice_id"],
-        "model_provider": agent["model_provider"],
-        "model_id": agent["model_id"],
+        "company_id": company_id,
+        "agent_id": agent_id,
+        "agent_name": agent.get("agent_name"),
+        "voice_provider": agent.get("voice_provider"),
+        "voice_id": agent.get("voice_id"),
+        "model_provider": agent.get("model_provider"),
+        "model_id": agent.get("model_id"),
+        "phone_number_id": phone_number_id,
+        "phone_settings": settings,
+        "routing_rules": routing_rules,
+        "caller_number": From,
+        "to_number": To,
+        "call_sid": CallSid,
     }
     await save_conversation_state(CallSid, state)
 
     await publish_event("call.started", {
-        "tenantId": str(agent["company_id"]),
+        "tenantId": company_id,
         "callId": call_id,
         "callerNumber": From,
-        "agentId": str(agent["agent_id"])
+        "agentId": agent_id,
     })
 
-    # Language mapping
-    agent_lang = "amharic"
-    if "english" in agent["prompt"].lower():
-        agent_lang = "english"
+    ivr_enabled = bool(settings.get("ivr_enabled")) or any(
+        r.get("digit") is not None or r.get("dtmf") is not None for r in routing_rules
+    )
 
-    voice_config = TWILIO_VOICE_MAP.get(agent_lang, TWILIO_VOICE_MAP["amharic"])
-    voice = voice_config["voice"]
-    lang_code = voice_config["lang"]
-    stt_code = voice_config["stt"]
-
-    welcome_text = "ሰላም፣ ጂኤም ፈርኒቸር ነው። እንዴት ልረዳዎ?" if agent_lang == "amharic" else f"Hello! You've reached {agent['agent_name']}. How can I help you today?"
-    
-    # Try generating natural voice file
-    tts_config = await get_provider_config(state["company_id"], "voice", agent["voice_provider"])
-    tts_key = tts_config.get("api_key") if tts_config else ""
-    
-    audio_url = await get_audio_url_for_text(agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request)
-
-    if audio_url:
+    if ivr_enabled:
+        prompt = _ivr_prompt_from_settings(settings, routing_rules)
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
-    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">...</Say>
+    <Gather numDigits="1" action="/twilio/ivr" method="POST" timeout="5">
+        <Say>{prompt}</Say>
     </Gather>
-    <Redirect>/twilio/respond</Redirect>
+    <Redirect>/twilio/ivr</Redirect>
 </Response>"""
-    else:
-        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">{welcome_text}</Say>
-    </Gather>
-    <Redirect>/twilio/respond</Redirect>
-</Response>"""
+        return PlainTextResponse(content=twiml, media_type="application/xml")
 
+    if not agent_id:
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>This number has no agent assigned. Goodbye.</Say>
+    <Hangup/>
+</Response>"""
+        return PlainTextResponse(content=twiml, media_type="application/xml")
+
+    twiml = await _build_agent_gather_twiml(agent, state, request)
     return PlainTextResponse(content=twiml, media_type="application/xml")
+
+
+@app.post("/twilio/ivr")
+async def handle_ivr(
+    request: Request,
+    CallSid: str = Form(...),
+    Digits: str = Form(default=""),
+):
+    """DTMF IVR: route by digit to agent, transfer, or voicemail."""
+    state = await get_conversation_state(CallSid)
+    if not state.get("call_id"):
+        return PlainTextResponse(
+            content='<?xml version="1.0" encoding="UTF-8"?><Response><Say>Session expired.</Say><Hangup/></Response>',
+            media_type="application/xml",
+        )
+
+    settings = state.get("phone_settings") or {}
+    rules = state.get("routing_rules") or []
+    digit = (Digits or "").strip()
+
+    matched = None
+    for rule in rules:
+        d = str(rule.get("digit") if rule.get("digit") is not None else rule.get("dtmf", ""))
+        if d and d == digit:
+            matched = rule
+            break
+
+    action = (matched or {}).get("action") or ("voicemail" if digit == "9" else "agent")
+
+    if action == "voicemail" or digit == "9":
+        email = settings.get("voicemail_email") or (matched or {}).get("email")
+        state["voicemail_email"] = email
+        await save_conversation_state(CallSid, state)
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>Please leave a message after the tone. Press hash when finished.</Say>
+    <Record maxLength="120" playBeep="true" action="/twilio/voicemail" method="POST" finishOnKey="#"/>
+    <Say>We did not receive a message. Goodbye.</Say>
+    <Hangup/>
+</Response>"""
+        return PlainTextResponse(content=twiml, media_type="application/xml")
+
+    if action in ("transfer", "human") or (matched and matched.get("to")):
+        target = (matched or {}).get("to") or settings.get("transfer_number")
+        if target:
+            handoff = await _build_transfer_context(state["call_id"], target, reason="ivr")
+            await db_pool.execute(
+                "UPDATE calls SET transfer_context = $1::jsonb, status = 'transferred' WHERE id = $2",
+                json.dumps(handoff), uuid.UUID(state["call_id"]),
+            )
+            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>Connecting you to an agent. Your conversation context has been prepared.</Say>
+    <Dial>{target}</Dial>
+</Response>"""
+            return PlainTextResponse(content=twiml, media_type="application/xml")
+
+    agent = {
+        "prompt": (state.get("messages") or [{}])[0].get("content"),
+        "agent_name": state.get("agent_name"),
+        "voice_provider": state.get("voice_provider"),
+        "voice_id": state.get("voice_id"),
+    }
+    twiml = await _build_agent_gather_twiml(agent, state, request)
+    return PlainTextResponse(content=twiml, media_type="application/xml")
+
+
+@app.post("/twilio/voicemail")
+async def handle_voicemail(
+    request: Request,
+    CallSid: str = Form(...),
+    RecordingUrl: str = Form(default=""),
+    RecordingDuration: str = Form(default="0"),
+):
+    """Persist voicemail recording and queue voicemail-to-email delivery."""
+    state = await get_conversation_state(CallSid)
+    call_id = state.get("call_id")
+    company_id = state.get("company_id")
+    email = state.get("voicemail_email") or (state.get("phone_settings") or {}).get("voicemail_email")
+
+    if call_id and RecordingUrl:
+        await db_pool.execute(
+            "UPDATE calls SET recording_url = $1, status = 'voicemail', end_time = COALESCE(end_time, NOW()) WHERE id = $2",
+            RecordingUrl, uuid.UUID(call_id),
+        )
+        await save_transcript(
+            call_id,
+            "system",
+            f"Voicemail recorded ({RecordingDuration}s). Delivery queued for {email or 'unconfigured'}.",
+        )
+
+    delivery = {
+        "to": email,
+        "call_id": call_id,
+        "company_id": company_id,
+        "recording_url": RecordingUrl,
+        "caller": state.get("caller_number"),
+        "duration": RecordingDuration,
+    }
+    if email and redis_client:
+        await redis_client.lpush("voicemail:email:queue", json.dumps(delivery))
+    print(f"📧 Voicemail-to-email queued: {delivery}")
+
+    await publish_event("call.voicemail", {
+        "tenantId": company_id,
+        "callId": call_id,
+        "email": email,
+        "recordingUrl": RecordingUrl,
+    })
+
+    twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>Thank you. Your message has been sent. Goodbye.</Say>
+    <Hangup/>
+</Response>"""
+    return PlainTextResponse(content=twiml, media_type="application/xml")
+
+
+@app.post("/twilio/recording")
+async def handle_recording_callback(
+    CallSid: str = Form(default=""),
+    RecordingUrl: str = Form(default=""),
+):
+    """Twilio recording status — attach URL to call."""
+    state = await get_conversation_state(CallSid) if CallSid else {}
+    call_id = state.get("call_id")
+    if call_id and RecordingUrl:
+        await db_pool.execute(
+            "UPDATE calls SET recording_url = $1 WHERE id = $2",
+            RecordingUrl, uuid.UUID(call_id),
+        )
+    return {"status": "ok"}
+
+
+async def _build_transfer_context(call_id: str, target: str, reason: str = "api") -> dict:
+    """Full conversation handoff package for human agent."""
+    call = await db_pool.fetchrow(
+        """
+        SELECT c.id, c.company_id, c.agent_id, c.caller_number, c.status, c.start_time,
+               a.name AS agent_name
+        FROM calls c
+        LEFT JOIN agents a ON a.id = c.agent_id
+        WHERE c.id = $1
+        """,
+        uuid.UUID(call_id),
+    )
+    rows = await db_pool.fetch(
+        """
+        SELECT role, content, created_at
+        FROM transcripts
+        WHERE call_id = $1
+        ORDER BY created_at ASC
+        """,
+        uuid.UUID(call_id),
+    )
+    transcript = [
+        {
+            "role": r["role"],
+            "content": r["content"],
+            "at": r["created_at"].isoformat() if r["created_at"] else None,
+        }
+        for r in rows
+    ]
+    # Merge Redis live messages if present via call_sid on state keyed elsewhere — transcripts are source of truth
+    summary_parts = [t["content"] for t in transcript if t["role"] in ("user", "assistant", "agent")][-8:]
+    summary = " | ".join(summary_parts) if summary_parts else "No prior dialogue captured."
+
+    return {
+        "call_id": call_id,
+        "target": target,
+        "reason": reason,
+        "caller_number": call["caller_number"] if call else None,
+        "agent_id": str(call["agent_id"]) if call and call["agent_id"] else None,
+        "agent_name": call["agent_name"] if call else None,
+        "company_id": str(call["company_id"]) if call else None,
+        "started_at": call["start_time"].isoformat() if call and call["start_time"] else None,
+        "summary": summary,
+        "transcript": transcript,
+        "transcript_turns": len(transcript),
+    }
 
 
 @app.post("/handle-input")
@@ -1082,45 +1484,184 @@ async def handle_call_status(
 # Internal API: For dashboard call logs, transcripts, and stats
 # ─────────────────────────────────────────────────────────────────────────────
 
-@app.get("/api/calls")
-async def list_calls(request: Request):
-    company_id = request.headers.get("x-company-id")
+def _tenant_id(request: Request) -> str:
+    company_id = request.headers.get("x-company-id") or request.headers.get("x-tenant-id")
     if not company_id:
-        raise HTTPException(status_code=400, detail="Company ID header required")
+        raise HTTPException(status_code=401, detail="Company ID header required")
+    return company_id
+
+
+def _serialize_call(r) -> dict:
+    return {
+        "id": str(r["id"]),
+        "agent_id": str(r["agent_id"]) if r.get("agent_id") else None,
+        "caller_number": r["caller_number"],
+        "status": r["status"],
+        "start_time": r["start_time"].isoformat() if r["start_time"] else None,
+        "end_time": r["end_time"].isoformat() if r.get("end_time") else None,
+        "turn_count": r["turn_count"],
+        "recording_url": r.get("recording_url"),
+        "agent_name": r.get("agent_name"),
+    }
+
+
+@app.get("/api/calls")
+@app.get("/v1/calls")
+async def list_calls(request: Request, agent_id: Optional[str] = None, status: Optional[str] = None):
+    company_id = _tenant_id(request)
+    clauses = ["c.company_id = $1"]
+    args = [uuid.UUID(company_id)]
+    if agent_id:
+        args.append(uuid.UUID(agent_id))
+        clauses.append(f"c.agent_id = ${len(args)}")
+    if status:
+        args.append(status)
+        clauses.append(f"c.status = ${len(args)}")
 
     rows = await db_pool.fetch(
-        """
-        SELECT c.id, c.caller_number, c.status, c.start_time, c.end_time,
-               c.turn_count, a.name as agent_name
+        f"""
+        SELECT c.id, c.agent_id, c.caller_number, c.status, c.start_time, c.end_time,
+               c.turn_count, c.recording_url, a.name as agent_name
         FROM calls c
         LEFT JOIN agents a ON a.id = c.agent_id
-        WHERE c.company_id = $1
+        WHERE {' AND '.join(clauses)}
         ORDER BY c.start_time DESC
         LIMIT 50
         """,
-        uuid.UUID(company_id)
+        *args,
     )
-    return [
-        {
-            "id": str(r["id"]),
-            "caller_number": r["caller_number"],
-            "status": r["status"],
-            "start_time": r["start_time"].isoformat() if r["start_time"] else None,
-            "end_time": r["end_time"].isoformat() if r["end_time"] else None,
-            "turn_count": r["turn_count"],
-            "agent_name": r["agent_name"]
+    return [_serialize_call(dict(r)) for r in rows]
+
+
+@app.post("/v1/calls")
+async def create_outbound_call(request: Request):
+    """
+    Place an outbound call (or sandbox simulated call).
+    Sandbox (x-markova-env=test or body.sandbox=true): no Twilio spend — records a simulated call.
+    """
+    company_id = _tenant_id(request)
+    body = await request.json()
+    agent_id = body.get("agent_id")
+    to_number = body.get("to_number")
+    sandbox = body.get("sandbox") is True or (request.headers.get("x-markova-env") or "test") == "test"
+
+    if not agent_id or not to_number:
+        raise HTTPException(status_code=400, detail="agent_id and to_number are required")
+
+    agent = await db_pool.fetchrow(
+        "SELECT id, name FROM agents WHERE id = $1 AND company_id = $2",
+        uuid.UUID(agent_id), uuid.UUID(company_id),
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    call_id = uuid.uuid4()
+    if sandbox:
+        row = await db_pool.fetchrow(
+            """
+            INSERT INTO calls (id, company_id, agent_id, caller_number, status, turn_count)
+            VALUES ($1, $2, $3, $4, 'completed', 0)
+            RETURNING id, agent_id, caller_number, status, start_time, end_time, turn_count, recording_url
+            """,
+            call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
+        )
+        agent_line = f"Hello — this is a sandbox test from agent {agent['name']}."
+        await db_pool.execute(
+            """
+            INSERT INTO transcripts (call_id, role, content)
+            VALUES ($1, 'system', $2), ($1, 'agent', $3)
+            """,
+            call_id,
+            f"Sandbox test call to {to_number} (no live telephony).",
+            agent_line,
+        )
+        # Meter sandbox activity (visible on /v1/usage; billed=false — no telephony spend)
+        await track_usage(
+            company_id=company_id,
+            call_minutes=1,
+            stt_seconds=2,
+            tts_characters=len(agent_line),
+            llm_tokens=50,
+        )
+        return {
+            **_serialize_call(dict(row)),
+            "sandbox": True,
+            "billed": False,
+            "agent_name": agent["name"],
+            "message": "Sandbox call recorded; no Twilio spend.",
+            "usage": {
+                "call_minutes": 1,
+                "stt_seconds": 2,
+                "tts_characters": len(agent_line),
+                "llm_tokens": 50,
+            },
         }
-        for r in rows
-    ]
+
+    # Live outbound via Twilio REST if credentials present
+    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+    from_number = os.getenv("TWILIO_FROM_NUMBER")
+    public_base = os.getenv("PUBLIC_BASE_URL")
+    if not all([account_sid, auth_token, from_number, public_base]):
+        raise HTTPException(
+            status_code=503,
+            detail="Live outbound not configured (TWILIO_* / PUBLIC_BASE_URL). Use sandbox test key.",
+        )
+
+    row = await db_pool.fetchrow(
+        """
+        INSERT INTO calls (id, company_id, agent_id, caller_number, status, turn_count)
+        VALUES ($1, $2, $3, $4, 'active', 0)
+        RETURNING id, agent_id, caller_number, status, start_time, end_time, turn_count, recording_url
+        """,
+        call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
+    )
+    try:
+        from twilio.rest import Client
+        client = Client(account_sid, auth_token)
+        twilio_call = client.calls.create(
+            to=to_number,
+            from_=from_number,
+            url=f"{public_base}/incoming-call",
+        )
+        return {
+            **_serialize_call(dict(row)),
+            "sandbox": False,
+            "billed": True,
+            "provider_call_sid": twilio_call.sid,
+            "agent_name": agent["name"],
+        }
+    except Exception as e:
+        await db_pool.execute(
+            "UPDATE calls SET status = 'failed', end_time = NOW() WHERE id = $1",
+            call_id,
+        )
+        raise HTTPException(status_code=502, detail=f"Twilio outbound failed: {e}")
+
+
+@app.get("/v1/calls/{call_id}")
+async def get_call(call_id: str, request: Request):
+    company_id = _tenant_id(request)
+    row = await db_pool.fetchrow(
+        """
+        SELECT c.id, c.agent_id, c.caller_number, c.status, c.start_time, c.end_time,
+               c.turn_count, c.recording_url, a.name as agent_name
+        FROM calls c
+        LEFT JOIN agents a ON a.id = c.agent_id
+        WHERE c.id = $1 AND c.company_id = $2
+        """,
+        uuid.UUID(call_id), uuid.UUID(company_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Call not found")
+    return _serialize_call(dict(row))
 
 
 @app.get("/api/calls/{call_id}/transcript")
+@app.get("/v1/calls/{call_id}/transcript")
 async def get_transcript(call_id: str, request: Request):
-    company_id = request.headers.get("x-company-id")
-    if not company_id:
-        raise HTTPException(status_code=400, detail="Company ID header required")
+    company_id = _tenant_id(request)
 
-    # Verify call belongs to company
     call = await db_pool.fetchrow(
         "SELECT id FROM calls WHERE id = $1 AND company_id = $2",
         uuid.UUID(call_id), uuid.UUID(company_id)
@@ -1140,6 +1681,111 @@ async def get_transcript(call_id: str, request: Request):
         }
         for r in rows
     ]
+
+
+@app.get("/v1/calls/{call_id}/recording")
+async def get_recording(call_id: str, request: Request):
+    company_id = _tenant_id(request)
+    row = await db_pool.fetchrow(
+        "SELECT id, recording_url FROM calls WHERE id = $1 AND company_id = $2",
+        uuid.UUID(call_id), uuid.UUID(company_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Call not found")
+    if not row["recording_url"]:
+        return {"id": call_id, "recording_url": None, "available": False}
+    return {"id": call_id, "recording_url": row["recording_url"], "available": True}
+
+
+@app.post("/v1/calls/{call_id}/transfer")
+async def transfer_call(call_id: str, request: Request):
+    """
+    Transfer to human/queue with full conversation context persisted on the call
+    and returned to the caller for CRM / agent desktop handoff.
+    """
+    company_id = _tenant_id(request)
+    body = await request.json()
+    target = body.get("to") or body.get("queue") or body.get("target")
+    if not target:
+        raise HTTPException(status_code=400, detail="to / queue / target is required")
+
+    row = await db_pool.fetchrow(
+        "SELECT id, status FROM calls WHERE id = $1 AND company_id = $2",
+        uuid.UUID(call_id), uuid.UUID(company_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Call not found")
+
+    # Optionally merge the latest Redis turn if call_sid provided (avoid system prompt)
+    call_sid = body.get("call_sid")
+    if call_sid:
+        state = await get_conversation_state(call_sid)
+        existing = await db_pool.fetchval(
+            "SELECT COUNT(*) FROM transcripts WHERE call_id = $1", uuid.UUID(call_id)
+        )
+        if int(existing or 0) == 0:
+            for msg in state.get("messages") or []:
+                if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                    await save_transcript(call_id, msg["role"], msg["content"])
+
+    handoff = await _build_transfer_context(call_id, target, reason=body.get("reason") or "api")
+    if body.get("notes"):
+        handoff["notes"] = body["notes"]
+
+    await db_pool.execute(
+        """
+        UPDATE calls
+        SET status = 'transferred',
+            end_time = COALESCE(end_time, NOW()),
+            transfer_context = $1::jsonb
+        WHERE id = $2
+        """,
+        json.dumps(handoff),
+        uuid.UUID(call_id),
+    )
+    await db_pool.execute(
+        "INSERT INTO transcripts (call_id, role, content) VALUES ($1, 'system', $2)",
+        uuid.UUID(call_id),
+        f"Call transferred to {target}. Handoff summary: {handoff.get('summary', '')[:500]}",
+    )
+
+    await publish_event("call.transferred", {
+        "tenantId": company_id,
+        "callId": call_id,
+        "target": target,
+        "transcriptTurns": handoff.get("transcript_turns"),
+        "summary": handoff.get("summary"),
+    })
+
+    if redis_client:
+        await redis_client.setex(
+            f"transfer:{call_id}",
+            86400,
+            json.dumps(handoff),
+        )
+
+    return {
+        "id": call_id,
+        "status": "transferred",
+        "target": target,
+        "context": handoff,
+        "webhook_event": "call.transferred",
+    }
+
+
+@app.get("/v1/calls/{call_id}/transfer-context")
+async def get_transfer_context(call_id: str, request: Request):
+    company_id = _tenant_id(request)
+    row = await db_pool.fetchrow(
+        "SELECT transfer_context FROM calls WHERE id = $1 AND company_id = $2",
+        uuid.UUID(call_id), uuid.UUID(company_id),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Call not found")
+    ctx = row["transfer_context"]
+    if isinstance(ctx, str):
+        ctx = json.loads(ctx)
+    return {"id": call_id, "context": ctx, "available": bool(ctx)}
 
 
 @app.get("/api/stats")
