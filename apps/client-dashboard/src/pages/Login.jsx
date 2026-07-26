@@ -2,7 +2,14 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Mail, Lock, Eye, EyeOff, ArrowRight, BarChart3, Brain, Shield } from 'lucide-react'
-import { login as loginRequest, tokenStore } from '../api/client'
+import {
+  login as loginRequest,
+  tokenStore,
+  DEMO_CREDENTIALS,
+  DEMO_USER,
+  enterDemoMode,
+  DEMO_MODE_KEY,
+} from '../api/client'
 import './Login.css'
 
 const Login = ({ onLogin }) => {
@@ -10,14 +17,15 @@ const Login = ({ onLogin }) => {
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
     email: '',
-    password: ''
+    password: '',
   })
   const [isLoading, setIsLoading] = useState(false)
+  const [demoLoading, setDemoLoading] = useState(false)
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setIsLoading(true)
-    setError('') // Clear previous errors
+    setError('')
 
     try {
       const { data } = await loginRequest(formData.email, formData.password)
@@ -25,6 +33,7 @@ const Login = ({ onLogin }) => {
 
       tokenStore.set(token, refreshToken)
       localStorage.setItem('user', JSON.stringify(user))
+      localStorage.removeItem(DEMO_MODE_KEY)
 
       onLogin(user)
     } catch (err) {
@@ -38,12 +47,29 @@ const Login = ({ onLogin }) => {
     }
   }
 
+  const handleDemoLogin = async () => {
+    setDemoLoading(true)
+    setError('')
+    try {
+      const { data } = await loginRequest(DEMO_CREDENTIALS.email, DEMO_CREDENTIALS.password)
+      tokenStore.set(data.token, data.refreshToken)
+      localStorage.setItem('user', JSON.stringify(data.user))
+      localStorage.removeItem(DEMO_MODE_KEY)
+      onLogin(data.user)
+    } catch {
+      // API unreachable (e.g. Vercel without gateway) — local demo shell.
+      enterDemoMode()
+      onLogin(DEMO_USER)
+    } finally {
+      setDemoLoading(false)
+    }
+  }
+
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     })
-    // Clear error when user starts typing again
     if (error) setError('')
   }
 
@@ -115,7 +141,7 @@ const Login = ({ onLogin }) => {
             </div>
 
             {error && (
-              <motion.div 
+              <motion.div
                 className="error-message p-3 mb-8 text-sm text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg flex gap-2 items-center"
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -125,7 +151,7 @@ const Login = ({ onLogin }) => {
             )}
 
             <form onSubmit={handleSubmit} className="login-form">
-                <div className="form-group">
+              <div className="form-group">
                 <label htmlFor="email">Email Address</label>
                 <div className="input-wrapper">
                   <Mail className="input-icon" size={18} />
@@ -146,7 +172,7 @@ const Login = ({ onLogin }) => {
                 <div className="input-wrapper">
                   <Lock className="input-icon" size={18} />
                   <input
-                    type={showPassword ? "text" : "password"}
+                    type={showPassword ? 'text' : 'password'}
                     id="password"
                     name="password"
                     value={formData.password}
@@ -170,13 +196,15 @@ const Login = ({ onLogin }) => {
                   <span className="checkmark"></span>
                   Remember me
                 </label>
-                <Link to="/forgot-password" className="forgot-password">Forgot password?</Link>
+                <Link to="/forgot-password" className="forgot-password">
+                  Forgot password?
+                </Link>
               </div>
 
               <motion.button
                 type="submit"
                 className="login-button"
-                disabled={isLoading}
+                disabled={isLoading || demoLoading}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
@@ -188,11 +216,32 @@ const Login = ({ onLogin }) => {
                     <ArrowRight size={18} />
                   </>
                 )}
-                  </motion.button>
-                </form>
+              </motion.button>
+            </form>
+
+            <div className="login-demo-divider" aria-hidden="true">
+              <span>or</span>
+            </div>
+
+            <button
+              type="button"
+              className="login-demo-button"
+              onClick={handleDemoLogin}
+              disabled={isLoading || demoLoading}
+            >
+              {demoLoading ? 'Opening demo…' : 'Developer demo login'}
+            </button>
+            <p className="login-demo-hint">
+              Uses the demo account when the API is up; otherwise opens a local demo dashboard.
+            </p>
 
             <div className="login-footer">
-              <p>Don't have an account? <Link to="/signup" className="link-button">Create Account</Link></p>
+              <p>
+                Don&apos;t have an account?{' '}
+                <Link to="/signup" className="link-button">
+                  Create Account
+                </Link>
+              </p>
             </div>
           </div>
         </motion.div>

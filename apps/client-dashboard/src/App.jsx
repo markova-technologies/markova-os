@@ -20,7 +20,7 @@ import ResetPassword from './pages/ResetPassword'
 import Pricing from './pages/Pricing'
 import DocsSite from './pages/DocsSite'
 import Landing from '../../../packages/ui/landing/Landing'
-import { getMe, login as loginRequest, logout as logoutRequest, tokenStore } from './api/client'
+import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
 import { ROUTES } from './config/site'
 
 
@@ -48,9 +48,23 @@ function App() {
 
   useEffect(() => {
     const verifyToken = async () => {
+      // Local demo session (Vercel without API, or explicit demo login).
+      if (isDemoMode()) {
+        try {
+          const saved = JSON.parse(localStorage.getItem('user') || 'null')
+          if (saved) {
+            setIsAuthenticated(true)
+            setUser(saved)
+            return
+          }
+        } catch {
+          // fall through
+        }
+      }
+
       let token = tokenStore.get()
 
-      // Local demo only — never auto-login in production (Vercel must show landing).
+      // Local auto-login only in development.
       if (!token && import.meta.env.DEV) {
         try {
           const { data } = await loginRequest('demo@markova.et', 'MarkovaDemo2026!')
