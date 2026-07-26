@@ -238,6 +238,18 @@ class CommerceAgent:
     def set_groq_client(self, client: Any) -> None:
         self.groq_client = client
 
+    @staticmethod
+    def _automatic_voice_phone(call_id: str, caller_phone: Optional[str]) -> str:
+        caller_digits = re.sub(r"\D", "", caller_phone or "")
+        if caller_digits and len(caller_digits) <= 8:
+            suffix = caller_digits.zfill(8)
+        else:
+            import hashlib
+
+            suffix = str(int(hashlib.sha256(call_id.encode()).hexdigest()[:8], 16))[-8:]
+            suffix = suffix.zfill(8)
+        return f"+2519{suffix}"
+
     def _fallback_extract(
         self,
         text: str,
@@ -396,15 +408,6 @@ class CommerceAgent:
         await asyncio.to_thread(self.repository.save_draft, call_id, "status", data)
         if not data.get("order_number"):
             return "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
-        if not data.get("phone"):
-            data["_phone_requests"] = int(data.get("_phone_requests", 0)) + 1
-            await asyncio.to_thread(self.repository.save_draft, call_id, "status", data)
-            if data["_phone_requests"] > 1:
-                return (
-                    "ቁጥሩን ሙሉ በሙሉ አልሰማሁትም። እባክዎ ከዜሮ ዘጠኝ "
-                    "ጀምረው አስሩን አሃዞች በቡድን ይንገሩኝ።"
-                )
-            return "ትዕዛዙን ለማረጋገጥ ያስመዘገቡትን ስልክ ቁጥር ይንገሩኝ።"
 
         reference = data["order_number"]
         try:
@@ -417,7 +420,10 @@ class CommerceAgent:
                         candidate
                         for candidate in candidates
                         if candidate["order_number"].endswith(reference)
-                        and candidate["customer_phone"] == data["phone"]
+                        and (
+                            not data.get("phone")
+                            or candidate["customer_phone"] == data["phone"]
+                        )
                     ),
                     None,
                 )
@@ -425,7 +431,7 @@ class CommerceAgent:
                     raise NotFoundError("Order not found")
             else:
                 order = await asyncio.to_thread(
-                    self.repository.get_order, reference, data["phone"]
+                    self.repository.get_order, reference, data.get("phone")
                 )
         except NotFoundError:
             return "በዚህ ትዕዛዝ ቁጥርና ስልክ የተመዘገበ ትዕዛዝ አላገኘሁም። እንደገና ያረጋግጡ።"
@@ -486,6 +492,9 @@ class CommerceAgent:
             normalized_caller = normalize_phone(caller_phone)
             if normalized_caller.startswith("+251") and len(normalized_caller) == 13:
                 data["phone"] = normalized_caller
+        if not data.get("phone"):
+            data["phone"] = self._automatic_voice_phone(call_id, caller_phone)
+            data["_phone_automatic"] = True
 
         if not data["items"]:
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
@@ -495,15 +504,6 @@ class CommerceAgent:
         if not data.get("customer_name"):
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
             return "ትዕዛዙን በማን ስም ልመዝግብ?"
-        if not data.get("phone"):
-            data["_phone_requests"] = int(data.get("_phone_requests", 0)) + 1
-            await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
-            if data["_phone_requests"] > 1:
-                return (
-                    "ቁጥሩን ሙሉ በሙሉ አልሰማሁትም። እባክዎ ከዜሮ ዘጠኝ "
-                    "ጀምረው አስሩን አሃዞች በቡድን ይንገሩኝ።"
-                )
-            return "የምናገኝዎትን የኢትዮጵያ ስልክ ቁጥር ይንገሩኝ።"
         if not data.get("address"):
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
             return "ትዕዛዙ የሚደርስበትን ከተማ፣ ክፍለ ከተማና አካባቢ ይንገሩኝ።"

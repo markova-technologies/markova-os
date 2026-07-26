@@ -119,8 +119,7 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         call_id = "amharic-order-call"
         turns = [
             ("ሁለት ስማርት ሰዓት ልግዛ እፈልጋለሁ", "በማን ስም"),
-            ("ስሜ ሀና በቀለ ነው", "ስልክ ቁጥር"),
-            ("0911223344", "የሚደርስበትን"),
+            ("ስሜ ሀና በቀለ ነው", "የሚደርስበትን"),
             ("አዲስ አበባ ቦሌ መድኃኒዓለም", "ላረጋግጥ"),
             ("አዎ አረጋግጣለሁ", "ትዕዛዝዎ ተመዝግቧል"),
         ]
@@ -133,7 +132,7 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(order["total"], 11000)
 
         status_response = await self.agent.process_turn(
-            f"የትዕዛዝ ሁኔታ {order['order_number']} 0911223344",
+            f"የትዕዛዝ ሁኔታ {order['order_number']}",
             "amharic-status-call",
         )
         self.assertIn(order["order_number"], status_response)
@@ -161,7 +160,6 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         call_id = "noisy-confirmation"
         await self.agent.process_turn("ስልክ ልግዛ", call_id)
         await self.agent.process_turn("ሀና በቀለ", call_id)
-        await self.agent.process_turn("0911223344", call_id)
         await self.agent.process_turn("አዲስ አበባ ቦሌ", call_id)
 
         response = await self.agent.process_turn("አሽ አቻ", call_id)
@@ -173,7 +171,6 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         call_id = "cancelled-draft"
         await self.agent.process_turn("አንድ ፓወር ባንክ ልግዛ", call_id)
         await self.agent.process_turn("ሀና", call_id)
-        await self.agent.process_turn("0911223344", call_id)
         await self.agent.process_turn("አዲስ አበባ ቦሌ", call_id)
         response = await self.agent.process_turn("አይ ሰርዝ", call_id)
 
