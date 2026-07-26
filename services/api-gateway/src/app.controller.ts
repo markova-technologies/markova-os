@@ -257,8 +257,8 @@ export class AppController {
 <body>
   <main>
     <h1>Markova pricing</h1>
-    <p class="lede">Usage-based voice agents in Ethiopian Birr. Same API in sandbox and live — pay for live minutes, not seats.</p>
-    <p class="meta">Currency: <strong>ETB</strong> · Billed per minute · Overage auto-billed (no mid-call hard stop) · <a class="json" href="/v1/pricing">JSON</a></p>
+    <p class="lede">Monthly voice-agent plans in Ethiopian Birr — included minutes, then overage. Same API in sandbox and live.</p>
+    <p class="meta">Currency: <strong>ETB</strong> · Billed monthly · Overage auto-billed (no mid-call hard stop) · <a class="json" href="/v1/pricing">JSON</a></p>
     <div class="grid" id="tiers"></div>
     <div class="sandbox" id="sandbox"></div>
   </main>
@@ -266,31 +266,27 @@ export class AppController {
     fetch('/v1/pricing').then(r => r.json()).then(data => {
       const root = document.getElementById('tiers');
       root.innerHTML = (data.tiers || []).map(t => {
-        const inbound = t.price_etb_per_minute_inbound != null ? t.price_etb_per_minute_inbound + ' ETB/min inbound' : '';
-        const outbound = t.price_etb_per_minute_outbound != null
-          ? t.price_etb_per_minute_outbound + ' ETB/min outbound'
-          : (t.outbound_minutes_included != null ? t.outbound_minutes_included + ' outbound min included' : '');
+        const price = t.contact_sales
+          ? 'Contact <small>custom</small>'
+          : (Number(t.price_etb_monthly).toLocaleString() + ' <small>ETB/mo</small>');
+        const mins = t.minutes_included != null
+          ? '<li>' + Number(t.minutes_included).toLocaleString() + ' minutes included</li>'
+          : '';
+        const workforce = t.ai_workforce ? '<li>AI workforce included</li>' : '';
         return '<article class="tier"><h2>' + t.name + '</h2>'
-          + '<div class="price">' + (t.price_etb_per_minute_inbound ?? '—') + ' <small>ETB/min</small></div>'
+          + '<div class="price">' + price + '</div>'
           + '<ul>'
           + '<li>' + (t.summary || '') + '</li>'
-          + '<li>' + inbound + (outbound ? ' · ' + outbound : '') + '</li>'
-          + '<li>Concurrent agents: ' + t.concurrent_agents + '</li>'
-          + '<li>Workflow execution: ' + (t.workflow_execution ? 'Yes' : 'Dashboard display only') + '</li>'
-          + '<li>Support: ' + t.support + '</li>'
+          + mins
+          + workforce
+          + '<li>Support: ' + (t.support || '—') + '</li>'
           + '</ul></article>';
       }).join('');
       const s = data.sandbox || {};
       document.getElementById('sandbox').innerHTML =
         '<strong>' + (s.name || 'Sandbox') + '</strong> — '
-        + (s.price_etb_per_minute === 0 ? 'Free' : s.price_etb_per_minute + ' ETB/min')
-        + '. ' + (s.notes || '')
-        + (data.add_ons && data.add_ons[0]
-          ? '<br/>Add-on: ' + data.add_ons[0].name + ' at ' + data.add_ons[0].price_etb + ' ETB.'
-          : '')
-        + (data.annual_discount_percent
-          ? '<br/>Annual billing discount: ' + data.annual_discount_percent + '%.'
-          : '');
+        + (s.price_etb_monthly === 0 || s.price_etb_per_minute === 0 ? 'Free' : 'See rates')
+        + '. ' + (s.notes || '');
     }).catch(() => {
       document.getElementById('tiers').textContent = 'Unable to load pricing.';
     });
