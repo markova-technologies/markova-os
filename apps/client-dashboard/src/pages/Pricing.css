@@ -1,0 +1,249 @@
+.mk-pricing {
+  --signal-ink: #12172b;
+  --wire-white: #f5f6f3;
+  --live-amber: #e8a33d;
+  --slate-wire: #5b6478;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+
+  min-height: 100vh;
+  color: var(--wire-white);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(ellipse 80% 50% at 70% 0%, rgba(232, 163, 61, 0.14), transparent 55%),
+    linear-gradient(165deg, #0c1020 0%, var(--signal-ink) 50%, #1a2140 100%);
+}
+
+.mk-pricing-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  background: rgba(12, 16, 32, 0.75);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(245, 246, 243, 0.06);
+}
+
+.mk-pricing-brand {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--wire-white);
+  text-decoration: none;
+}
+
+.mk-pricing-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.35rem;
+  justify-content: flex-end;
+}
+
+.mk-pricing-nav-links a {
+  color: rgba(245, 246, 243, 0.78);
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+}
+
+.mk-pricing-nav-links a:hover {
+  color: var(--wire-white);
+}
+
+.mk-pricing-nav-cta {
+  display: inline-flex;
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.4rem;
+  background: var(--live-amber);
+  color: var(--signal-ink) !important;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.mk-pricing-main {
+  padding: clamp(2.5rem, 8vh, 4.5rem) clamp(1.25rem, 4vw, 3rem) 4rem;
+  max-width: 64rem;
+}
+
+.mk-pricing-header h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2.2rem, 5vw, 3.2rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin: 0 0 0.85rem;
+}
+
+.mk-pricing-header p {
+  margin: 0 0 2.5rem;
+  max-width: 38rem;
+  font-size: 1.1rem;
+  line-height: 1.55;
+  color: rgba(245, 246, 243, 0.72);
+}
+
+.mk-pricing-note {
+  color: rgba(245, 246, 243, 0.65);
+  margin-bottom: 2rem;
+}
+
+.mk-pricing-note code {
+  color: var(--live-amber);
+  font-family: ui-monospace, monospace;
+}
+
+.mk-pricing-tiers {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 3rem;
+}
+
+.mk-pricing-tier {
+  padding: 1.5rem 1.35rem 1.35rem;
+  border: 1px solid rgba(245, 246, 243, 0.12);
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mk-pricing-tier.is-featured {
+  border-color: rgba(232, 163, 61, 0.55);
+  background: rgba(232, 163, 61, 0.08);
+}
+
+.mk-pricing-tier h2 {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  margin: 0;
+}
+
+.mk-pricing-rate {
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 700;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.mk-pricing-rate span {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: rgba(245, 246, 243, 0.55);
+  margin-top: 0.15rem;
+}
+
+.mk-pricing-summary {
+  margin: 0;
+  color: rgba(245, 246, 243, 0.7);
+  line-height: 1.45;
+  font-size: 0.95rem;
+}
+
+.mk-pricing-tier ul {
+  margin: 0.25rem 0 0.5rem;
+  padding: 0 0 0 1.1rem;
+  color: rgba(245, 246, 243, 0.72);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  flex: 1;
+}
+
+.mk-pricing-tier-cta {
+  display: inline-flex;
+  justify-content: center;
+  margin-top: auto;
+  padding: 0.7rem 1rem;
+  border-radius: 0.4rem;
+  background: var(--live-amber);
+  color: var(--signal-ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mk-pricing-tier:not(.is-featured) .mk-pricing-tier-cta {
+  background: transparent;
+  color: var(--wire-white);
+  border: 1px solid rgba(245, 246, 243, 0.28);
+}
+
+.mk-pricing-addons,
+.mk-pricing-how {
+  margin-bottom: 2.5rem;
+}
+
+.mk-pricing-addons h2,
+.mk-pricing-how h2 {
+  font-family: var(--font-display);
+  font-size: 1.35rem;
+  margin: 0 0 1rem;
+}
+
+.mk-pricing-addons ul,
+.mk-pricing-how ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mk-pricing-addons li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+  padding: 0.85rem 0;
+  border-top: 1px solid rgba(245, 246, 243, 0.08);
+}
+
+.mk-pricing-addons li em {
+  grid-column: 1 / -1;
+  font-style: normal;
+  color: rgba(245, 246, 243, 0.55);
+  font-size: 0.9rem;
+}
+
+.mk-pricing-how ul {
+  padding-left: 1.15rem;
+  list-style: disc;
+  color: rgba(245, 246, 243, 0.72);
+  line-height: 1.6;
+}
+
+.mk-pricing-footer-cta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  padding-top: 0.5rem;
+}
+
+.mk-pricing-btn-primary,
+.mk-pricing-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.4rem;
+  border-radius: 0.4rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.mk-pricing-btn-primary {
+  background: var(--live-amber);
+  color: var(--signal-ink);
+}
+
+.mk-pricing-btn-secondary {
+  border: 1px solid rgba(245, 246, 243, 0.28);
+  color: var(--wire-white);
+}

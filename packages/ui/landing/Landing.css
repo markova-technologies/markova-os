@@ -1,0 +1,366 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+.mk-landing {
+  --signal-ink: #12172b;
+  --wire-white: #f5f6f3;
+  --live-amber: #e8a33d;
+  --coral-pulse: #e85c4a;
+  --slate-wire: #5b6478;
+  --font-display: 'Space Grotesk', 'Inter', sans-serif;
+  --font-body: 'Inter', -apple-system, sans-serif;
+
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  color: var(--wire-white);
+  font-family: var(--font-body);
+  background:
+    radial-gradient(ellipse 90% 60% at 70% 12%, rgba(232, 163, 61, 0.16), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 8% 55%, rgba(91, 100, 120, 0.22), transparent 50%),
+    linear-gradient(165deg, #0c1020 0%, var(--signal-ink) 45%, #1a2140 100%);
+  position: relative;
+  overflow-x: hidden;
+}
+
+.mk-landing::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(245, 246, 243, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(245, 246, 243, 0.03) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: linear-gradient(to bottom, black 0%, black 40%, transparent 85%);
+  pointer-events: none;
+}
+
+.mk-landing-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.1rem clamp(1.25rem, 4vw, 3rem);
+  background: rgba(12, 16, 32, 0.72);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(245, 246, 243, 0.06);
+}
+
+.mk-landing-nav-brand {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--wire-white);
+  text-decoration: none;
+}
+
+.mk-landing-nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem 1.5rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.mk-landing-nav-link {
+  font-family: var(--font-body);
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: rgba(245, 246, 243, 0.78);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.mk-landing-nav-link:hover {
+  color: var(--wire-white);
+}
+
+.mk-landing-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 1.1rem;
+  border-radius: 0.4rem;
+  font-family: var(--font-display);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  background: var(--live-amber);
+  color: var(--signal-ink);
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.mk-landing-nav-cta:hover {
+  background: #f0b45a;
+  transform: translateY(-1px);
+}
+
+.mk-landing-hero {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100vh - 4.5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: clamp(2rem, 8vh, 5rem) clamp(1.25rem, 4vw, 3rem) clamp(3rem, 10vh, 6rem);
+  max-width: 56rem;
+}
+
+.mk-landing-brand {
+  font-family: var(--font-display);
+  font-size: clamp(3.2rem, 10vw, 6.5rem);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 0.95;
+  margin: 0 0 1.5rem;
+  color: var(--wire-white);
+  animation: mk-landing-rise 0.8s ease-out both;
+}
+
+.mk-landing-headline {
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 3.2vw, 1.85rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin: 0 0 1rem;
+  max-width: 22ch;
+  color: rgba(245, 246, 243, 0.95);
+  animation: mk-landing-rise 0.8s ease-out 0.12s both;
+}
+
+.mk-landing-lead {
+  font-size: clamp(1rem, 2vw, 1.15rem);
+  line-height: 1.55;
+  color: rgba(245, 246, 243, 0.72);
+  margin: 0 0 2rem;
+  max-width: 38rem;
+  animation: mk-landing-rise 0.8s ease-out 0.22s both;
+}
+
+.mk-landing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin-bottom: 2.5rem;
+  animation: mk-landing-rise 0.8s ease-out 0.32s both;
+}
+
+.mk-landing-section .mk-landing-actions {
+  margin-bottom: 0;
+  animation: none;
+}
+
+.mk-landing-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.85rem 1.5rem;
+  border-radius: 0.45rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.mk-landing-btn-primary {
+  background: var(--live-amber);
+  color: var(--signal-ink);
+}
+
+.mk-landing-btn-primary:hover {
+  background: #f0b45a;
+  transform: translateY(-1px);
+}
+
+.mk-landing-btn-secondary {
+  background: transparent;
+  color: var(--wire-white);
+  border: 1px solid rgba(245, 246, 243, 0.28);
+}
+
+.mk-landing-btn-secondary:hover {
+  border-color: rgba(245, 246, 243, 0.55);
+  transform: translateY(-1px);
+}
+
+.mk-landing-wave {
+  width: min(100%, 28rem);
+  opacity: 0.9;
+  animation: mk-landing-rise 0.9s ease-out 0.4s both;
+}
+
+.mk-landing-section {
+  position: relative;
+  z-index: 1;
+  padding: clamp(3.5rem, 10vh, 6rem) clamp(1.25rem, 4vw, 3rem);
+  max-width: 56rem;
+}
+
+.mk-landing-section-alt {
+  border-top: 1px solid rgba(245, 246, 243, 0.08);
+  border-bottom: 1px solid rgba(245, 246, 243, 0.08);
+  background: rgba(0, 0, 0, 0.18);
+  max-width: none;
+  padding-left: clamp(1.25rem, 4vw, 3rem);
+  padding-right: clamp(1.25rem, 4vw, 3rem);
+}
+
+.mk-landing-section-alt > * {
+  max-width: 56rem;
+}
+
+.mk-landing-section-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  margin: 0 0 0.75rem;
+}
+
+.mk-landing-section-lead {
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: rgba(245, 246, 243, 0.7);
+  margin: 0 0 2.25rem;
+  max-width: 40rem;
+}
+
+.mk-landing-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.mk-landing-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.mk-landing-step-n {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--live-amber);
+  padding-top: 0.2rem;
+}
+
+.mk-landing-step h3 {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 0 0 0.4rem;
+}
+
+.mk-landing-step p {
+  margin: 0;
+  color: rgba(245, 246, 243, 0.68);
+  line-height: 1.55;
+  max-width: 36rem;
+}
+
+.mk-landing-langs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.75rem;
+}
+
+.mk-landing-langs li {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--wire-white);
+  letter-spacing: -0.01em;
+}
+
+.mk-landing-code {
+  font-family: ui-monospace, 'JetBrains Mono', monospace;
+  font-size: 0.92em;
+  color: var(--live-amber);
+}
+
+.mk-landing-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 2rem clamp(1.25rem, 4vw, 3rem) 2.5rem;
+  border-top: 1px solid rgba(245, 246, 243, 0.08);
+}
+
+.mk-landing-footer-brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.mk-landing-footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+}
+
+.mk-landing-footer-links a {
+  color: rgba(245, 246, 243, 0.7);
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+.mk-landing-footer-links a:hover {
+  color: var(--wire-white);
+}
+
+@keyframes mk-landing-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mk-landing-brand,
+  .mk-landing-headline,
+  .mk-landing-lead,
+  .mk-landing-actions,
+  .mk-landing-wave {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .mk-landing-nav {
+    align-items: flex-start;
+  }
+
+  .mk-landing-nav-links {
+    gap: 0.65rem 1rem;
+  }
+
+  .mk-landing-nav-links .mk-landing-nav-link[href='#how'],
+  .mk-landing-nav-links .mk-landing-nav-link[href='#languages'] {
+    display: none;
+  }
+}

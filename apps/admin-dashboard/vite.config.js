@@ -6,6 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    fs: {
+      // packages/ui holds shared waveform + landing.
+      allow: ['..', '../..'],
+    },
     proxy: {
       // All /api/* requests proxy to the central API Gateway
       '/api': {

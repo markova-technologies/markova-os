@@ -17,6 +17,7 @@ import {
   Loader2,
   Database
 } from 'lucide-react'
+import { ROUTES } from '../config/site'
 import './OnboardingCenter.css'
 
 const OnboardingCenter = () => {
@@ -117,7 +118,7 @@ const OnboardingCenter = () => {
       localStorage.setItem('onboardingComplete', 'true')
       localStorage.setItem('companyProfile', JSON.stringify(formData))
       success('Onboarding completed successfully!', 'Welcome aboard')
-      navigate('/')
+      navigate(ROUTES.app)
     } catch (err) {
       showError('An error occurred during finalization. Please try again.')
     } finally {

@@ -13,6 +13,7 @@ import {
 import { listAgents, listCalls, getUsage } from '../api/client'
 import { useEnvironment } from '../contexts/EnvironmentContext'
 import Skeleton from '../components/Skeleton'
+import { ROUTES } from '../config/site'
 import './CommandCenter.css'
 
 const PLAN_LABEL = { basic: 'Basic', starter: 'Basic', pro: 'Pro', plus: 'Plus' }
@@ -100,13 +101,13 @@ const CommandCenter = () => {
           </p>
         </div>
         <div className="cc-quick-actions">
-          <button className="btn-quick primary" onClick={() => navigate('/agent-studio')}>
+          <button className="btn-quick primary" onClick={() => navigate(ROUTES.agentStudio)}>
             <Plus size={15} /> Create agent
           </button>
-          <button className="btn-quick" onClick={() => navigate('/numbers')}>
+          <button className="btn-quick" onClick={() => navigate(ROUTES.numbers)}>
             <Phone size={15} /> Provision a number
           </button>
-          <button className="btn-quick" onClick={() => navigate('/keys')}>
+          <button className="btn-quick" onClick={() => navigate(ROUTES.keys)}>
             <Key size={15} /> View keys
           </button>
         </div>
@@ -161,7 +162,7 @@ const CommandCenter = () => {
         >
           <div className="cc-section-header">
             <h3 className="cc-section-title">Recent calls</h3>
-            <Link to="/call-center">View all</Link>
+            <Link to={ROUTES.callCenter}>View all</Link>
           </div>
 
           {loading ? (
@@ -171,7 +172,7 @@ const CommandCenter = () => {
           ) : recentCalls.length === 0 ? (
             <div className="cc-empty">
               <p>No calls yet — create an agent and place a test call to see it here.</p>
-              <button className="btn-quick primary" onClick={() => navigate('/agent-studio')}>
+              <button className="btn-quick primary" onClick={() => navigate(ROUTES.agentStudio)}>
                 <Plus size={15} /> Create agent
               </button>
             </div>
@@ -179,7 +180,7 @@ const CommandCenter = () => {
             <ul className="cc-call-list">
               {recentCalls.map((call) => (
                 <li key={call.id}>
-                  <Link to={`/call-center/${call.id}`}>
+                  <Link to={`${ROUTES.callCenter}/${call.id}`}>
                     <span className="cc-call-number mono">{call.caller_number || 'Unknown caller'}</span>
                     <span className="cc-call-agent">{call.agent_name || '—'}</span>
                     <span className="cc-call-time">{relativeTime(call.start_time)}</span>
@@ -200,7 +201,7 @@ const CommandCenter = () => {
         >
           <div className="cc-section-header">
             <h3 className="cc-section-title">Your plan</h3>
-            <Link to="/billing">Compare plans</Link>
+            <Link to={ROUTES.billing}>Compare plans</Link>
           </div>
           <p className="cc-plan-name">{PLAN_LABEL[plan] || 'Basic'}</p>
 

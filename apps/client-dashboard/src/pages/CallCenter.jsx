@@ -12,6 +12,7 @@ import {
 } from '../api/client'
 import { useEnvironment } from '../contexts/EnvironmentContext'
 import Skeleton from '../components/Skeleton'
+import { ROUTES } from '../config/site'
 import './CallCenter.css'
 
 const STATUS_TABS = [
@@ -173,7 +174,7 @@ const CallCenter = () => {
               <motion.button
                 key={call.id}
                 className={`cl-row ${call.id === callId ? 'selected' : ''}`}
-                onClick={() => navigate(`/call-center/${call.id}`)}
+                onClick={() => navigate(`${ROUTES.callCenter}/${call.id}`)}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
               >
