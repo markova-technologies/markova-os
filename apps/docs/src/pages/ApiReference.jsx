@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
+import { DocsLink } from '../docsBase'
 
 // Generated directly from the repo-root openapi.yaml (copied into public/ by
 // `npm run sync:openapi`) — this page never hand-documents an endpoint the
@@ -63,9 +63,9 @@ const ApiReference = () => {
   return (
     <div className="redoc-host">
       <div className="redoc-topbar">
-        <Link to="/">
+        <DocsLink to="/">
           <ArrowLeft size={14} /> Back to docs
-        </Link>
+        </DocsLink>
         <a href="/openapi.yaml" download>
           Download openapi.yaml
         </a>

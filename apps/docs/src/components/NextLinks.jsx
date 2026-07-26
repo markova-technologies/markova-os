@@ -1,13 +1,13 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
 import { ArrowRight } from 'lucide-react'
+import { DocsLink } from '../docsBase'
 
 const NextLinks = ({ links }) => (
   <nav className="docs-next" aria-label="Continue reading">
     {links.map((link) => (
-      <Link key={link.to} to={link.to}>
+      <DocsLink key={link.to} to={link.to}>
         {link.label} <ArrowRight size={14} />
-      </Link>
+      </DocsLink>
     ))}
   </nav>
 )

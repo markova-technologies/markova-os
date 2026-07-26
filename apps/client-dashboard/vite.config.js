@@ -17,7 +17,7 @@ export default defineConfig({
   server: {
     port: 3001,
     fs: {
-      // packages/ui holds shared waveform + landing.
+      // Shared UI + full docs site (embedded under /docs/*).
       allow: ['..', '../..'],
     },
     hmr: {

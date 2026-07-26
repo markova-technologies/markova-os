@@ -1,8 +1,8 @@
 import React from 'react'
-import { Link } from 'react-router-dom'
 import Waveform from '../../../../packages/ui/waveform/Waveform'
 import CodeBlock from '../components/CodeBlock'
 import Callout from '../components/Callout'
+import { DocsLink } from '../docsBase'
 
 const Home = () => (
   <>
@@ -80,30 +80,30 @@ await markova.testCall(agent.id, { to_number: '+251911000000' });`,
 
     <h2>Where to go next</h2>
     <div className="docs-card-grid">
-      <Link className="docs-card" to="/quickstart">
+      <DocsLink className="docs-card" to="/quickstart">
         <h3>Quickstart</h3>
         <p>From signup to a ringing phone, step by step, with every response shape shown.</p>
-      </Link>
-      <Link className="docs-card" to="/concepts/agents">
+      </DocsLink>
+      <DocsLink className="docs-card" to="/concepts/agents">
         <h3>Core concepts</h3>
         <p>Agents, calls, numbers, knowledge — what each one is and when you reach for it.</p>
-      </Link>
-      <Link className="docs-card" to="/api">
+      </DocsLink>
+      <DocsLink className="docs-card" to="/api">
         <h3>API reference</h3>
         <p>Every endpoint, parameter, and response, generated from the API's own spec.</p>
-      </Link>
-      <Link className="docs-card" to="/concepts/environments">
+      </DocsLink>
+      <DocsLink className="docs-card" to="/concepts/environments">
         <h3>Sandbox vs live</h3>
         <p>What actually changes when you cross over into real calls and real spend.</p>
-      </Link>
-      <Link className="docs-card" to="/webhooks">
+      </DocsLink>
+      <DocsLink className="docs-card" to="/webhooks">
         <h3>Webhooks</h3>
         <p>Let an agent act on your systems mid-call, and verify what reaches you.</p>
-      </Link>
-      <Link className="docs-card" to="/pricing">
+      </DocsLink>
+      <DocsLink className="docs-card" to="/pricing">
         <h3>Pricing</h3>
         <p>Per-minute rates in birr, straight from the pricing endpoint. No sales call.</p>
-      </Link>
+      </DocsLink>
     </div>
   </>
 )
