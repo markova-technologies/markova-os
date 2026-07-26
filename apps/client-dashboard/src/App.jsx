@@ -5,28 +5,23 @@ import Header from './components/Header'
 import CommandCenter from './pages/CommandCenter'
 import OnboardingCenter from './pages/OnboardingCenter'
 import AgentStudio from './pages/AgentStudio'
-import FlowBuilder from './pages/FlowBuilder'
 import KnowledgeCenter from './pages/KnowledgeCenter'
 import IntegrationHub from './pages/IntegrationHub'
-import PhoneChannels from './pages/PhoneChannels'
 import CallCenter from './pages/CallCenter'
-import AnalyticsCenter from './pages/AnalyticsCenter'
-import CRM from './pages/CRM'
+import UsageCenter from './pages/UsageCenter'
 import Settings from './pages/Settings'
 import BillingCenter from './pages/BillingCenter'
-import Governance from './pages/Governance'
-import Organization from './pages/Organization'
+import Keys from './pages/Keys'
+import Numbers from './pages/Numbers'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
-import axios from 'axios'
+import { getMe, logout as logoutRequest, tokenStore } from './api/client'
 
-import { DataProvider } from './contexts/SimpleDataContext'
 import { ToastProvider } from './contexts/ToastContext'
-import realTimeService from './services/realTimeService'
-import unifiedDataService from './services/unifiedDataService'
-import AmharicVoiceAgent from './components/AmharicVoiceAgent'
+import { EnvironmentProvider } from './contexts/EnvironmentContext'
+import EnvironmentStrip from './components/EnvironmentStrip'
 import './App.css'
 
 function App() {
@@ -54,23 +49,17 @@ function App() {
         return
       }
 
-      const token = localStorage.getItem('token')
-      const userData = localStorage.getItem('user')
+      const token = tokenStore.get()
 
-      if (token && userData) {
+      if (token) {
         try {
-          const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/api/auth/verify-token`, { token })
-
-          if (response.data.valid) {
-            setIsAuthenticated(true)
-            setUser(JSON.parse(userData))
-            realTimeService.connect()
-          }
+          const { data } = await getMe()
+          setIsAuthenticated(true)
+          setUser(data)
+          localStorage.setItem('user', JSON.stringify(data))
         } catch (err) {
           // Token invalid or expired
-          console.error('Session expired:', err)
-          localStorage.removeItem('token')
-          localStorage.removeItem('user')
+          tokenStore.clear()
           setIsAuthenticated(false)
           setUser(null)
         }
@@ -78,23 +67,11 @@ function App() {
     }
 
     verifyToken()
-
-    // Listen for successful connection to switch to real data
-    realTimeService.on('connected', () => {
-      console.log('Connected to AI agent - switching to real data mode')
-      unifiedDataService.switchToRealData(realTimeService)
-    })
-
-    return () => {
-      realTimeService.off('connected', () => { })
-    }
   }, [])
 
   const handleLogin = (userData) => {
     setIsAuthenticated(true)
     setUser(userData)
-    // Connect to real-time service on fresh login
-    realTimeService.connect()
 
     const onboardingDone = localStorage.getItem('onboardingComplete')
     if (!onboardingDone) {
@@ -105,11 +82,10 @@ function App() {
   }
 
   const handleLogout = () => {
+    logoutRequest().catch(() => {})
     setIsAuthenticated(false)
     setUser(null)
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    realTimeService.disconnect()
+    tokenStore.clear()
     navigate('/login')
   }
 
@@ -139,7 +115,7 @@ function App() {
             isAuthenticated ? (
               <Navigate to="/" replace />
             ) : (
-              <Signup onBackToLogin={() => navigate('/login')} />
+              <Signup onBackToLogin={() => navigate('/login')} onLogin={handleLogin} />
             )
           }
         />
@@ -153,9 +129,9 @@ function App() {
           path="/*"
           element={
             isAuthenticated ? (
-              <DataProvider>
+              <EnvironmentProvider>
                 <div className="app-container">
-                  <AmharicVoiceAgent />
+                  <EnvironmentStrip />
                   <Sidebar
                     onLogout={handleLogout}
                     isOpen={isMobileMenuOpen}
@@ -176,24 +152,23 @@ function App() {
                         <Route path="/onboarding" element={<OnboardingCenter />} />
                         <Route path="/dashboard" element={<Navigate to="/" replace />} />
                         <Route path="/agent-studio" element={<AgentStudio />} />
-                        <Route path="/flow-builder" element={<FlowBuilder />} />
                         <Route path="/knowledge" element={<KnowledgeCenter />} />
+                        <Route path="/numbers" element={<Numbers />} />
+                        <Route path="/keys" element={<Keys />} />
                         <Route path="/integrations" element={<IntegrationHub />} />
-                        <Route path="/channels" element={<PhoneChannels />} />
                         <Route path="/call-center" element={<CallCenter />} />
-                        <Route path="/analytics" element={<AnalyticsCenter />} />
-                        <Route path="/crm" element={<CRM />} />
+                        <Route path="/call-center/:callId" element={<CallCenter />} />
+                        <Route path="/usage" element={<UsageCenter />} />
+                        <Route path="/analytics" element={<Navigate to="/usage" replace />} />
                         <Route path="/settings" element={<Settings />} />
                         <Route path="/billing" element={<BillingCenter />} />
-                        <Route path="/governance" element={<Governance />} />
-                        <Route path="/organization" element={<Organization />} />
                         {/* Catch-all for authenticated users */}
                         <Route path="*" element={<Navigate to="/" replace />} />
                       </Routes>
                     </div>
                   </div>
                 </div>
-              </DataProvider>
+              </EnvironmentProvider>
             ) : (
               <Navigate to="/login" state={{ from: location }} replace />
             )

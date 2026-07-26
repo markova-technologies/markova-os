@@ -18,12 +18,17 @@ echo [OK] mod_vmd added to modules.conf.xml
 
 :load_runtime
 :: Also load it at runtime via ESL if FreeSWITCH is running
+:: Requires FREESWITCH_ESL_PASSWORD in the environment (no hardcoded default).
+if "%FREESWITCH_ESL_PASSWORD%"=="" (
+    echo [ERROR] FREESWITCH_ESL_PASSWORD is not set. Set it before running this script.
+    exit /b 1
+)
 echo Attempting to load mod_vmd at runtime...
-"C:\Program Files\FreeSWITCH\fs_cli.exe" -p ClueCon -x "load mod_vmd" 2>nul
+"C:\Program Files\FreeSWITCH\fs_cli.exe" -p "%FREESWITCH_ESL_PASSWORD%" -x "load mod_vmd" 2>nul
 echo [OK] mod_vmd load command sent to FreeSWITCH
 
 :: Verify
-"C:\Program Files\FreeSWITCH\fs_cli.exe" -p ClueCon -x "module_exists mod_vmd" 2>nul
+"C:\Program Files\FreeSWITCH\fs_cli.exe" -p "%FREESWITCH_ESL_PASSWORD%" -x "module_exists mod_vmd" 2>nul
 
 echo.
 echo Done! mod_vmd is ready for voice barge-in.

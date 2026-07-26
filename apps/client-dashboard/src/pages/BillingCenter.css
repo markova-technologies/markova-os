@@ -1,39 +1,58 @@
 .billing-center {
-  padding: 2rem;
-  color: var(--white);
+  padding: 1.5rem;
+  color: var(--text-main);
+}
+
+.billing-center .page-header h1 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+}
+
+.billing-center .page-header p {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.billing-error {
+  margin-top: 1.25rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--coral-pulse);
+  background: rgba(232, 92, 74, 0.08);
+  font-size: 0.88rem;
 }
 
 .billing-dashboard {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2rem;
-  margin-top: 2rem;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
 }
 
 .billing-card {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 1rem;
-  padding: 1.5rem;
-  backdrop-filter: blur(10px);
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
 }
 
-.full-width {
-  grid-column: 1 / -1;
-}
+.full-width { grid-column: 1 / -1; }
 
 .card-header {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1.5rem;
-  color: var(--primary);
+  gap: 0.6rem;
+  margin-bottom: 1.1rem;
+  color: var(--text-muted);
 }
 
 .card-header h2 {
-  font-size: 1.25rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
   font-weight: 600;
-  color: var(--white);
+  color: var(--text-main);
   margin: 0;
 }
 
@@ -41,110 +60,152 @@
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.currency {
-  font-size: 2rem;
-  color: var(--gray);
+  margin-bottom: 0.75rem;
 }
 
 .amount {
-  font-size: 3.5rem;
+  font-family: var(--font-display);
+  font-size: 2.75rem;
   font-weight: 700;
-  color: var(--white);
-  letter-spacing: -1px;
+  letter-spacing: -0.03em;
+  color: var(--text-main);
 }
 
-.period {
-  color: var(--gray);
-  font-size: 1rem;
+.currency {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  color: var(--text-muted);
 }
 
-.pay-button {
-  width: 100%;
-  padding: 0.875rem;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  border: none;
-  border-radius: 0.5rem;
-  color: white;
-  font-weight: 600;
-  cursor: pointer;
-  transition: transform 0.2s;
+.billing-note {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
 }
 
-.pay-button:hover {
-  transform: translateY(-2px);
-}
-
-.quota-item {
-  margin-bottom: 1.5rem;
-}
-
-.quota-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
+.billing-empty {
+  padding: 1.5rem 0;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
-.quota-name {
-  color: var(--gray-light);
+/* Plan comparison */
+.plan-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.plan-row {
+  padding: 0.85rem;
+  border: 1px solid var(--border-main);
+  border-radius: 0.6rem;
 }
 
-.quota-numbers {
-  font-weight: 600;
+.plan-row.is-current { border-color: var(--env-accent); }
+
+.plan-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
-.progress-bar {
-  height: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
+.plan-name {
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  color: var(--text-main);
 }
 
-.progress-fill {
-  height: 100%;
-  background: var(--primary);
-  border-radius: 4px;
-  transition: width 0.3s ease;
+.plan-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  color: var(--live-amber);
+  border: 1px solid var(--live-amber);
 }
 
-.progress-fill.danger {
-  background: #ef4444;
+.plan-price {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+  color: var(--text-main);
+  margin-top: 0.3rem;
 }
 
-.invoice-table {
-  width: 100%;
-  border-collapse: collapse;
+.plan-price-unit { color: var(--text-muted); margin-left: 0.35rem; font-size: 0.78rem; }
+
+.plan-summary {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
 }
+
+.plan-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 1rem;
+  color: var(--live-amber);
+  font-size: 0.84rem;
+  text-decoration: none;
+}
+
+.plan-link:hover { text-decoration: underline; }
+
+/* Line items */
+.invoice-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
 
 .invoice-table th {
   text-align: left;
-  padding: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  color: var(--gray);
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--border-main);
+  color: var(--text-muted);
   font-weight: 500;
+  font-size: 0.78rem;
 }
 
 .invoice-table td {
-  padding: 1rem;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid var(--border-main);
 }
 
-.amount-col {
-  font-family: monospace;
-  font-size: 1.1rem;
-}
+.amount-col { font-family: var(--font-mono); }
 
 .badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 1rem;
-  font-size: 0.8rem;
-  background: rgba(16, 185, 129, 0.2);
-  color: #34d399;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  background: rgba(232, 163, 61, 0.14);
+  color: var(--live-amber);
 }
 
-.status.unbilled {
-  color: #fbbf24;
+.status { font-size: 0.78rem; color: var(--text-muted); }
+.status.unbilled, .status.open { color: var(--live-amber); }
+.status.paid { color: var(--slate-wire); }
+
+.billing-skeletons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.billing-skeleton {
+  height: 180px;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-main);
+  background: linear-gradient(90deg, var(--bg-card) 25%, rgba(91, 100, 120, 0.18) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: billing-shimmer 1.4s ease-in-out infinite;
+}
+
+.billing-skeleton.wide { grid-column: 1 / -1; height: 220px; }
+
+@keyframes billing-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .billing-skeleton { animation: none; }
 }

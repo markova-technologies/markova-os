@@ -1,361 +1,285 @@
-import React, { useState, useEffect, useRef } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
-import { 
-  Globe, 
-  Bot, 
-  FileText, 
-  Link as LinkIcon, 
-  Database, 
-  RefreshCw,
-  MoreVertical,
-  Plus,
-  Book,
-  FileSpreadsheet,
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
+import {
+  Briefcase,
+  FileText,
+  MessageSquare,
+  ScrollText,
+  Search,
+  ShieldCheck,
   UploadCloud,
-  X
 } from 'lucide-react'
-import api from '../api/client'
+import {
+  listKnowledgeSources,
+  createKnowledgeSource,
+  listKnowledgeDocuments,
+  uploadKnowledgeDocument,
+  searchKnowledge,
+} from '../api/client'
+import { useToast } from '../contexts/ToastContext'
 import './KnowledgeCenter.css'
 
-const KnowledgeCenter = () => {
-  const [activeTab, setActiveTab] = useState('global')
-  const [activeTeamId, setActiveTeamId] = useState('sales')
-  const [teams, setTeams] = useState([])
-  const [globalSources, setGlobalSources] = useState([])
-  const [teamSources, setTeamSources] = useState([])
-  const [loading, setLoading] = useState(true)
+// Guided intake categories (Brief §5) — a business fills these in, not a blank upload box.
+const CATEGORIES = [
+  {
+    key: 'business-info',
+    name: 'Business information',
+    icon: Briefcase,
+    blurb: 'Hours, locations, services, prices — the facts callers ask for most.',
+  },
+  {
+    key: 'policies-faqs',
+    name: 'Policies and FAQs',
+    icon: ScrollText,
+    blurb: 'Returns, delivery, warranty, payment terms, and your common questions.',
+  },
+  {
+    key: 'tone',
+    name: 'Tone and language',
+    icon: MessageSquare,
+    blurb: 'How your agent should sound: formal or friendly, Amharic or English.',
+  },
+  {
+    key: 'sample-scripts',
+    name: 'Sample scripts',
+    icon: FileText,
+    blurb: 'Real call examples your agent should follow when handling a request.',
+  },
+]
 
-  // Modals state
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false)
-  const [addType, setAddType] = useState(null) // 'file', 'url', 'sheets', 'drive'
-  const [uploadProgress, setUploadProgress] = useState(0)
-
-  // Form states
-  const [urlInput, setUrlInput] = useState('')
-  const [sheetId, setSheetId] = useState('')
-  const fileInputRef = useRef(null)
-
-  useEffect(() => {
-    fetchTeams()
-    fetchSources()
-  }, [])
-
-  useEffect(() => {
-    if (activeTab === 'team') fetchSources()
-  }, [activeTeamId, activeTab])
-
-  const fetchTeams = async () => {
-    try {
-      const res = await api.get('/builder/teams').catch(() => ({ data: [] }))
-      if (res.data) setTeams(res.data)
-    } catch(e) {}
+// No backend endpoint stores this consent yet, so it is recorded per browser account.
+const consentKey = () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    return `markova_knowledge_consent_${user.companyId || user.company_id || 'self'}`
+  } catch {
+    return 'markova_knowledge_consent_self'
   }
+}
 
-  const fetchSources = async () => {
+const ConsentGate = ({ onAccept }) => {
+  const [checked, setChecked] = useState(false)
+
+  return (
+    <div className="kc-consent">
+      <div className="kc-consent-card">
+        <div className="kc-consent-icon"><ShieldCheck size={22} /></div>
+        <h2>Before you upload anything</h2>
+        <p>
+          What you add here trains your own agent and nothing else. Read this once, then it stays out of your way.
+        </p>
+        <ul className="kc-consent-list">
+          <li>Your documents are stored against your company only, and every search is filtered to your company.</li>
+          <li>Your content is never used to improve a shared model. We do not offer that option.</li>
+          <li>Your agent reads this material to answer callers. Do not upload anything you would not want it to say out loud.</li>
+          <li>You can delete a source at any time, which removes it from what your agent can retrieve.</li>
+        </ul>
+        <label className="kc-consent-check">
+          <input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} />
+          <span>I understand how this material will be used.</span>
+        </label>
+        <button className="btn-primary" disabled={!checked} onClick={onAccept}>
+          Agree and continue
+        </button>
+      </div>
+    </div>
+  )
+}
+
+const KnowledgeCenter = () => {
+  const [consented, setConsented] = useState(() => localStorage.getItem(consentKey()) === 'true')
+  const [sources, setSources] = useState([])
+  const [documents, setDocuments] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(null)
+  const [uploadingKey, setUploadingKey] = useState(null)
+  const [query, setQuery] = useState('')
+  const [searching, setSearching] = useState(false)
+  const [searchResults, setSearchResults] = useState(null)
+  const pendingCategory = useRef(null)
+  const fileInputRef = useRef(null)
+  const toast = useToast()
+
+  const load = useCallback(async () => {
     setLoading(true)
+    setLoadError(null)
     try {
-      if (activeTab === 'global') {
-        const res = await api.get('/knowledge/sources?level=global').catch(() => ({ data: [] }))
-        setGlobalSources(res.data || [])
-      } else {
-        const res = await api.get(`/knowledge/sources?level=team&teamId=${activeTeamId}`).catch(() => ({ data: [] }))
-        setTeamSources(res.data || [])
-      }
-    } catch (e) {
-      console.error(e)
+      const { data } = await listKnowledgeSources()
+      const list = Array.isArray(data) ? data : []
+      setSources(list)
+      const docEntries = await Promise.all(
+        list.map(async (src) => {
+          try {
+            const res = await listKnowledgeDocuments(src.id)
+            return [src.id, Array.isArray(res.data) ? res.data : []]
+          } catch {
+            return [src.id, []]
+          }
+        })
+      )
+      setDocuments(Object.fromEntries(docEntries))
+    } catch {
+      setLoadError('We couldn’t load your knowledge sources. Refresh to try again.')
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    if (consented) load()
+  }, [consented, load])
+
+  const acceptConsent = () => {
+    localStorage.setItem(consentKey(), 'true')
+    setConsented(true)
   }
 
-  const handleSync = async (id, isGlobal) => {
-    const updateState = isGlobal ? setGlobalSources : setTeamSources
-    updateState(prev => prev.map(src => src.id === id ? { ...src, status: 'Syncing...', sync: 'Just now' } : src))
-    
+  const sourceForCategory = (category) =>
+    sources.find((s) => s.name === category.name)
+
+  const pickFile = (category) => {
+    pendingCategory.current = category
+    fileInputRef.current?.click()
+  }
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    const category = pendingCategory.current
+    if (!file || !category) return
+
+    setUploadingKey(category.key)
     try {
-      await api.post(`/knowledge/sources/${id}/sync`).catch(() => {})
-      setTimeout(() => {
-        updateState(prev => prev.map(src => src.id === id ? { ...src, status: 'Synced', sync: 'Just now' } : src))
-      }, 2000)
-    } catch (e) {
-      updateState(prev => prev.map(src => src.id === id ? { ...src, status: 'Failed' } : src))
+      let source = sourceForCategory(category)
+      if (!source) {
+        const created = await createKnowledgeSource({ name: category.name, type: 'upload' })
+        source = created.data
+      }
+      const formData = new FormData()
+      formData.append('file', file)
+      await uploadKnowledgeDocument(source.id, formData)
+      toast.success(`${file.name} added to ${category.name}.`, 'File added')
+      await load()
+    } catch {
+      toast.error('That file didn’t upload. Check the format and try again.', 'Upload failed')
+    } finally {
+      setUploadingKey(null)
+      pendingCategory.current = null
     }
   }
 
-  const getIconForType = (type) => {
-    const t = type.toLowerCase()
-    if (t.includes('pdf') || t.includes('doc')) return FileText
-    if (t.includes('web') || t.includes('url')) return Globe
-    if (t.includes('sheet') || t.includes('csv')) return FileSpreadsheet
-    if (t.includes('notion')) return Book
-    return Database
-  }
-
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    setUploadProgress(10);
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('level', activeTab);
-    if (activeTab === 'team') formData.append('teamId', activeTeamId);
-
-    const interval = setInterval(() => {
-      setUploadProgress(p => p < 90 ? p + 10 : p);
-    }, 200);
-
+  const handleSearch = async (e) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    setSearching(true)
     try {
-      await api.post('/knowledge/sources/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      }).catch(() => {});
-      clearInterval(interval);
-      setUploadProgress(100);
-      setTimeout(() => {
-        setIsAddModalOpen(false);
-        setUploadProgress(0);
-        fetchSources();
-      }, 500);
-    } catch(err) {
-      clearInterval(interval);
-      setUploadProgress(0);
-      alert('Upload failed');
+      const { data } = await searchKnowledge(query.trim(), 5)
+      setSearchResults(Array.isArray(data?.results) ? data.results : [])
+    } catch {
+      toast.error('The test search didn’t run. Try again in a moment.', 'Search failed')
+    } finally {
+      setSearching(false)
     }
   }
 
-  const handleAddUrl = async () => {
-    if (!urlInput) return;
-    try {
-      await api.post('/knowledge/sources', {
-        type: 'website',
-        name: new URL(urlInput).hostname,
-        url: urlInput,
-        level: activeTab,
-        teamId: activeTab === 'team' ? activeTeamId : null
-      }).catch(() => {});
-      setIsAddModalOpen(false);
-      setUrlInput('');
-      fetchSources();
-    } catch(e) {
-      alert('Failed to add URL');
-    }
-  }
+  if (!consented) return <ConsentGate onAccept={acceptConsent} />
 
-  const handleAddSheet = async () => {
-    if (!sheetId) return;
-    try {
-      await api.post('/knowledge/sources', {
-        type: 'google_sheets',
-        name: `Sheet: ${sheetId.substring(0, 8)}...`,
-        config: { sheetId },
-        level: activeTab,
-        teamId: activeTab === 'team' ? activeTeamId : null
-      }).catch(() => {});
-      setIsAddModalOpen(false);
-      setSheetId('');
-      fetchSources();
-    } catch(e) {
-      alert('Failed to add Sheet');
-    }
-  }
-
-  const renderAddModal = () => (
-    <AnimatePresence>
-      {isAddModalOpen && (
-        <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div className="modal-content" style={{ background: 'var(--bg-card)', padding: '2rem', borderRadius: '1rem', width: '500px', border: '1px solid var(--border-main)', position: 'relative' }}>
-            <button onClick={() => { setIsAddModalOpen(false); setAddType(null); }} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer' }}>
-              <X size={20} />
-            </button>
-            <h3 style={{ marginTop: 0, color: 'var(--text-main)' }}>Add Data Source ({activeTab === 'global' ? 'Global' : 'Team'})</h3>
-            
-            {!addType ? (
-              <div className="source-types-grid" style={{ marginTop: '1.5rem' }}>
-                <div className="source-type-card" onClick={() => setAddType('file')} style={{ cursor: 'pointer' }}>
-                  <div className="st-icon"><FileText size={20} /></div>
-                  <div className="st-info"><h4>Upload Files</h4><p>PDF, DOCX, TXT</p></div>
-                </div>
-                <div className="source-type-card" onClick={() => setAddType('url')} style={{ cursor: 'pointer' }}>
-                  <div className="st-icon"><LinkIcon size={20} /></div>
-                  <div className="st-info"><h4>Website URL</h4><p>Crawl domains</p></div>
-                </div>
-                <div className="source-type-card" onClick={() => setAddType('sheets')} style={{ cursor: 'pointer' }}>
-                  <div className="st-icon"><FileSpreadsheet size={20} /></div>
-                  <div className="st-info"><h4>Google Sheets</h4><p>Sync live data</p></div>
-                </div>
-                <div className="source-type-card" onClick={() => setAddType('drive')} style={{ cursor: 'pointer' }}>
-                  <div className="st-icon"><Database size={20} /></div>
-                  <div className="st-info"><h4>Google Drive</h4><p>Sync folders</p></div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ marginTop: '1.5rem' }}>
-                <button onClick={() => setAddType(null)} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  &larr; Back to options
-                </button>
-                
-                {addType === 'file' && (
-                  <div 
-                    className="upload-zone" 
-                    onClick={() => fileInputRef.current?.click()}
-                    style={{ border: '2px dashed var(--border-main)', borderRadius: '8px', padding: '3rem 1rem', textAlign: 'center', cursor: 'pointer', background: 'var(--bg-main)' }}
-                  >
-                    <UploadCloud size={48} style={{ color: 'var(--primary)', marginBottom: '1rem' }} />
-                    <p style={{ color: 'var(--text-main)', margin: '0 0 0.5rem 0' }}>Drag & drop files here</p>
-                    <p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0 }}>or click to browse (PDF, DOCX, TXT)</p>
-                    <input type="file" ref={fileInputRef} style={{ display: 'none' }} onChange={handleFileUpload} />
-                    {uploadProgress > 0 && (
-                      <div style={{ marginTop: '1.5rem', background: 'var(--bg-card)', height: '8px', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', background: 'var(--primary)', width: `${uploadProgress}%`, transition: 'width 0.2s' }}></div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {addType === 'url' && (
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-main)', fontSize: '0.9rem' }}>Website URL</label>
-                    <input type="url" placeholder="https://example.com" value={urlInput} onChange={e => setUrlInput(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', background: 'var(--bg-main)', color: 'white', border: '1px solid var(--border-main)', marginBottom: '1rem' }} />
-                    <button onClick={handleAddUrl} className="btn-primary" style={{ width: '100%' }}>Start Crawling</button>
-                  </div>
-                )}
-
-                {addType === 'sheets' && (
-                  <div>
-                    <label style={{ display: 'block', marginBottom: '0.5rem', color: 'var(--text-main)', fontSize: '0.9rem' }}>Google Sheet ID</label>
-                    <input type="text" placeholder="1BxiMVs0XRY..." value={sheetId} onChange={e => setSheetId(e.target.value)} style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', background: 'var(--bg-main)', color: 'white', border: '1px solid var(--border-main)', marginBottom: '1rem' }} />
-                    <p style={{ color: 'var(--gray)', fontSize: '0.8rem', marginBottom: '1rem' }}>Ensure your service account has access to this sheet.</p>
-                    <button onClick={handleAddSheet} className="btn-primary" style={{ width: '100%' }}>Connect Sheet</button>
-                  </div>
-                )}
-                
-                {addType === 'drive' && (
-                  <div>
-                    <p style={{ color: 'var(--gray)' }}>Google Drive integration requires OAuth setup in settings first.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  )
-
-  const renderSourceTypes = () => (
-    <div className="source-types-grid" onClick={() => { setAddType(null); setIsAddModalOpen(true); }} style={{ cursor: 'pointer' }}>
-      <div className="source-type-card"><div className="st-icon"><FileText size={20} /></div><div className="st-info"><h4>Upload Files</h4><p>PDF, DOCX, TXT, CSV</p></div></div>
-      <div className="source-type-card"><div className="st-icon"><LinkIcon size={20} /></div><div className="st-info"><h4>Website URL</h4><p>Crawl specific domains</p></div></div>
-      <div className="source-type-card"><div className="st-icon"><FileSpreadsheet size={20} /></div><div className="st-info"><h4>Google Sheets</h4><p>Sync live data</p></div></div>
-      <div className="source-type-card"><div className="st-icon"><Database size={20} /></div><div className="st-info"><h4>Database</h4><p>PostgreSQL, MySQL</p></div></div>
-    </div>
-  )
-
-  const renderSourcesList = (sources, isGlobal = true) => (
-    <div className="data-sources-list">
-      {sources.length === 0 && !loading && <p style={{ color: 'var(--gray)', padding: '1rem' }}>No sources connected yet.</p>}
-      {loading && <p style={{ color: 'var(--gray)', padding: '1rem' }}>Loading sources...</p>}
-      {sources.map((src, i) => {
-        const Icon = getIconForType(src.type);
-        return (
-          <motion.div 
-            className="data-source-item" 
-            key={src.id}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.1 }}
-          >
-            <div className="ds-left">
-              <div className="ds-icon-wrapper">
-                <Icon size={20} />
-              </div>
-              <div className="ds-details">
-                <h4>{src.name}</h4>
-                <div className="ds-meta">
-                  <span>{src.type}</span>
-                  <span>•</span>
-                  <span><RefreshCw size={12} /> Last synced: {src.sync || 'Never'}</span>
-                  {src.size && <><span>•</span><span>{src.size}</span></>}
-                </div>
-              </div>
-            </div>
-            <div className="ds-actions">
-              <div className="ds-status">
-                {src.status === 'Synced' && <div className="dot" style={{background: '#10b981', width: 8, height: 8, borderRadius: '50%', display: 'inline-block', marginRight: 6}}></div>}
-                {src.status === 'Syncing...' && <RefreshCw size={12} className="spinning" style={{marginRight: 6}} />}
-                {src.status}
-              </div>
-              <button className="btn-secondary" style={{padding: '0.25rem 0.75rem', fontSize: '0.8rem'}} onClick={() => handleSync(src.id, isGlobal)}>
-                <RefreshCw size={12} /> Sync
-              </button>
-              <button className="btn-icon"><MoreVertical size={16} /></button>
-            </div>
-          </motion.div>
-        )
-      })}
-    </div>
-  )
+  const totalDocs = Object.values(documents).reduce((n, d) => n + d.length, 0)
 
   return (
     <div className="knowledge-center">
-      <div className="kc-header">
-        <div className="kc-title-row">
-          <div className="kc-title">
-            <h1>Knowledge Center</h1>
-            <p>Manage the data and documents your AI workforce uses to answer questions.</p>
-          </div>
-          <div className="kc-actions">
-            <button className="btn btn-primary" onClick={() => { setAddType(null); setIsAddModalOpen(true); }}><Plus size={16} /> Add Data Source</button>
-          </div>
-        </div>
-        <div className="kc-tabs">
-          <button className={`kc-tab ${activeTab === 'global' ? 'active' : ''}`} onClick={() => setActiveTab('global')}>
-            <Globe size={16} /> Global Company Knowledge
-          </button>
-          <button className={`kc-tab ${activeTab === 'team' ? 'active' : ''}`} onClick={() => setActiveTab('team')}>
-            <Bot size={16} /> Team-Specific Knowledge
-          </button>
-        </div>
-      </div>
+      <header className="page-header">
+        <h1>Knowledge</h1>
+        <p>Give your agent the material it needs to answer callers accurately.</p>
+      </header>
 
-      <div className="kc-main">
-        <AnimatePresence mode="wait">
-          {activeTab === 'global' && (
-            <motion.div key="global" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.2 }}>
-              <h3 className="kc-section-title">Add New Source</h3>
-              {renderSourceTypes()}
-              <h3 className="kc-section-title" style={{ marginTop: '2rem' }}>Active Global Sources</h3>
-              <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: '1rem', marginTop: '-0.5rem' }}>This knowledge is automatically available to the Commander Agent and all teams.</p>
-              {renderSourcesList(globalSources, true)}
-            </motion.div>
-          )}
+      <input type="file" ref={fileInputRef} onChange={handleFile} hidden accept=".txt,.md,.csv,.pdf,.doc,.docx" />
 
-          {activeTab === 'team' && (
-            <motion.div key="team" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} transition={{ duration: 0.2 }}>
-              <div className="agent-filter-row" style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '2rem' }}>
-                <select className="agent-select" value={activeTeamId} onChange={e => setActiveTeamId(e.target.value)} style={{ padding: '0.5rem', borderRadius: '0.5rem', border: '1px solid var(--border-main)', background: 'var(--bg-card)', color: 'var(--text-main)' }}>
-                  {teams.length > 0 ? teams.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  )) : (
-                    <>
-                      <option value="sales">Sales Team</option>
-                      <option value="support">Support Team</option>
-                      <option value="ops">Operations Team</option>
-                    </>
-                  )}
-                </select>
-                <span style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Assign knowledge exclusively to this team.</span>
+      {loadError && <div className="kc-error">{loadError}</div>}
+
+      <section className="kc-categories">
+        {CATEGORIES.map((category) => {
+          const Icon = category.icon
+          const source = sourceForCategory(category)
+          const docs = source ? documents[source.id] || [] : []
+          const busy = uploadingKey === category.key
+
+          return (
+            <motion.div
+              className="kc-category"
+              key={category.key}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              <div className="kc-category-head">
+                <span className="kc-category-icon"><Icon size={18} /></span>
+                <div>
+                  <h3>{category.name}</h3>
+                  <p>{category.blurb}</p>
+                </div>
               </div>
-              <h3 className="kc-section-title">Add New Source for Team</h3>
-              {renderSourceTypes()}
-              <h3 className="kc-section-title" style={{ marginTop: '2rem' }}>Active Team Sources</h3>
-              {renderSourcesList(teamSources, false)}
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
 
-      {renderAddModal()}
+              {loading ? (
+                <div className="kc-skeleton" />
+              ) : docs.length === 0 ? (
+                <p className="kc-category-empty">Nothing here yet — add a file so your agent can use it.</p>
+              ) : (
+                <ul className="kc-doc-list">
+                  {docs.map((doc) => (
+                    <li key={doc.id}>
+                      <FileText size={14} />
+                      <span className="kc-doc-name mono">{doc.file_name}</span>
+                      <span className={`kc-doc-status ${doc.status || 'uploaded'}`}>{doc.status || 'uploaded'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button className="btn-secondary kc-add" onClick={() => pickFile(category)} disabled={busy}>
+                <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add a file'}
+              </button>
+            </motion.div>
+          )
+        })}
+      </section>
+
+      <section className="kc-test">
+        <h2>Test what your agent would find</h2>
+        <p>Ask the same thing a caller would. This searches only your material.</p>
+        <form className="kc-test-form" onSubmit={handleSearch}>
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="What time do you close on Saturday?"
+          />
+          <button type="submit" disabled={searching || !query.trim()}>
+            <Search size={15} /> {searching ? 'Searching…' : 'Run test search'}
+          </button>
+        </form>
+
+        {searchResults !== null && (
+          searchResults.length === 0 ? (
+            <p className="kc-test-empty">
+              {totalDocs === 0
+                ? 'Nothing to search yet — add a file above first.'
+                : 'Your agent found nothing for that. Add material that answers it.'}
+            </p>
+          ) : (
+            <ul className="kc-test-results">
+              {searchResults.map((r) => (
+                <li key={r.chunk_id}>
+                  <div className="kc-test-meta">
+                    <span className="mono">{r.source_name || r.file_name}</span>
+                    {typeof r.score === 'number' && <span className="kc-test-score">{r.score.toFixed(2)}</span>}
+                  </div>
+                  <p>{r.content}</p>
+                </li>
+              ))}
+            </ul>
+          )
+        )}
+      </section>
     </div>
   )
 }

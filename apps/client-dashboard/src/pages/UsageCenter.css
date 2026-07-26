@@ -1,0 +1,198 @@
+.usage-center {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.5rem;
+}
+
+.usage-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.usage-header h1 {
+  font-family: var(--font-display);
+  font-size: 1.6rem;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.usage-header p {
+  margin-top: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  max-width: 56ch;
+}
+
+.usage-error {
+  padding: 0.85rem 1rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--coral-pulse);
+  background: rgba(232, 92, 74, 0.08);
+  color: var(--text-main);
+  font-size: 0.88rem;
+}
+
+/* Metric cards double as the chart's series selector. */
+.usage-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.usage-metric-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.1rem;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.usage-metric-card:hover { transform: translateY(-1px); }
+.usage-metric-card:focus-visible { outline: 2px solid var(--live-amber); outline-offset: 2px; }
+.usage-metric-card.is-selected { border-color: var(--env-accent); }
+
+.usage-metric-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.usage-metric-value {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  color: var(--text-main);
+}
+
+.usage-metric-unit {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.usage-chart-card,
+.usage-table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-main);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+
+.usage-chart-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.usage-chart-head h2 {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--text-main);
+}
+
+.usage-chart-meta {
+  font-family: var(--font-mono);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.usage-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.usage-empty {
+  padding: 2rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+}
+
+.usage-table th {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.78rem;
+  border-bottom: 1px solid var(--border-main);
+}
+
+.usage-table td {
+  padding: 0.7rem 0.75rem;
+  color: var(--text-main);
+  border-bottom: 1px solid var(--border-main);
+}
+
+.usage-table .mono { font-family: var(--font-mono); font-size: 0.82rem; }
+
+.usage-status {
+  font-size: 0.74rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-main);
+  color: var(--text-muted);
+}
+
+.usage-status.status-active { color: var(--live-amber); border-color: var(--live-amber); }
+.usage-status.status-transferred { color: var(--coral-pulse); border-color: var(--coral-pulse); }
+
+.usage-footnote {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+/* Loading: skeletons, not a lone spinner (Brief §6). */
+.usage-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 1rem;
+}
+
+.usage-skeleton-card { height: 104px; }
+.usage-skeleton-chart { height: 200px; }
+
+.usage-skeleton-card,
+.usage-skeleton-chart {
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-main);
+  background: linear-gradient(90deg, var(--bg-card) 25%, rgba(91, 100, 120, 0.18) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: usage-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes usage-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .usage-skeleton-card,
+  .usage-skeleton-chart { animation: none; }
+}

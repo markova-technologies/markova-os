@@ -16,6 +16,7 @@ import {
   Loader2
 } from 'lucide-react'
 import api from '../api/client'
+import { useToast } from '../contexts/ToastContext'
 import './IntegrationHub.css'
 
 const categories = [
@@ -43,6 +44,7 @@ const fallbackIntegrations = [
 ]
 
 const IntegrationHub = () => {
+  const toast = useToast()
   const [integrations, setIntegrations] = useState(fallbackIntegrations)
   const [suggestedIds, setSuggestedIds] = useState([])
   const [activeCategory, setActiveCategory] = useState('all')
@@ -61,8 +63,8 @@ const IntegrationHub = () => {
     setLoading(true);
     try {
       const [intsRes, agentsRes] = await Promise.all([
-        api.get('/connectors/integrations').catch(() => ({ data: [] })),
-        api.get('/builder/agents').catch(() => ({ data: [] }))
+        api.get('/connectors').catch(() => ({ data: [] })),
+        api.get('/agents').catch(() => ({ data: [] }))
       ]);
 
       // Merge backend status with fallback catalog
@@ -107,18 +109,22 @@ const IntegrationHub = () => {
   const handleConnect = async () => {
     setConnecting(true);
     try {
-      // Create integration config
-      const res = await api.post(`/connectors/integrations`, {
+      // Create connector (POST /v1/connectors)
+      const res = await api.post(`/connectors`, {
         type: selectedIntegration.id,
         name: selectedIntegration.name,
         config: { apiKey }
-      }).catch(() => ({ data: { id: Date.now().toString() } })); // Mock success
+      });
       
       setIntegrations(prev => prev.map(i => i.id === selectedIntegration.id ? { ...i, status: 'connected', connectionId: res.data.id } : i));
       setSelectedIntegration(null);
       setApiKey('');
+      toast.success(`${selectedIntegration.name} is connected.`, 'Connected');
     } catch (e) {
-      alert("Failed to connect integration.");
+      toast.error(
+        `We couldn't reach ${selectedIntegration.name} with that key. Check the key and try again.`,
+        'Not connected'
+      );
     } finally {
       setConnecting(false);
     }
@@ -131,8 +137,12 @@ const IntegrationHub = () => {
         await api.delete(`/connectors/integrations/${integration.connectionId}`).catch(() => {});
       }
       setIntegrations(prev => prev.map(i => i.id === integration.id ? { ...i, status: 'disconnected', connectionId: null } : i));
+      toast.success(`${integration.name} is disconnected.`, 'Disconnected');
     } catch (e) {
-      alert("Failed to disconnect integration.");
+      toast.error(
+        `${integration.name} is still connected — we couldn't complete the disconnect. Try again in a moment.`,
+        'Still connected'
+      );
     } finally {
       setDisconnecting(null);
     }
@@ -249,7 +259,7 @@ const IntegrationHub = () => {
           {/* AI Suggested Integrations */}
           {activeCategory === 'all' && !searchQuery && suggestedIntegrations.length > 0 && (
             <div className="ih-suggested">
-              <h2 className="ih-section-title"><Sparkles size={18} color="#10b981" /> AI Suggested for Your Teams</h2>
+              <h2 className="ih-section-title"><Sparkles size={18} color="var(--live-amber)" /> AI Suggested for Your Teams</h2>
               <p style={{ color: 'var(--gray)', fontSize: '0.85rem', marginBottom: '1.5rem', marginTop: '-0.75rem' }}>
                 Based on your active agents, we recommend connecting these tools.
               </p>
@@ -322,7 +332,7 @@ const IntegrationHub = () => {
                 <button 
                   onClick={handleConnect}
                   disabled={connecting}
-                  style={{ padding: '0.5rem 1rem', background: '#10b981', border: 'none', color: 'white', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                  style={{ padding: '0.5rem 1rem', background: 'var(--live-amber)', border: 'none', color: 'white', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                 >
                   {connecting ? <Loader2 size={16} className="spinner" /> : null}
                   Save Connection

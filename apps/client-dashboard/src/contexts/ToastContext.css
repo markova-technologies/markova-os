@@ -1,0 +1,63 @@
+.toast-stack {
+  position: fixed;
+  bottom: 1.25rem;
+  right: 1.25rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.7rem;
+  width: min(21rem, calc(100vw - 2.5rem));
+  padding: 0.9rem 1rem;
+  border-radius: 0.7rem;
+  border: 1px solid var(--border-main);
+  background: var(--bg-card);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.45);
+}
+
+/* Live Amber = something happened; Coral Pulse = something needs attention. */
+.toast-success { border-left: 3px solid var(--live-amber); }
+.toast-error { border-left: 3px solid var(--coral-pulse); }
+.toast-info { border-left: 3px solid var(--slate-wire); }
+
+.toast-icon { flex-shrink: 0; display: flex; padding-top: 0.1rem; }
+.toast-success .toast-icon { color: var(--live-amber); }
+.toast-error .toast-icon { color: var(--coral-pulse); }
+.toast-info .toast-icon { color: var(--slate-wire); }
+
+.toast-body { flex: 1; min-width: 0; }
+
+.toast-title {
+  font-family: var(--font-display);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.15rem;
+}
+
+.toast-message {
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.toast-dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0.1rem;
+  border-radius: 0.25rem;
+}
+
+.toast-dismiss:hover { color: var(--text-main); }
+.toast-dismiss:focus-visible { outline: 2px solid var(--live-amber); outline-offset: 2px; }

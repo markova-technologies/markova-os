@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import axios from 'axios'
 import { Mail, Lock, User, Building, Phone, CheckCircle, AlertCircle } from 'lucide-react'
+import { register as registerRequest, login as loginRequest, tokenStore } from '../api/client'
 import './Signup.css'
 
-const Signup = ({ onBackToLogin }) => {
+const Signup = ({ onBackToLogin, onLogin }) => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -44,32 +44,28 @@ const Signup = ({ onBackToLogin }) => {
     setError('')
 
     try {
-      // API call to System Dashboard
-      const response = await axios.post(`${import.meta.env.VITE_SYSTEM_DASHBOARD_URL}/api/clients/register`, {
+      await registerRequest({
         name: formData.name,
-        company: formData.company,
+        companyName: formData.company,
         email: formData.email,
-        phone: formData.phone,
         password: formData.password
       })
 
-      setSuccess(true)
-      setFormData({
-        name: '',
-        email: '',
-        password: '',
-        confirmPassword: '',
-        company: '',
-        phone: ''
-      })
+      // Registration returns the user; sign in immediately to start onboarding.
+      const { data } = await loginRequest(formData.email, formData.password)
+      tokenStore.set(data.token, data.refreshToken)
+      localStorage.setItem('user', JSON.stringify(data.user))
 
+      if (onLogin) {
+        onLogin(data.user)
+      } else {
+        setSuccess(true)
+      }
     } catch (err) {
       if (err.response?.status === 409) {
-        setError('Email already registered')
-      } else if (err.response?.data?.error) {
-        setError(err.response.data.error)
+        setError('That email is already registered. Try signing in instead.')
       } else {
-        setError(err.message || 'Registration failed. Please try again.')
+        setError('We couldn’t create your account just now. Try again in a moment.')
       }
     } finally {
       setIsLoading(false)
@@ -147,8 +143,8 @@ const Signup = ({ onBackToLogin }) => {
                 <CheckCircle size={24} />
               </div>
               <div>
-                <h3>Approval Required</h3>
-                <p>All accounts are reviewed for security</p>
+                <h3>Start in sandbox</h3>
+                <p>Build and test with a free sandbox key — no real calls, no charges</p>
               </div>
             </div>
             <div className="feature">
@@ -156,8 +152,8 @@ const Signup = ({ onBackToLogin }) => {
                 <Lock size={24} />
               </div>
               <div>
-                <h3>Secure Platform</h3>
-                <p>Enterprise-grade security for your data</p>
+                <h3>Your data stays yours</h3>
+                <p>Knowledge you upload trains only your agent, never shared</p>
               </div>
             </div>
             <div className="feature">
@@ -165,8 +161,8 @@ const Signup = ({ onBackToLogin }) => {
                 <User size={24} />
               </div>
               <div>
-                <h3>Easy Management</h3>
-                <p>Simple user administration dashboard</p>
+                <h3>Go live when you're ready</h3>
+                <p>Switch to a live key any time — never automatic</p>
               </div>
             </div>
           </motion.div>

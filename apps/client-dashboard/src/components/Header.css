@@ -46,7 +46,7 @@
   outline: none;
   border-color: var(--primary);
   background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 0 3px rgba(91, 100, 120, 0.1);
 }
 
 .search-input::placeholder {
@@ -236,7 +236,7 @@
 }
 
 .dropdown-item.logout:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: rgba(232, 92, 74, 0.1);
 }
 
 /* Notifications Panel */
@@ -382,7 +382,7 @@
 }
 
 .view-all-btn:hover {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(91, 100, 120, 0.1);
 }
 
 /* Settings Modal */
@@ -472,7 +472,7 @@
 .setting-select:focus {
   outline: none;
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  box-shadow: 0 0 0 3px rgba(232, 163, 61, 0.1);
 }
 
 .setting-item.checkbox-item input[type="checkbox"] {

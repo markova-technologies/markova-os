@@ -84,10 +84,9 @@ const OnboardingCenter = () => {
         await api.post('/tenant/providers', formData.providerKeys).catch(() => {});
       }
       if (step === 4 && formData.firstAgentName) {
-        await api.post('/builder/agents', {
+        await api.post('/agents', {
           name: formData.firstAgentName,
-          prompt: formData.firstAgentPrompt,
-          template: formData.template
+          prompt: formData.firstAgentPrompt || 'You are a helpful assistant.'
         }).catch(() => {});
       }
       
@@ -109,9 +108,8 @@ const OnboardingCenter = () => {
     setLoading(true)
     try {
       if (formData.phoneNumber) {
-        await api.post('/tenant/phone-numbers', {
-          number: formData.phoneNumber,
-          type: 'voice',
+        await api.post('/numbers', {
+          phone_number: formData.phoneNumber,
           provider: 'twilio'
         }).catch(() => {});
       }
