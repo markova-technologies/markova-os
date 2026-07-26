@@ -171,6 +171,30 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("ትዕዛዝዎ ተመዝግቧል", response)
         self.assertEqual(len(self.repo.list_orders()), 1)
+        self.assertIsNone(self.repo.get_draft(call_id))
+
+    async def test_repeated_calls_prioritize_noisy_confirmation(self):
+        confirmations = (
+            "ይሽ",
+            "እስህት አምስቅ እግናላችሁ",
+            "እሽ አምስት ገመሉ",
+        )
+        for index, confirmation in enumerate(confirmations):
+            call_id = f"repeat-order-{index}"
+            await self.agent.process_turn("ፓወር ባንክ ልግዛ", call_id)
+            await self.agent.process_turn("ሀና", call_id)
+            await self.agent.process_turn("አዲስ አበባ", call_id)
+
+            response = await self.agent.process_turn(confirmation, call_id)
+
+            self.assertIn("ትዕዛዝዎ ተመዝግቧል", response)
+            self.assertIsNone(self.repo.get_draft(call_id))
+
+        orders = self.repo.list_orders()
+        self.assertEqual(len(orders), 3)
+        self.assertTrue(
+            all(order["items"][0]["product_name_en"] == "20,000mAh Power Bank" for order in orders)
+        )
 
     async def test_rejection_clears_draft_without_order(self):
         call_id = "cancelled-draft"

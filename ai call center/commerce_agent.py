@@ -56,6 +56,8 @@ CONFIRM_WORDS = (
     "አረጋግጣለሁ",
     "አረጋግጥ",
     "እሽ",
+    "ይሽ",
+    "እስህ",
     "አሺ",
     "አሽ",
     "አቻ",
@@ -456,6 +458,29 @@ class CommerceAgent:
             await asyncio.to_thread(self.repository.clear_draft, call_id)
             return "እሺ፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ልርዳዎ?"
 
+        # The caller is answering a direct yes/no question. Confirmation must
+        # win over noisy product extraction; otherwise a distorted "እሺ" can
+        # accidentally add another catalog item instead of saving the order.
+        if data.get("awaiting_confirmation") and extracted.get("confirm"):
+            try:
+                order = await asyncio.to_thread(
+                    self.repository.create_order,
+                    call_id=call_id,
+                    confirmation_key=self._confirmation_key(call_id, data),
+                    customer_name=data["customer_name"],
+                    customer_phone=data["phone"],
+                    delivery_address=data["address"],
+                    items=data["items"],
+                    note=data.get("note"),
+                )
+            except StockError as exc:
+                return f"ይቅርታ፣ በቂ እቃ የለም። {exc}"
+            await asyncio.to_thread(self.repository.clear_draft, call_id)
+            return (
+                f"ትዕዛዝዎ ተመዝግቧል። ቁጥሩ {order['order_number']}፣ "
+                f"ክፍያው {order['total']:,} ብር በዕቃ መረከቢያ ጊዜ ነው።"
+            )
+
         product_id = extracted.get("product_id")
         if product_id:
             product = await asyncio.to_thread(self.repository.get_product, int(product_id))
@@ -507,25 +532,6 @@ class CommerceAgent:
         if not data.get("address"):
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
             return "ትዕዛዙ የሚደርስበትን ከተማ፣ ክፍለ ከተማና አካባቢ ይንገሩኝ።"
-
-        if data.get("awaiting_confirmation") and extracted.get("confirm"):
-            try:
-                order = await asyncio.to_thread(
-                    self.repository.create_order,
-                    call_id=call_id,
-                    confirmation_key=self._confirmation_key(call_id, data),
-                    customer_name=data["customer_name"],
-                    customer_phone=data["phone"],
-                    delivery_address=data["address"],
-                    items=data["items"],
-                    note=data.get("note"),
-                )
-            except StockError as exc:
-                return f"ይቅርታ፣ በቂ እቃ የለም። {exc}"
-            return (
-                f"ትዕዛዝዎ ተመዝግቧል። ቁጥሩ {order['order_number']}፣ "
-                f"ክፍያው {order['total']:,} ብር በዕቃ መረከቢያ ጊዜ ነው።"
-            )
 
         data["awaiting_confirmation"] = True
         await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
