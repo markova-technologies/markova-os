@@ -9,6 +9,7 @@ import logging
 import hashlib
 import sqlite3
 import json
+import re
 import asyncio
 import traceback
 import smtplib
@@ -1876,26 +1877,58 @@ def get_response(user_input: str, assistant: AmharicAIAssistant) -> Tuple[str, s
     
     return AMHARIC_RESPONSES["default"], "amharic"
 
+FAREWELL_WORDS = (
+    "bye",
+    "goodbye",
+    "ciao",
+    "chao",
+    "chaw",
+    "ቻው",
+    "ቻዎ",
+    "ደህና ሁን",
+    "ደህና ሁኚ",
+    "ደህና ሁኑ",
+    "እንግዲህ ልሂድ",
+)
+
+
+def is_farewell(text: str) -> bool:
+    normalized = re.sub(r"[^\w\u1200-\u137f]+", " ", text.casefold()).strip()
+    return any(word in normalized for word in FAREWELL_WORDS)
+
+
 async def get_response_async(
     user_input: str,
     assistant: AmharicAIAssistant,
     caller_phone: Optional[str] = None,
-) -> Tuple[str, str]:
+) -> Tuple[str, str, bool]:
     """Execute commerce tools first, then fall back to catalog conversation."""
+    if is_farewell(user_input):
+        if assistant.call_id:
+            await asyncio.to_thread(
+                commerce_repository.clear_draft,
+                assistant.call_id,
+            )
+        return (
+            "ስለደወሉልን እናመሰግናለን፣ መልካም ቀን፣ ደህና ይሁኑ።",
+            "amharic",
+            True,
+        )
+
     commerce_response = await commerce_agent.process_turn(
         user_input,
         assistant.call_id or "default-session",
         caller_phone,
     )
     if commerce_response:
-        return commerce_response, "amharic"
+        return commerce_response, "amharic", False
 
     response, lang = await asyncio.to_thread(get_response, user_input, assistant)
     if assistant.call_id:
         asyncio.create_task(
             assistant.db.update_session_language(assistant.call_id, lang)
         )
-    return response, lang
+    return response, lang, False
 
 # Add favicon route to prevent 404 errors
 @app.get("/favicon.ico")
@@ -2162,7 +2195,7 @@ async def handle_input(
 
     # Generate response and detect language
     llm_started = time.perf_counter()
-    response, lang = await get_response_async(user_input, assistant, caller)
+    response, lang, end_call = await get_response_async(user_input, assistant, caller)
     llm_elapsed = time.perf_counter() - llm_started
     logger.info(f"✅ Generated {lang} response: {response}")
 
@@ -2292,7 +2325,11 @@ async def stream_response(
 
         # === Step 2: Generate full response ===
         llm_started = time.perf_counter()
-        response_text, lang = await get_response_async(user_text, assistant, caller)
+        response_text, lang, end_call = await get_response_async(
+            user_text,
+            assistant,
+            caller,
+        )
         llm_elapsed = time.perf_counter() - llm_started
         logger.info(f"🤖 Stream response [{lang}]: {response_text}")
 
@@ -2351,6 +2388,7 @@ async def stream_response(
             "language": lang,
             "sentences": valid_sentences,
             "sentence_count": len(valid_sentences),
+            "end_call": end_call,
             "latency_total": round(elapsed, 2),
             "latency": latency_breakdown,
         })
@@ -2399,7 +2437,10 @@ async def sip_response(
             audio_path,
             media_type="audio/wav",
             filename=filename,
-            headers={"X-Pipeline-Latency": str(latency)},
+            headers={
+                "X-Pipeline-Latency": str(latency),
+                "X-End-Call": "true" if payload.get("end_call") else "false",
+            },
         )
     except Exception as exc:
         logger.error(f"❌ SIP direct response error: {exc}")

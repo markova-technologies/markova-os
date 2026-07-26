@@ -199,10 +199,12 @@ function stream_response(rec_file)
     local backend_started = now_ms()
     local url = backend_url .. "/sip-response"
     local out_file = temp_dir .. "\\ai_response_" .. uuid .. ".wav"
+    local header_file = temp_dir .. "\\ai_response_" .. uuid .. ".headers"
     pcall(function() os.remove(out_file) end)
+    pcall(function() os.remove(header_file) end)
     local cmd = string.format(
-        'curl.exe -s -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --max-time 30',
-        url, rec_file, uuid, caller_id, out_file
+        'curl.exe -s -D "%s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --max-time 30',
+        header_file, url, rec_file, uuid, caller_id, out_file
     )
     freeswitch.consoleLog("info", "[AI Agent] Calling /sip-response...\n")
     os.execute(cmd)
@@ -214,13 +216,26 @@ function stream_response(rec_file)
 
     if not is_valid_wav(out_file) then
         pcall(function() os.remove(out_file) end)
+        pcall(function() os.remove(header_file) end)
         freeswitch.consoleLog("warning", "[AI Agent] SIP response was not a valid WAV\n")
-        return false
+        return false, false
     end
+
+    local should_end_call = false
+    local headers = io.open(header_file, "r")
+    if headers then
+        local header_text = string.lower(headers:read("*a") or "")
+        headers:close()
+        should_end_call = string.find(
+            header_text,
+            "x%-end%-call:%s*true"
+        ) ~= nil
+    end
+    pcall(function() os.remove(header_file) end)
 
     freeswitch.consoleLog("info", "[AI Agent] Playing direct SIP response\n")
     play_with_barge_in(out_file)
-    return true
+    return true, should_end_call
 end
 
 -- === MAIN CONVERSATION FLOW ===
@@ -294,7 +309,7 @@ for turn = 1, max_turns do
         if size > 1000 then
             -- Stage 4: Stream response sentence-by-sentence with barge-in (Stage 3)
             local turn_backend_started = now_ms()
-            local ok = stream_response(rec_file)
+            local ok, should_end_call = stream_response(rec_file)
             freeswitch.consoleLog(
                 "info",
                 "[AI Agent] Turn " .. turn .. " backend/playback stage took " ..
@@ -309,6 +324,11 @@ for turn = 1, max_turns do
                     break
                 end
                 parse_and_play(response)
+            end
+            if should_end_call then
+                freeswitch.consoleLog("info", "[AI Agent] Farewell completed; ending call\n")
+                os.remove(rec_file)
+                break
             end
         else
             freeswitch.consoleLog("info", "[AI Agent] Recording too small, silence\n")

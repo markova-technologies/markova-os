@@ -54,6 +54,11 @@ CONFIRM_WORDS = (
     "እሺ",
     "ትክክል",
     "አረጋግጣለሁ",
+    "አረጋግጥ",
+    "እሽ",
+    "አሺ",
+    "አሽ",
+    "አቻ",
     "ይሁን",
     "ቀጥል",
 )
@@ -342,8 +347,11 @@ class CommerceAgent:
                 **{key: value for key, value in parsed.items() if value is not None},
             }
             rule_phone = fallback.get("phone")
-            model_phone = normalize_phone(str(parsed.get("phone") or ""))
-            merged["phone"] = rule_phone or model_phone or None
+            # A valid phone must be present in the utterance. Do not let the
+            # extraction model invent one and accidentally skip the phone step.
+            merged["phone"] = rule_phone or None
+            merged["confirm"] = fallback["confirm"] or bool(parsed.get("confirm"))
+            merged["reject"] = fallback["reject"] or bool(parsed.get("reject"))
             return merged
         except Exception as exc:
             logger.warning("Commerce slot extraction fell back to rules: %s", exc)

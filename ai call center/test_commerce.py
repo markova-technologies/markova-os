@@ -157,6 +157,18 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("በማን ስም", charger_response)
         self.assertIn("በማን ስም", watch_response)
 
+    async def test_noisy_scribe_confirmation_creates_order(self):
+        call_id = "noisy-confirmation"
+        await self.agent.process_turn("ስልክ ልግዛ", call_id)
+        await self.agent.process_turn("ሀና በቀለ", call_id)
+        await self.agent.process_turn("0911223344", call_id)
+        await self.agent.process_turn("አዲስ አበባ ቦሌ", call_id)
+
+        response = await self.agent.process_turn("አሽ አቻ", call_id)
+
+        self.assertIn("ትዕዛዝዎ ተመዝግቧል", response)
+        self.assertEqual(len(self.repo.list_orders()), 1)
+
     async def test_rejection_clears_draft_without_order(self):
         call_id = "cancelled-draft"
         await self.agent.process_turn("አንድ ፓወር ባንክ ልግዛ", call_id)
@@ -208,6 +220,12 @@ class CommerceApiTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(denied.status_code, 401)
         self.assertEqual(allowed.status_code, 200)
         self.assertGreaterEqual(len(allowed.json()["products"]), 10)
+
+    async def test_amharic_and_transliterated_farewells(self):
+        self.assertTrue(self.main.is_farewell("ቻው"))
+        self.assertTrue(self.main.is_farewell("chaw"))
+        self.assertTrue(self.main.is_farewell("ደህና ሁኑ"))
+        self.assertFalse(self.main.is_farewell("ስልክ ልግዛ"))
 
     async def test_voice_create_then_admin_status_update(self):
         product = self.repo.list_products(search="power bank")[0]
