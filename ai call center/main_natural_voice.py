@@ -19,11 +19,12 @@ from pathlib import Path
 from typing import Optional, List, Dict, Union, Any, Tuple
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks, Depends, Security, File, UploadFile
+from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks, Depends, Security, File, UploadFile, Header, Query
 from fastapi.responses import Response, JSONResponse
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 import uvicorn
 from groq import Groq
 from openai import OpenAI, AsyncOpenAI  # OpenAI for GPT-4o + Whisper-1 (primary)
@@ -32,6 +33,15 @@ from urllib.parse import quote
 from database import db as conversation_db
 from monitoring import metrics, alerts
 from dashboard_reporter import DashboardReporter
+from commerce import (
+    CommerceError,
+    ConflictError,
+    NotFoundError,
+    StockError,
+    ValidationError as CommerceValidationError,
+    commerce_repository,
+)
+from commerce_agent import commerce_agent
 import time
 import wave
 from fastapi.responses import FileResponse
@@ -723,6 +733,7 @@ async def startup_event():
     """Initialize system on startup"""
     init_database()
     await conversation_db.init_schema()
+    await asyncio.to_thread(commerce_repository.init_schema)
     logging.info("🚀 System initialized")
     
     # Start Dashboard Heartbeat
@@ -787,6 +798,8 @@ try:
 
 except Exception as e:
     logger.error(f"❌ Failed to initialize LLM client: {e}")
+
+commerce_agent.set_groq_client(groq_client)
 
 # Always keep a dedicated Groq client for Whisper STT fallback
 # (Gemini has no Whisper endpoint, so STT always uses Groq regardless of LLM_PROVIDER)
@@ -1234,32 +1247,29 @@ class AmharicAIAssistant:
         self.is_first_turn = True
         self.db = conversation_db
         
-        # GM Furniture system prompt — optimized for noisy phone audio + RAG
+        # Markova Shop system prompt — transactional actions are executed by
+        # commerce_agent; this prompt handles catalog questions and small talk.
         self.amharic_system_prompt = (
-            'You are "Almaz", a friendly Ethiopian customer service agent for GM Furniture.\n\n'
+            'You are "Almaz", a friendly Ethiopian e-commerce representative for Markova Shop.\n\n'
             "CRITICAL: Customer input comes from a NOISY PHONE LINE and may be garbled, unclear, or contain random characters.\n"
             "When input is unclear, DO NOT generate random or meaningless text.\n"
-            "Instead, PROACTIVELY offer useful information about our products.\n\n"
+            "Ask one short clarification question instead.\n\n"
             "LANGUAGE: Always respond in natural Amharic (Ge'ez script). Keep responses SHORT (1-2 sentences max).\n"
             "Start responses with: እሺ, አዎ, or እንግዲኛ.\n\n"
             "CRITICAL INSTRUCTION FOR ACCURACY:\n"
-            "- You MUST rely EXACTLY on the Knowledge Base / Product Catalog provided to you in the system message.\n"
-            "- NEVER INVENT OR GUESS A PRICE. If they ask for a price, you MUST quote the EXACT price from the catalog.\n"
-            "- DO NOT answer generally. If they ask about a chair (ወንበር), you MUST state the exact price of the chairs we have (e.g. \"የመመገቢያ ወንበር 3,500 ብር፣ የእንግዳ ወንበር 5,500 ብር፣ የስዊቬል ወንበር 15,000 ብር ነው\").\n"
-            "- ALWAYS state the specific facts: exact birr amounts, exact showroom locations, exact delivery days. Act like a precision lookup tool but speak with a warm human voice.\n\n"
-            "WHEN INPUT IS UNCLEAR OR GARBLED:\n"
-            "- Do your best to SOUND MATCH the garbage text to real products in the catalog (e.g. 'ቲን ሀቤ' -> 'dining table', 'ስፋ' -> 'sofa').\n"
-            "- If you can guess the product from the noise, IMMEDIATELY give the exact price from the catalog.\n"
-            "- If completely unclear: say 'እሺ፣ ስለ ፈርኒቸር ዋጋ፣ ሾሩም ቦታ፣ ወይም ዴሊቨሪ ሊጠይቁ ይችላሉ። ምን ልረዳዎ?'\n\n"
+            "- Rely exactly on the LIVE PRODUCT CATALOG provided in the system message.\n"
+            "- Never invent a product, price, stock amount, order number, or order status.\n"
+            "- Ordering and status actions are performed by trusted tools before you are called; never claim an action happened yourself.\n"
+            "- Customers may browse products, place cash-on-delivery orders, or check an existing order.\n\n"
             "NEVER generate random Amharic text. Every response must be meaningful and helpful.\n"
-            "Tone: warm, friendly Ethiopian salesperson on the phone."
+            "Tone: warm, concise Ethiopian online-shop representative on the phone."
         )
         
         # Language-specific prompts for multilingual support
         self.language_prompts = {
             "english": (
-                "You are Almaz, a friendly customer service representative for GM Furniture in Ethiopia. "
-                "GM Furniture makes modern office and home furniture — sofas, chairs, beds, desks. "
+                "You are Almaz, a friendly e-commerce representative for Markova Shop in Ethiopia. "
+                "Use only the live catalog and never invent products, prices, or order status. "
                 "Keep responses SHORT (max 2 sentences). Be warm and helpful. Speak in English."
             ),
             "spanish": (
@@ -1594,18 +1604,43 @@ class AmharicAIAssistant:
 
             self.conversation_history.append({"role": "user", "content": user_input})
             
-            # 5. RAG: Retrieve relevant knowledge base context
-            rag_context = retrieve_knowledge(user_input)
+            # 5. Retrieve the live commerce catalog. The old furniture JSON is
+            # no longer authoritative for this demo.
+            rag_context = ""
+            try:
+                matched_product = commerce_repository.find_product(user_input)
+                if matched_product:
+                    rag_context = (
+                        f"SKU: {matched_product['sku']}\n"
+                        f"Product: {matched_product['name_am']} / {matched_product['name_en']}\n"
+                        f"Price: {matched_product['price']:,} ETB\n"
+                        f"Stock: {matched_product['stock']}"
+                    )
+                elif any(
+                    token in user_input.casefold()
+                    for token in (
+                        "product", "catalog", "available", "sell",
+                        "ምርት", "እቃ", "ምን አላችሁ", "ምን ትሸጣላችሁ",
+                    )
+                ):
+                    catalog = commerce_repository.list_products()[:10]
+                    rag_context = "\n".join(
+                        f"- {product['name_am']}: {product['price']:,} ETB "
+                        f"(stock {product['stock']})"
+                        for product in catalog
+                    )
+            except Exception as catalog_error:
+                logger.warning(f"Live catalog lookup failed: {catalog_error}")
             if rag_context:
-                logger.info(f"📚 RAG: Found relevant knowledge for query")
+                logger.info("📚 Commerce catalog: Found relevant products")
                 # Inject knowledge as a system-level context message right before the LLM call
                 rag_message = {
                     "role": "system",
                     "content": (
-                        "KNOWLEDGE BASE DATA (use this to answer the customer's question accurately):\n"
+                        "LIVE PRODUCT CATALOG (use exactly; never invent missing facts):\n"
                         f"{rag_context}\n\n"
                         "INSTRUCTION: Use the above data to answer the customer. "
-                        "Give specific prices, locations, and details from the data. "
+                        "Give exact prices and current availability from the data. "
                         "Keep your response SHORT (1-2 sentences in Amharic). "
                         "Start with a conversational word like እሺ, አዎ, or እንግዲኛ."
                     )
@@ -1843,8 +1878,17 @@ def get_response(user_input: str, assistant: AmharicAIAssistant) -> Tuple[str, s
 async def get_response_async(
     user_input: str,
     assistant: AmharicAIAssistant,
+    caller_phone: Optional[str] = None,
 ) -> Tuple[str, str]:
-    """Run the synchronous provider SDK outside the FastAPI event loop."""
+    """Execute commerce tools first, then fall back to catalog conversation."""
+    commerce_response = await commerce_agent.process_turn(
+        user_input,
+        assistant.call_id or "default-session",
+        caller_phone,
+    )
+    if commerce_response:
+        return commerce_response, "amharic"
+
     response, lang = await asyncio.to_thread(get_response, user_input, assistant)
     if assistant.call_id:
         asyncio.create_task(
@@ -2114,7 +2158,7 @@ async def handle_input(
 
     # Generate response and detect language
     llm_started = time.perf_counter()
-    response, lang = await get_response_async(user_input, assistant)
+    response, lang = await get_response_async(user_input, assistant, caller)
     llm_elapsed = time.perf_counter() - llm_started
     logger.info(f"✅ Generated {lang} response: {response}")
 
@@ -2184,7 +2228,8 @@ def split_into_sentences(text: str) -> list[str]:
 async def stream_response(
     request: Request,
     audio_file: UploadFile = File(None),
-    call_id: str = Form(None)
+    call_id: str = Form(None),
+    caller_id: str = Form(None),
 ):
     """
     Stage 4: Streaming TTS endpoint.
@@ -2234,7 +2279,7 @@ async def stream_response(
         logger.info(f"🎤 Stream STT [{detected_lang}]: {user_text}")
 
         # Track in call session
-        caller = request.headers.get("X-Caller-ID", "SIP User")
+        caller = caller_id or request.headers.get("X-Caller-ID", "SIP User")
         call_rec = get_call_session(call_id, caller)
         call_rec.add_user_turn(user_text)
 
@@ -2243,7 +2288,7 @@ async def stream_response(
 
         # === Step 2: Generate full response ===
         llm_started = time.perf_counter()
-        response_text, lang = await get_response_async(user_text, assistant)
+        response_text, lang = await get_response_async(user_text, assistant, caller)
         llm_elapsed = time.perf_counter() - llm_started
         logger.info(f"🤖 Stream response [{lang}]: {response_text}")
 
@@ -2315,6 +2360,7 @@ async def sip_response(
     request: Request,
     audio_file: UploadFile = File(None),
     call_id: str = Form(None),
+    caller_id: str = Form(None),
 ):
     """
     Run the normal voice pipeline but return the first WAV directly.
@@ -2323,7 +2369,7 @@ async def sip_response(
     connection to download the generated audio. A direct media response keeps
     the existing web JSON API intact while removing that extra SIP round trip.
     """
-    response = await stream_response(request, audio_file, call_id)
+    response = await stream_response(request, audio_file, call_id, caller_id)
     if response.status_code != 200:
         return response
 
@@ -2354,6 +2400,224 @@ async def sip_response(
     except Exception as exc:
         logger.error(f"❌ SIP direct response error: {exc}")
         return JSONResponse({"error": str(exc)}, status_code=500)
+
+# --- Markova Shop Commerce API ---
+
+class ProductPayload(BaseModel):
+    sku: str
+    name_en: str
+    name_am: str
+    category: str
+    price: int = Field(ge=0)
+    stock: int = Field(ge=0)
+    aliases: List[str] = []
+    active: bool = True
+
+
+class ProductUpdatePayload(BaseModel):
+    sku: Optional[str] = None
+    name_en: Optional[str] = None
+    name_am: Optional[str] = None
+    category: Optional[str] = None
+    price: Optional[int] = Field(default=None, ge=0)
+    stock: Optional[int] = Field(default=None, ge=0)
+    aliases: Optional[List[str]] = None
+    active: Optional[bool] = None
+
+
+class OrderItemPayload(BaseModel):
+    product_id: int
+    quantity: int = Field(ge=1, le=10)
+
+
+class CreateOrderPayload(BaseModel):
+    call_id: str
+    confirmation_key: str
+    customer_name: str
+    customer_phone: str
+    delivery_address: str
+    items: List[OrderItemPayload]
+    note: Optional[str] = None
+    source: str = "voice"
+
+
+class OrderStatusPayload(BaseModel):
+    status: str
+    note: Optional[str] = None
+    changed_by: str = "base44-admin"
+
+
+COMMERCE_ADMIN_KEY = os.getenv("MARKOVA_ADMIN_API_KEY")
+COMMERCE_VOICE_KEY = os.getenv("MARKOVA_VOICE_API_KEY")
+
+
+def commerce_payload_dict(payload: BaseModel, **kwargs) -> Dict[str, Any]:
+    if hasattr(payload, "model_dump"):
+        return payload.model_dump(**kwargs)
+    return payload.dict(**kwargs)
+
+
+async def require_commerce_admin(
+    x_admin_key: Optional[str] = Header(None, alias="X-Admin-Key"),
+):
+    import hmac
+
+    if not COMMERCE_ADMIN_KEY:
+        raise HTTPException(status_code=503, detail="Commerce admin API is not configured")
+    if x_admin_key and hmac.compare_digest(x_admin_key, COMMERCE_ADMIN_KEY):
+        return x_admin_key
+    raise HTTPException(status_code=401, detail="Invalid admin credentials")
+
+
+async def require_commerce_voice(
+    x_voice_key: Optional[str] = Header(None, alias="X-Voice-Key"),
+):
+    import hmac
+
+    if not COMMERCE_VOICE_KEY:
+        raise HTTPException(status_code=503, detail="Commerce voice API is not configured")
+    if x_voice_key and hmac.compare_digest(x_voice_key, COMMERCE_VOICE_KEY):
+        return x_voice_key
+    raise HTTPException(status_code=401, detail="Invalid voice credentials")
+
+
+def commerce_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, NotFoundError):
+        return HTTPException(status_code=404, detail=str(exc))
+    if isinstance(exc, (CommerceValidationError, StockError)):
+        return HTTPException(status_code=422, detail=str(exc))
+    if isinstance(exc, ConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
+    logger.exception("Commerce API failure", exc_info=exc)
+    return HTTPException(status_code=500, detail="Commerce operation failed")
+
+
+@app.get("/api/commerce/products", dependencies=[Depends(require_commerce_admin)])
+async def commerce_list_products(
+    search: Optional[str] = Query(None),
+    include_inactive: bool = Query(False),
+):
+    return {
+        "products": await asyncio.to_thread(
+            commerce_repository.list_products, search, not include_inactive
+        )
+    }
+
+
+@app.post("/api/commerce/products", dependencies=[Depends(require_commerce_admin)])
+async def commerce_create_product(payload: ProductPayload):
+    try:
+        product = await asyncio.to_thread(
+            commerce_repository.upsert_product, commerce_payload_dict(payload)
+        )
+        return JSONResponse(product, status_code=201)
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
+
+
+@app.put(
+    "/api/commerce/products/{product_id}",
+    dependencies=[Depends(require_commerce_admin)],
+)
+async def commerce_update_product(product_id: int, payload: ProductUpdatePayload):
+    try:
+        return await asyncio.to_thread(
+            commerce_repository.upsert_product,
+            commerce_payload_dict(payload, exclude_none=True),
+            product_id,
+        )
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
+
+
+@app.get("/api/commerce/orders", dependencies=[Depends(require_commerce_admin)])
+async def commerce_list_orders(
+    status: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    try:
+        orders = await asyncio.to_thread(
+            commerce_repository.list_orders, status, search, limit
+        )
+        return {"orders": orders}
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
+
+
+@app.get(
+    "/api/commerce/orders/{order_number}",
+    dependencies=[Depends(require_commerce_admin)],
+)
+async def commerce_get_order(order_number: str):
+    try:
+        return await asyncio.to_thread(commerce_repository.get_order, order_number)
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
+
+
+@app.patch(
+    "/api/commerce/orders/{order_number}/status",
+    dependencies=[Depends(require_commerce_admin)],
+)
+async def commerce_update_status(order_number: str, payload: OrderStatusPayload):
+    try:
+        return await asyncio.to_thread(
+            commerce_repository.update_order_status,
+            order_number,
+            payload.status,
+            note=payload.note,
+            changed_by=payload.changed_by,
+        )
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
+
+
+@app.get("/api/commerce/metrics", dependencies=[Depends(require_commerce_admin)])
+async def commerce_metrics():
+    return await asyncio.to_thread(commerce_repository.metrics)
+
+
+@app.post("/api/commerce/voice/orders", dependencies=[Depends(require_commerce_voice)])
+async def commerce_voice_create_order(payload: CreateOrderPayload):
+    try:
+        order = await asyncio.to_thread(
+            commerce_repository.create_order,
+            call_id=payload.call_id,
+            confirmation_key=payload.confirmation_key,
+            customer_name=payload.customer_name,
+            customer_phone=payload.customer_phone,
+            delivery_address=payload.delivery_address,
+            items=[commerce_payload_dict(item) for item in payload.items],
+            note=payload.note,
+            source=payload.source,
+        )
+        return JSONResponse(order, status_code=201)
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
+
+
+@app.get(
+    "/api/commerce/voice/orders/{order_number}/status",
+    dependencies=[Depends(require_commerce_voice)],
+)
+async def commerce_voice_order_status(
+    order_number: str,
+    phone: str = Query(...),
+):
+    try:
+        order = await asyncio.to_thread(
+            commerce_repository.get_order, order_number, phone
+        )
+        return {
+            "order_number": order["order_number"],
+            "status": order["status"],
+            "status_am": order["status_am"],
+            "total": order["total"],
+            "updated_at": order["updated_at"],
+        }
+    except CommerceError as exc:
+        raise commerce_http_error(exc)
 
 # --- Dashboard API Endpoints ---
 

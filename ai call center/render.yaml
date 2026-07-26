@@ -20,4 +20,8 @@ services:
         value: system.db
       - key: AUDIO_DIR
         value: ./audio
+      - key: MARKOVA_ADMIN_API_KEY
+        sync: false
+      - key: MARKOVA_VOICE_API_KEY
+        sync: false
       # You will add your API keys (GROQ, ELEVENLABS, ADDIS_AI) in the Render Dashboard

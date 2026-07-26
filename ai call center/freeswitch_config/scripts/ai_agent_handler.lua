@@ -201,8 +201,8 @@ function stream_response(rec_file)
     local out_file = temp_dir .. "\\ai_response_" .. uuid .. ".wav"
     pcall(function() os.remove(out_file) end)
     local cmd = string.format(
-        'curl.exe -s -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -o "%s" --max-time 30',
-        url, rec_file, uuid, out_file
+        'curl.exe -s -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --max-time 30',
+        url, rec_file, uuid, caller_id, out_file
     )
     freeswitch.consoleLog("info", "[AI Agent] Calling /sip-response...\n")
     os.execute(cmd)
