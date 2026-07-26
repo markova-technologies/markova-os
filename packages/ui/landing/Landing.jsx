@@ -31,14 +31,15 @@ const scrollToId = (id) => (event) => {
 
 /**
  * Shared Markova marketing landing.
- * `/` gate for client + admin — CTAs and docs URL are wired by each app.
+ * `/` gate for client + admin — CTAs wired by each app.
+ * Docs + Pricing are in-app public routes (no login), same pattern.
  */
 const Landing = ({
   primaryTo = '/login',
   primaryLabel = 'Sign in',
   secondaryTo,
   secondaryLabel,
-  docsHref = '',
+  docsTo,
   pricingTo,
   brandTo = '/',
 }) => (
@@ -56,10 +57,10 @@ const Landing = ({
             Pricing
           </Link>
         ) : null}
-        {docsHref ? (
-          <a className="mk-landing-nav-link" href={docsHref} target="_blank" rel="noreferrer">
+        {docsTo ? (
+          <Link className="mk-landing-nav-link" to={docsTo}>
             Docs
-          </a>
+          </Link>
         ) : null}
         {secondaryTo && secondaryLabel ? (
           <Link className="mk-landing-nav-link" to={secondaryTo}>
@@ -88,10 +89,10 @@ const Landing = ({
             <Link className="mk-landing-btn mk-landing-btn-secondary" to={secondaryTo}>
               {secondaryLabel}
             </Link>
-          ) : docsHref ? (
-            <a className="mk-landing-btn mk-landing-btn-secondary" href={docsHref} target="_blank" rel="noreferrer">
+          ) : docsTo ? (
+            <Link className="mk-landing-btn mk-landing-btn-secondary" to={docsTo}>
               Read the docs
-            </a>
+            </Link>
           ) : pricingTo ? (
             <Link className="mk-landing-btn mk-landing-btn-secondary" to={pricingTo}>
               See pricing
@@ -142,10 +143,10 @@ const Landing = ({
           graduate to live when you are ready.
         </p>
         <div className="mk-landing-actions">
-          {docsHref ? (
-            <a className="mk-landing-btn mk-landing-btn-secondary" href={docsHref} target="_blank" rel="noreferrer">
-              Open API docs
-            </a>
+          {docsTo ? (
+            <Link className="mk-landing-btn mk-landing-btn-secondary" to={docsTo}>
+              Open docs
+            </Link>
           ) : pricingTo ? (
             <Link className="mk-landing-btn mk-landing-btn-secondary" to={pricingTo}>
               See pricing
@@ -160,11 +161,7 @@ const Landing = ({
       <footer className="mk-landing-footer">
         <p className="mk-landing-footer-brand">MARKOVA</p>
         <div className="mk-landing-footer-links">
-          {docsHref ? (
-            <a href={docsHref} target="_blank" rel="noreferrer">
-              Docs
-            </a>
-          ) : null}
+          {docsTo ? <Link to={docsTo}>Docs</Link> : null}
           {pricingTo ? <Link to={pricingTo}>Pricing</Link> : null}
           <Link to={primaryTo}>{primaryLabel}</Link>
         </div>

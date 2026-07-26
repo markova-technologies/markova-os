@@ -11,7 +11,7 @@ import SupportTickets from './pages/SupportTickets';
 import GlobalAuditLogs from './pages/GlobalAuditLogs';
 import Settings from './pages/Settings';
 import Landing from '../../../packages/ui/landing/Landing';
-import { DOCS_URL, ROUTES } from './config/site';
+import { ROUTES } from './config/site';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { SocketProvider } from './contexts/SocketContext';
 import { DataProvider } from './contexts/DataContext';
@@ -62,7 +62,6 @@ function App() {
                     <Landing
                       primaryTo={ROUTES.dashboard}
                       primaryLabel="Enter console"
-                      docsHref={DOCS_URL}
                     />
                   }
                 />
