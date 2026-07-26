@@ -23,6 +23,12 @@ const STEPS = [
 
 const LANGUAGES = ['Amharic', 'Afaan Oromo', 'Tigrinya', 'English']
 
+const scrollToId = (id) => (event) => {
+  event.preventDefault()
+  const el = document.getElementById(id)
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
 /**
  * Shared Markova marketing landing.
  * `/` gate for client + admin — CTAs and docs URL are wired by each app.
@@ -32,7 +38,7 @@ const Landing = ({
   primaryLabel = 'Sign in',
   secondaryTo,
   secondaryLabel,
-  docsHref = '/docs',
+  docsHref = '',
   pricingTo,
   brandTo = '/',
 }) => (
@@ -42,7 +48,7 @@ const Landing = ({
         Markova
       </Link>
       <div className="mk-landing-nav-links">
-        <a className="mk-landing-nav-link" href="#how">
+        <a className="mk-landing-nav-link" href="#how" onClick={scrollToId('how')}>
           How it works
         </a>
         {pricingTo ? (
@@ -50,9 +56,11 @@ const Landing = ({
             Pricing
           </Link>
         ) : null}
-        <a className="mk-landing-nav-link" href={docsHref} target="_blank" rel="noreferrer">
-          Docs
-        </a>
+        {docsHref ? (
+          <a className="mk-landing-nav-link" href={docsHref} target="_blank" rel="noreferrer">
+            Docs
+          </a>
+        ) : null}
         {secondaryTo && secondaryLabel ? (
           <Link className="mk-landing-nav-link" to={secondaryTo}>
             {secondaryLabel}
@@ -80,11 +88,15 @@ const Landing = ({
             <Link className="mk-landing-btn mk-landing-btn-secondary" to={secondaryTo}>
               {secondaryLabel}
             </Link>
-          ) : (
+          ) : docsHref ? (
             <a className="mk-landing-btn mk-landing-btn-secondary" href={docsHref} target="_blank" rel="noreferrer">
               Read the docs
             </a>
-          )}
+          ) : pricingTo ? (
+            <Link className="mk-landing-btn mk-landing-btn-secondary" to={pricingTo}>
+              See pricing
+            </Link>
+          ) : null}
         </div>
         <div className="mk-landing-wave">
           <Waveform size="callscreen" env="test" ariaLabel="" />
@@ -130,9 +142,15 @@ const Landing = ({
           graduate to live when you are ready.
         </p>
         <div className="mk-landing-actions">
-          <a className="mk-landing-btn mk-landing-btn-secondary" href={docsHref} target="_blank" rel="noreferrer">
-            Open API docs
-          </a>
+          {docsHref ? (
+            <a className="mk-landing-btn mk-landing-btn-secondary" href={docsHref} target="_blank" rel="noreferrer">
+              Open API docs
+            </a>
+          ) : pricingTo ? (
+            <Link className="mk-landing-btn mk-landing-btn-secondary" to={pricingTo}>
+              See pricing
+            </Link>
+          ) : null}
           <Link className="mk-landing-btn mk-landing-btn-primary" to={primaryTo}>
             {primaryLabel}
           </Link>
@@ -142,9 +160,11 @@ const Landing = ({
       <footer className="mk-landing-footer">
         <p className="mk-landing-footer-brand">MARKOVA</p>
         <div className="mk-landing-footer-links">
-          <a href={docsHref} target="_blank" rel="noreferrer">
-            Docs
-          </a>
+          {docsHref ? (
+            <a href={docsHref} target="_blank" rel="noreferrer">
+              Docs
+            </a>
+          ) : null}
           {pricingTo ? <Link to={pricingTo}>Pricing</Link> : null}
           <Link to={primaryTo}>{primaryLabel}</Link>
         </div>
