@@ -1,0 +1,824 @@
+openapi: 3.0.3
+info:
+  title: Markova API
+  version: 1.0.0
+  description: |
+    API-first voice and workflow agent platform (Domain 2).
+    Sandbox keys (`mk_test_*`) and live keys (`mk_live_*`) share the same shapes;
+    side effects differ (no real telephony spend in sandbox).
+servers:
+  - url: http://localhost:8000
+    description: Local API gateway
+tags:
+  - name: Auth
+  - name: Keys
+  - name: Agents
+  - name: Calls
+  - name: Numbers
+  - name: Knowledge
+  - name: Usage
+  - name: Billing
+  - name: Tools
+  - name: Connectors
+security:
+  - bearerAuth: []
+  - apiKeyAuth: []
+
+paths:
+  /v1/auth/register:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Register company and admin user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, companyName, email, password]
+              properties:
+                name: { type: string }
+                companyName: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  user: { $ref: '#/components/schemas/User' }
+
+  /v1/auth/login:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Login — returns access + refresh JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  token: { type: string }
+                  refreshToken: { type: string }
+                  user: { $ref: '#/components/schemas/User' }
+
+  /v1/auth/refresh:
+    post:
+      tags: [Auth]
+      security: []
+      summary: Refresh access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  token: { type: string }
+
+  /v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke session
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+
+  /v1/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current authenticated user
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+
+  /v1/keys:
+    get:
+      tags: [Keys]
+      summary: List API keys (prefix only)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ApiKey' }
+    post:
+      tags: [Keys]
+      summary: Create API key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                environment:
+                  type: string
+                  enum: [test, live]
+                  default: test
+      responses:
+        '201':
+          description: Created — full key returned once
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiKeyCreated' }
+
+  /v1/keys/{id}:
+    delete:
+      tags: [Keys]
+      summary: Delete API key
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deleted
+
+  /v1/agents:
+    get:
+      tags: [Agents]
+      summary: List agents
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Agent' }
+    post:
+      tags: [Agents]
+      summary: Create agent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentCreate' }
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+
+  /v1/agents/{id}:
+    get:
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Agent' }
+    put:
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AgentCreate' }
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deleted
+
+  /v1/agents/{id}/versions:
+    get:
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Version list
+
+  /v1/agents/{id}/versions/{version_id}/rollback:
+    post:
+      tags: [Agents]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: version_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Rolled back
+
+  /v1/agents/{id}/test-call:
+    post:
+      tags: [Agents]
+      summary: Sandbox-only test call (no billing)
+      description: Requires a `mk_test_` key. Rejected for live keys.
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to_number]
+              properties:
+                to_number: { type: string, example: '+251911000000' }
+      responses:
+        '201':
+          description: Sandbox call placed
+        '403':
+          description: Live key not allowed
+
+  /v1/calls:
+    get:
+      tags: [Calls]
+      summary: List calls
+      parameters:
+        - name: agent_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Call' }
+    post:
+      tags: [Calls]
+      summary: Place outbound call (sandbox or live)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [agent_id, to_number]
+              properties:
+                agent_id: { type: string, format: uuid }
+                to_number: { type: string }
+                sandbox: { type: boolean }
+      responses:
+        '200':
+          description: Call created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Call' }
+
+  /v1/calls/{id}:
+    get:
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Call' }
+
+  /v1/calls/{id}/transcript:
+    get:
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Transcript lines
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/TranscriptLine' }
+
+  /v1/calls/{id}/recording:
+    get:
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Recording metadata
+
+  /v1/calls/{id}/transfer:
+    post:
+      tags: [Calls]
+      summary: Transfer to human/queue with full conversation context
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                to: { type: string }
+                queue: { type: string }
+                target: { type: string }
+                notes: { type: string }
+                call_sid: { type: string }
+      responses:
+        '200':
+          description: Transfer recorded; response includes context.transcript + summary
+
+  /v1/calls/{id}/transfer-context:
+    get:
+      tags: [Calls]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Stored handoff package
+
+  /v1/numbers/search:
+    post:
+      tags: [Numbers]
+      summary: Search available numbers
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                country: { type: string, example: ET }
+                area_code: { type: string }
+      responses:
+        '200':
+          description: Search results
+
+  /v1/numbers:
+    get:
+      tags: [Numbers]
+      responses:
+        '200':
+          description: List provisioned numbers
+    post:
+      tags: [Numbers]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone_number]
+              properties:
+                phone_number: { type: string }
+                agent_id: { type: string, format: uuid }
+                provider: { type: string }
+                settings: { type: object }
+      responses:
+        '201':
+          description: Provisioned
+
+  /v1/numbers/{id}:
+    put:
+      tags: [Numbers]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                agent_id: { type: string, format: uuid }
+                status: { type: string }
+                settings:
+                  type: object
+                  description: recording_enabled, ivr_enabled, ivr_menu, voicemail_email, transfer_number
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Numbers]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deleted
+
+  /v1/numbers/{id}/routing-rules:
+    get:
+      tags: [Numbers]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: List routing rule sets for the number
+    post:
+      tags: [Numbers]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rules:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      digit: { type: string, example: "1" }
+                      action: { type: string, example: agent }
+                      label: { type: string }
+                      to: { type: string, description: Transfer target for action=transfer }
+      responses:
+        '201':
+          description: Created
+
+  /v1/numbers/{id}/routing-rules/{ruleId}:
+    put:
+      tags: [Numbers]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: ruleId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Numbers]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+        - name: ruleId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Deleted
+
+  /v1/workflow-settings:
+    get:
+      tags: [Tools]
+      summary: Plan + confidence thresholds for workflow execution
+      responses:
+        '200':
+          description: OK
+    put:
+      tags: [Tools]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                confidence_thresholds:
+                  type: object
+                  additionalProperties: { type: number }
+      responses:
+        '200':
+          description: Updated
+
+  /v1/knowledge/sources:
+    post:
+      tags: [Knowledge]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name: { type: string }
+                type: { type: string, example: upload }
+                config: { type: object }
+      responses:
+        '201':
+          description: Created
+    get:
+      tags: [Knowledge]
+      responses:
+        '200':
+          description: List sources
+
+  /v1/knowledge/sources/{id}/documents:
+    post:
+      tags: [Knowledge]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: Uploaded
+    get:
+      tags: [Knowledge]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: List documents
+
+  /v1/knowledge/search:
+    post:
+      tags: [Knowledge]
+      summary: Tenant-scoped knowledge search
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string }
+                limit: { type: integer, default: 10 }
+      responses:
+        '200':
+          description: Results (hard tenant isolation)
+
+  /v1/usage:
+    get:
+      tags: [Usage]
+      summary: Current period usage
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usage' }
+
+  /v1/usage/history:
+    get:
+      tags: [Usage]
+      responses:
+        '200':
+          description: Historical usage rows
+
+  /v1/billing/invoices:
+    get:
+      tags: [Billing]
+      responses:
+        '200':
+          description: Invoice / line items
+
+  /v1/billing/webhooks/{provider}:
+    post:
+      tags: [Billing]
+      security: []
+      summary: Billing provider webhook (signature required)
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Accepted
+        '401':
+          description: Invalid signature
+
+  /v1/tools:
+    get:
+      tags: [Tools]
+      responses:
+        '200':
+          description: List tools
+    post:
+      tags: [Tools]
+      responses:
+        '201':
+          description: Created
+
+  /v1/tools/{id}:
+    put:
+      tags: [Tools]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Updated
+    delete:
+      tags: [Tools]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Deleted
+
+  /v1/tools/{id}/execute:
+    post:
+      tags: [Tools]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200':
+          description: Execution result
+
+  /v1/connectors:
+    get:
+      tags: [Connectors]
+      responses:
+        '200':
+          description: List connectors
+    post:
+      tags: [Connectors]
+      responses:
+        '201':
+          description: Created
+
+  /v1/connectors/{id}/upload:
+    post:
+      tags: [Connectors]
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Upload processed
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Tenant API key (`mk_test_*` or `mk_live_*`)
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        company_id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string }
+        role: { type: string }
+        status: { type: string }
+
+    Me:
+      allOf:
+        - $ref: '#/components/schemas/User'
+        - type: object
+          properties:
+            company_name: { type: string }
+            plan: { type: string }
+            permissions:
+              type: array
+              items: { type: string }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        key_prefix: { type: string }
+        environment: { type: string, enum: [test, live] }
+        status: { type: string }
+        created_at: { type: string, format: date-time }
+
+    ApiKeyCreated:
+      allOf:
+        - $ref: '#/components/schemas/ApiKey'
+        - type: object
+          properties:
+            api_key:
+              type: string
+              description: Full secret — shown only at creation
+
+    AgentCreate:
+      type: object
+      required: [name, prompt]
+      properties:
+        name: { type: string }
+        prompt: { type: string }
+        language: { type: string, default: am }
+        voice_config:
+          type: object
+          properties:
+            provider: { type: string }
+            voice_id: { type: string }
+        model_config:
+          type: object
+          properties:
+            provider: { type: string }
+            model_id: { type: string }
+
+    Agent:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prompt: { type: string }
+        language: { type: string }
+        voice_provider: { type: string }
+        voice_id: { type: string }
+        model_provider: { type: string }
+        model_id: { type: string }
+        voice_config: { type: object }
+        model_config: { type: object }
+        created_at: { type: string, format: date-time }
+
+    Call:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        agent_id: { type: string, format: uuid }
+        caller_number: { type: string }
+        status: { type: string }
+        start_time: { type: string, format: date-time }
+        end_time: { type: string, format: date-time, nullable: true }
+        turn_count: { type: integer }
+        recording_url: { type: string, nullable: true }
+        agent_name: { type: string }
+        sandbox: { type: boolean }
+        billed: { type: boolean }
+
+    TranscriptLine:
+      type: object
+      properties:
+        role: { type: string }
+        content: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Usage:
+      type: object
+      properties:
+        company_id: { type: string, format: uuid }
+        call_minutes: { type: number }
+        stt_seconds: { type: number }
+        tts_characters: { type: number }
+        llm_tokens: { type: number }

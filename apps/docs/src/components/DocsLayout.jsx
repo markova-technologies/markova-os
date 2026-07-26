@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { Link, NavLink, useLocation } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import { ExternalLink, Menu, X } from 'lucide-react'
 import Waveform from '../../../../packages/ui/waveform/Waveform'
+import { DocsLink, DocsNavLink, useDocsBase } from '../docsBase'
 
 const NAV = [
   {
@@ -39,11 +40,14 @@ const NAV = [
   },
 ]
 
-const DASHBOARD_URL = import.meta.env.VITE_DASHBOARD_URL || 'http://localhost:3001'
-
 const DocsLayout = ({ children, wide = false }) => {
   const [navOpen, setNavOpen] = useState(false)
+  const base = useDocsBase()
   const location = useLocation()
+  // When docs are embedded under the client app, stay on the same origin.
+  const dashboardHref = base
+    ? '/'
+    : import.meta.env.VITE_DASHBOARD_URL || 'http://localhost:3001'
 
   useEffect(() => {
     setNavOpen(false)
@@ -62,21 +66,20 @@ const DocsLayout = ({ children, wide = false }) => {
           {navOpen ? <X size={18} /> : <Menu size={18} />}
         </button>
 
-        <Link to="/" className="docs-brand">
-          {/* Nav accent only — the waveform does live work in the dashboard, not here. */}
+        <DocsLink to="/" className="docs-brand">
           <span className="docs-brand-mark">
             <Waveform size="strip" env="test" ariaLabel="" />
           </span>
           MARKOVA
           <span className="docs-brand-tag">docs</span>
-        </Link>
+        </DocsLink>
 
         <nav className="docs-topbar-links">
-          <NavLink to="/quickstart">Quickstart</NavLink>
-          <NavLink to="/api">API</NavLink>
-          <NavLink to="/pricing">Pricing</NavLink>
-          <a className="docs-cta" href={DASHBOARD_URL}>
-            Open dashboard <ExternalLink size={13} />
+          <DocsNavLink to="/quickstart">Quickstart</DocsNavLink>
+          <DocsNavLink to="/api">API</DocsNavLink>
+          <DocsNavLink to="/pricing">Pricing</DocsNavLink>
+          <a className="docs-cta" href={dashboardHref}>
+            {base ? 'Back to Markova' : 'Open dashboard'} <ExternalLink size={13} />
           </a>
         </nav>
       </header>
@@ -87,14 +90,14 @@ const DocsLayout = ({ children, wide = false }) => {
             <div className="docs-nav-group" key={group.title}>
               <p className="docs-nav-title">{group.title}</p>
               {group.items.map((item) => (
-                <NavLink
+                <DocsNavLink
                   key={item.to}
                   to={item.to}
                   end={item.end}
                   className={({ isActive }) => (isActive ? 'is-active' : '')}
                 >
                   {item.label}
-                </NavLink>
+                </DocsNavLink>
               ))}
             </div>
           ))}

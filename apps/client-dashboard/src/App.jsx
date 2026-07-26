@@ -18,10 +18,11 @@ import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Pricing from './pages/Pricing'
-import Docs from './pages/Docs'
+import DocsSite from './pages/DocsSite'
 import Landing from '../../../packages/ui/landing/Landing'
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore } from './api/client'
 import { ROUTES } from './config/site'
+
 
 import { ToastProvider } from './contexts/ToastContext'
 import { EnvironmentProvider } from './contexts/EnvironmentContext'
@@ -128,7 +129,7 @@ function App() {
 
         {/* Public product pages — before authenticated /app dashboard */}
         <Route path={ROUTES.pricing} element={<Pricing />} />
-        <Route path={ROUTES.docs} element={<Docs />} />
+        <Route path={`${ROUTES.docs}/*`} element={<DocsSite />} />
 
         {/* Public auth */}
         <Route

@@ -2,6 +2,7 @@ import React from 'react'
 import CodeBlock from '../../components/CodeBlock'
 import Callout from '../../components/Callout'
 import NextLinks from '../../components/NextLinks'
+import { DocsLink } from '../../docsBase'
 
 const Calls = () => (
   <>
@@ -65,7 +66,7 @@ const Calls = () => (
     <p>
       The transcript is written turn by turn as the call happens, so you can read it while the call is
       still open. Recording is a per-number setting rather than a per-call flag — see{' '}
-      <a href="/concepts/numbers">Numbers</a>.
+      <DocsLink to="/concepts/numbers">Numbers</DocsLink>.
     </p>
 
     <CodeBlock
