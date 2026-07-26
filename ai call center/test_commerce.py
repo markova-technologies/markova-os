@@ -9,8 +9,26 @@ from commerce import (
     ConflictError,
     NotFoundError,
     StockError,
+    normalize_phone,
 )
-from commerce_agent import CommerceAgent
+from commerce_agent import CommerceAgent, _phone
+
+
+class EthiopianPhoneNormalizationTests(unittest.TestCase):
+    def test_accepts_spoken_amharic_digits(self):
+        self.assertEqual(
+            _phone("ዜሮ ዘጠኝ አንድ አንድ ሁለት ሁለት ሶስት ሶስት አራት አራት"),
+            "+251911223344",
+        )
+
+    def test_accepts_spoken_amharic_two_digit_groups(self):
+        self.assertEqual(
+            _phone("ዜሮ ዘጠኝ አስራ አንድ ሀያ ሁለት ሰላሳ ሶስት አርባ አራት"),
+            "+251911223344",
+        )
+
+    def test_rejects_incomplete_phone(self):
+        self.assertEqual(normalize_phone("09112233"), "")
 
 
 class CommerceRepositoryTests(unittest.TestCase):
@@ -120,6 +138,24 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertIn(order["order_number"], status_response)
         self.assertIn("ማረጋገጫ በመጠበቅ ላይ", status_response)
+
+    async def test_noisy_scribe_product_names_start_order_flow(self):
+        phone_response = await self.agent.process_turn(
+            "ስልከ መዘሰልኝ አብ",
+            "noisy-phone-order",
+        )
+        charger_response = await self.agent.process_turn(
+            "ቻንገር መገዛት ፊል ቂና",
+            "noisy-charger-order",
+        )
+        watch_response = await self.agent.process_turn(
+            "ሪልሜ ስማርትዋቅ",
+            "noisy-watch-order",
+        )
+
+        self.assertIn("በማን ስም", phone_response)
+        self.assertIn("በማን ስም", charger_response)
+        self.assertIn("በማን ስም", watch_response)
 
     async def test_rejection_clears_draft_without_order(self):
         call_id = "cancelled-draft"

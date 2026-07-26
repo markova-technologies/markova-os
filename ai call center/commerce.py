@@ -9,6 +9,7 @@ import secrets
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional
 
@@ -162,13 +163,13 @@ def normalize_phone(phone: Optional[str]) -> str:
     if not phone:
         return ""
     digits = re.sub(r"\D", "", phone)
-    if digits.startswith("251") and len(digits) == 12:
+    if digits.startswith("2519") and len(digits) == 12:
         return f"+{digits}"
     if digits.startswith("09") and len(digits) == 10:
         return f"+251{digits[1:]}"
     if digits.startswith("9") and len(digits) == 9:
         return f"+251{digits}"
-    return digits
+    return ""
 
 
 class CommerceRepository:
@@ -328,9 +329,23 @@ class CommerceRepository:
 
     def find_product(self, text: str) -> Optional[Dict[str, Any]]:
         normalized = text.casefold().strip()
+        # Scribe is accurate at sentence level but commonly changes one Amharic
+        # syllable in short product names over 8 kHz telephone audio.
+        observed_voice_variants = {
+            "ስልከ": "ስልክ",
+            "ቻንገር": "ቻርጀር",
+            "ቻንጀር": "ቻርጀር",
+            "ስማርትዋች": "ስማርት ሰዓት",
+            "ስማርትዋቅ": "ስማርት ሰዓት",
+            "ስማርት ዋች": "ስማርት ሰዓት",
+        }
+        for heard, canonical in observed_voice_variants.items():
+            normalized = normalized.replace(heard, canonical)
+
         best: Optional[Dict[str, Any]] = None
         best_length = 0
-        for product in self.list_products():
+        products = self.list_products()
+        for product in products:
             candidates = [
                 product["sku"],
                 product["name_en"],
@@ -342,6 +357,34 @@ class CommerceRepository:
                 if candidate_normalized in normalized and len(candidate_normalized) > best_length:
                     best = product
                     best_length = len(candidate_normalized)
+        if best:
+            return best
+
+        words = re.findall(r"[\w\u1200-\u137f]+", normalized)
+        windows = {
+            " ".join(words[start:end])
+            for start in range(len(words))
+            for end in range(start + 1, min(len(words), start + 4) + 1)
+        }
+        best_score = 0.0
+        for product in products:
+            candidates = [
+                product["sku"],
+                product["name_en"],
+                product["name_am"],
+                *product["aliases"],
+            ]
+            for candidate in candidates:
+                candidate_normalized = str(candidate).casefold().strip()
+                is_amharic = any("\u1200" <= char <= "\u137f" for char in candidate_normalized)
+                if len(candidate_normalized) < (3 if is_amharic else 4):
+                    continue
+                for window in windows:
+                    score = SequenceMatcher(None, candidate_normalized, window).ratio()
+                    threshold = 0.78 if len(candidate_normalized) <= 5 else 0.72
+                    if score >= threshold and score > best_score:
+                        best = product
+                        best_score = score
         return best
 
     def upsert_product(self, data: Dict[str, Any], product_id: Optional[int] = None) -> Dict[str, Any]:

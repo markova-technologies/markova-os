@@ -91,6 +91,83 @@ AMHARIC_NUMBERS = {
     "ten": 10,
 }
 
+_PHONE_ONES = {
+    "ዜሮ": 0,
+    "ዝሮ": 0,
+    "አንድ": 1,
+    "ሁለት": 2,
+    "ሶስት": 3,
+    "ሦስት": 3,
+    "አራት": 4,
+    "አምስት": 5,
+    "ስድስት": 6,
+    "ሰባት": 7,
+    "ስምንት": 8,
+    "ዘጠኝ": 9,
+    "zero": 0,
+    "oh": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+}
+_PHONE_TEENS = {
+    "አስር": 10,
+    "አስራ አንድ": 11,
+    "አስራ ሁለት": 12,
+    "አስራ ሶስት": 13,
+    "አስራ ሦስት": 13,
+    "አስራ አራት": 14,
+    "አስራ አምስት": 15,
+    "አስራ ስድስት": 16,
+    "አስራ ሰባት": 17,
+    "አስራ ስምንት": 18,
+    "አስራ ዘጠኝ": 19,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+}
+_PHONE_TENS = {
+    "ሀያ": 20,
+    "ሃያ": 20,
+    "ሰላሳ": 30,
+    "አርባ": 40,
+    "ሃምሳ": 50,
+    "ሀምሳ": 50,
+    "ስልሳ": 60,
+    "ሰባ": 70,
+    "ሰማንያ": 80,
+    "ዘጠና": 90,
+    "twenty": 20,
+    "thirty": 30,
+    "forty": 40,
+    "fifty": 50,
+    "sixty": 60,
+    "seventy": 70,
+    "eighty": 80,
+    "ninety": 90,
+}
+SPOKEN_PHONE_NUMBERS: Dict[str, int] = {**_PHONE_ONES, **_PHONE_TEENS}
+for tens_word, tens_value in _PHONE_TENS.items():
+    SPOKEN_PHONE_NUMBERS[tens_word] = tens_value
+    for one_word, one_value in _PHONE_ONES.items():
+        if one_value:
+            SPOKEN_PHONE_NUMBERS[f"{tens_word} {one_word}"] = tens_value + one_value
+
+ETHIOPIC_DIGITS = str.maketrans("፩፪፫፬፭፮፯፰፱0", "1234567890")
+
 
 def _contains(text: str, words: tuple[str, ...]) -> bool:
     lowered = text.casefold()
@@ -110,7 +187,30 @@ def _quantity(text: str) -> Optional[int]:
 
 def _phone(text: str) -> Optional[str]:
     candidates = re.findall(r"(?:\+?251[\s-]?)?0?9(?:[\s-]?\d){8}", text)
-    return normalize_phone(candidates[0]) if candidates else None
+    if candidates:
+        normalized = normalize_phone(candidates[0])
+        if normalized:
+            return normalized
+
+    normalized_text = text.translate(ETHIOPIC_DIGITS).casefold().replace("-", " ")
+    alternatives = sorted(SPOKEN_PHONE_NUMBERS, key=len, reverse=True)
+    token_pattern = re.compile(
+        r"\d+|" + "|".join(re.escape(word) for word in alternatives),
+        re.IGNORECASE,
+    )
+    chunks = []
+    for match in token_pattern.finditer(normalized_text):
+        token = match.group(0).casefold()
+        if token.isdigit():
+            chunks.append(token)
+        else:
+            value = SPOKEN_PHONE_NUMBERS[token]
+            chunks.append(f"{value:02d}" if value >= 10 else str(value))
+    if chunks:
+        normalized = normalize_phone("".join(chunks))
+        if normalized:
+            return normalized
+    return None
 
 
 def _order_reference(text: str) -> Optional[str]:
@@ -203,7 +303,11 @@ class CommerceAgent:
                 "product_id": "integer from catalog or null",
                 "quantity": "integer 1-10 or null",
                 "customer_name": "string or null",
-                "phone": "string or null",
+                "phone": (
+                    "complete Ethiopian mobile number normalized as +2519XXXXXXXX, or null. "
+                    "Convert Amharic/English spoken digits and two-digit groups; never return "
+                    "an incomplete number"
+                ),
                 "address": "string or null",
                 "note": "string or null",
                 "order_number": "string or null",
@@ -233,7 +337,14 @@ class CommerceAgent:
                 max_tokens=220,
             )
             parsed = json.loads(response.choices[0].message.content)
-            return {**fallback, **{key: value for key, value in parsed.items() if value is not None}}
+            merged = {
+                **fallback,
+                **{key: value for key, value in parsed.items() if value is not None},
+            }
+            rule_phone = fallback.get("phone")
+            model_phone = normalize_phone(str(parsed.get("phone") or ""))
+            merged["phone"] = rule_phone or model_phone or None
+            return merged
         except Exception as exc:
             logger.warning("Commerce slot extraction fell back to rules: %s", exc)
             return fallback
@@ -268,6 +379,7 @@ class CommerceAgent:
             data["order_number"] = str(extracted["order_number"]).upper()
         if extracted.get("phone"):
             data["phone"] = normalize_phone(extracted["phone"])
+            data.pop("_phone_requests", None)
         elif caller_phone and not data.get("phone"):
             normalized_caller = normalize_phone(caller_phone)
             if normalized_caller.startswith("+251") and len(normalized_caller) == 13:
@@ -277,6 +389,13 @@ class CommerceAgent:
         if not data.get("order_number"):
             return "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
         if not data.get("phone"):
+            data["_phone_requests"] = int(data.get("_phone_requests", 0)) + 1
+            await asyncio.to_thread(self.repository.save_draft, call_id, "status", data)
+            if data["_phone_requests"] > 1:
+                return (
+                    "ቁጥሩን ሙሉ በሙሉ አልሰማሁትም። እባክዎ ከዜሮ ዘጠኝ "
+                    "ጀምረው አስሩን አሃዞች በቡድን ይንገሩኝ።"
+                )
             return "ትዕዛዙን ለማረጋገጥ ያስመዘገቡትን ስልክ ቁጥር ይንገሩኝ።"
 
         reference = data["order_number"]
@@ -347,9 +466,13 @@ class CommerceAgent:
         ):
             value = extracted.get(source_key)
             if value:
-                data[target_key] = (
-                    normalize_phone(value) if target_key == "phone" else str(value).strip()
-                )
+                if target_key == "phone":
+                    normalized = normalize_phone(value)
+                    if normalized:
+                        data[target_key] = normalized
+                        data.pop("_phone_requests", None)
+                else:
+                    data[target_key] = str(value).strip()
 
         if caller_phone and not data.get("phone"):
             normalized_caller = normalize_phone(caller_phone)
@@ -365,7 +488,13 @@ class CommerceAgent:
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
             return "ትዕዛዙን በማን ስም ልመዝግብ?"
         if not data.get("phone"):
+            data["_phone_requests"] = int(data.get("_phone_requests", 0)) + 1
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
+            if data["_phone_requests"] > 1:
+                return (
+                    "ቁጥሩን ሙሉ በሙሉ አልሰማሁትም። እባክዎ ከዜሮ ዘጠኝ "
+                    "ጀምረው አስሩን አሃዞች በቡድን ይንገሩኝ።"
+                )
             return "የምናገኝዎትን የኢትዮጵያ ስልክ ቁጥር ይንገሩኝ።"
         if not data.get("address"):
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
