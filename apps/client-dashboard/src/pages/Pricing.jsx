@@ -76,9 +76,11 @@ const Pricing = () => {
         </Link>
         <div className="mk-pricing-nav-links">
           <Link to={ROUTES.home}>Home</Link>
-          <a href={DOCS_URL} target="_blank" rel="noreferrer">
-            Docs
-          </a>
+          {DOCS_URL ? (
+            <a href={DOCS_URL} target="_blank" rel="noreferrer">
+              Docs
+            </a>
+          ) : null}
           <Link to={ROUTES.login}>Sign in</Link>
           <Link className="mk-pricing-nav-cta" to={ROUTES.signup}>
             Get started

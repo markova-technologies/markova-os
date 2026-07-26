@@ -18,8 +18,8 @@ export const ROUTES = {
 /**
  * Docs site origin.
  * Dev: http://localhost:3002
- * Prod: set VITE_DOCS_URL (e.g. https://docs.markova.et) or reverse-proxy at /docs
+ * Prod: set VITE_DOCS_URL to the deployed docs origin (do not use same-origin /docs).
  */
 export const DOCS_URL =
   import.meta.env.VITE_DOCS_URL ||
-  (import.meta.env.DEV ? 'http://localhost:3002' : '/docs')
+  (import.meta.env.DEV ? 'http://localhost:3002' : '')

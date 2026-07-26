@@ -200,6 +200,7 @@
   z-index: 1;
   padding: clamp(3.5rem, 10vh, 6rem) clamp(1.25rem, 4vw, 3rem);
   max-width: 56rem;
+  scroll-margin-top: 5rem;
 }
 
 .mk-landing-section-alt {
