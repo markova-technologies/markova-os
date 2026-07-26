@@ -54,7 +54,7 @@ DB_PATH = os.getenv("DB_PATH", "system.db")
 KB_PATH = Path(__file__).parent / "knowledge_base.json"
 
 def load_knowledge_base():
-    """Load GM Furniture knowledge base for RAG retrieval"""
+    """Load the legacy knowledge base (commerce uses the live catalog)."""
     try:
         with open(KB_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
@@ -855,7 +855,7 @@ EDGE_TTS_VOICE_MAP = {
 # === STAGE 2: TTS Pre-Warm Cache ===
 # These phrases are pre-generated on startup so the first caller never waits
 TTS_PREWARM_PHRASES = [
-    ("ሰላም፣ ጂኤም ፈርኒቸር ነው። እንዴት ልረዳዎ?", "amharic"),      # Greeting
+    ("ሰላም፣ ማርኮቫ ሾፕ ነው። ምርት ለማዘዝ ወይም የትዕዛዝ ሁኔታ ለማወቅ እንዴት ልርዳዎ?", "amharic"),
     ("ይቅርታ፣ አንዴ ይድገሙልኝ?", "amharic"),                       # Retry 1
     ("ይቅርታ፣ ትንሽ ጫጫታ አለ። ደግመው ይናገሩ?", "amharic"),          # Retry 2
     ("አንድ ደቂቃ ይጠብቁ... ", "amharic"),                          # Hold
@@ -1273,11 +1273,11 @@ class AmharicAIAssistant:
                 "Keep responses SHORT (max 2 sentences). Be warm and helpful. Speak in English."
             ),
             "spanish": (
-                "Eres Almaz, representante de atención al cliente de GM Furniture en Etiopía. "
+                "Eres Almaz, representante de comercio electrónico de Markova Shop en Etiopía. "
                 "Respuestas CORTAS (máximo 2 oraciones). Amable y profesional. Solo en español."
             ),
             "french": (
-                "Vous êtes Almaz, représentante du service client de GM Furniture en Éthiopie. "
+                "Vous êtes Almaz, représentante e-commerce de Markova Shop en Éthiopie. "
                 "Réponses COURTES (max 2 phrases). Aimable et professionnelle. Uniquement en français."
             ),
             # Arabic removed — Whisper confuses Arabic with Amharic
@@ -1351,11 +1351,12 @@ class AmharicAIAssistant:
                 
             # === STAGE 1+6: OpenAI whisper-1 (primary) or Groq fallback ===
             WHISPER_PROMPT = (
-                "ሰላም የጂኤም ፈርኒቸር ደንበኛ ድጋፍ ነኝ። ሶፋ ዋጋ how much ነው? discount አለ? delivery free ነው? "
-                "ወንበር price ስንት ነው? installation included ነው? "
-                "አልጋ ጠረጴዛ ካቢኔ ዋርድሮብ መደርደሪያ ቲቪ ስታንድ ኪንግ ሳይዝ ኩዊን ኤል ቅርጽ ስዊቬል "
-                "ሾሩም location Bole ቄራ Piassa ቶርሃይሎች ጉርድ ሾላ አለምገና። "
-                "ዋጋ ብር ክፍያ ቅጣፍ ባንክ ዋስትና ትዕዛዝ order furniture desk chair bed style"
+                "ሰላም የማርኮቫ ሾፕ ደንበኛ ነኝ። ስማርት ሰዓት ዋጋ how much ነው? delivery አለ? "
+                "ስማርት ስልክ፣ የጆሮ ማዳመጫ፣ ፓወር ባንክ፣ ስፖርት ጫማ፣ የላፕቶፕ ቦርሳ፣ "
+                "ቡና ማፍያ፣ ብሌንደር፣ ላፕቶፕ ማስቀመጫ፣ ቲሸርት። "
+                "ትዕዛዝ ልስጥ፣ ሁለት ልግዛ፣ ወደ ጋሪ ጨምር፣ ስሜ፣ ስልክ ቁጥሬ፣ የመላኪያ አድራሻ። "
+                "ትዕዛዙን አረጋግጣለሁ፣ ትዕዛዜ የት ደረሰ፣ የትዕዛዝ ቁጥር MKV። "
+                "ዋጋ price cost ብር birr ዴሊቨሪ delivery cash on delivery።"
             )
 
             preprocess_elapsed = time.perf_counter() - preprocess_started
@@ -1791,14 +1792,14 @@ session_manager = SessionManager()
 
 # Enhanced response system with both predefined and dynamic responses
 AMHARIC_RESPONSES = {
-    "ሰላም": "ሰላም፣ ጂኤም ፈርኒቸር ነው። እንዴት ልረዳዎ?",
+    "ሰላም": "ሰላም፣ ማርኮቫ ሾፕ ነው። እንዴት ልርዳዎ?",
     "እንዴት ነህ": "ደህና ነኝ እናመሰግናለሁ! እርስዎስ እንዴት ነዎት?",
     "እንዴት ነሽ": "ደህና ነኝ እናመሰግናለሁ! እርስዎስ እንዴት ነዎት?", 
     "እንዴት ነዎት": "ደህና ነኝ እናመሰግናለሁ! እርስዎስ እንዴት ነዎት?",
     "መረጃ": "በምን መረጃ ልረዳዎት? እባክዎ ይንገሩኝ።",
     "ረዳኝ": "በመቶ ደስታ! በምን ልረዳዎት?",
-    "ማን ነህ": "እኔ አልማዝ ነኝ። የጂኤም ፈርኒቸር የደንበኞች አገልግሎት ተወካይ ነኝ።",
-    "ማን ነሽ": "እኔ አልማዝ ነኝ። የጂኤም ፈርኒቸር የደንበኞች አገልግሎት ተወካይ ነኝ።",
+    "ማን ነህ": "እኔ አልማዝ ነኝ። የማርኮቫ ሾፕ የኢ-ኮሜርስ ተወካይ ነኝ።",
+    "ማን ነሽ": "እኔ አልማዝ ነኝ። የማርኮቫ ሾፕ የኢ-ኮሜርስ ተወካይ ነኝ።",
     "አመሰግናለሁ": "ምንም አይደለም! ሌላ ነገር ካለ ይንገሩኝ።",
     "ይቅርታ": "ምንም ችግር የለም። በምን ልረዳዎት?",
     "default": "ይቅርታ፣ ጥያቄዎን ትንሽ እንደገና ይግለጹልኝ?"
@@ -1944,7 +1945,10 @@ async def handle_incoming_call(
         except Exception as db_err:
             logger.error(f"Failed to log call start: {db_err}")
         
-        welcome_text = "ሰላም፣ ጂኤም ፈርኒቸር ነው። እንዴት ልረዳዎ?"
+        welcome_text = (
+            "ሰላም፣ ማርኮቫ ሾፕ ነው። ምርት ለማዘዝ ወይም "
+            "የትዕዛዝ ሁኔታ ለማወቅ እንዴት ልርዳዎ?"
+        )
         
         # Generate natural voice audio (Welcome is always Amharic)
         audio_url = await generate_multilingual_voice(welcome_text, "amharic")
