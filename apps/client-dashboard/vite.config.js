@@ -1,18 +1,27 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { createRequire } from 'module'
 import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const require = createRequire(import.meta.url)
+const resolvePkg = (pkg) => path.dirname(require.resolve(`${pkg}/package.json`))
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    // Shared landing + waveform live outside this app (monorepo packages/ui).
+    // Shared UI + docs live outside this app. On Vercel (root = client-dashboard),
+    // force shared deps through this package so apps/docs imports resolve.
     alias: {
       '@markova/ui': path.resolve(__dirname, '../../packages/ui'),
+      'lucide-react': resolvePkg('lucide-react'),
+      'react-router-dom': resolvePkg('react-router-dom'),
+      react: resolvePkg('react'),
+      'react-dom': resolvePkg('react-dom'),
     },
+    dedupe: ['react', 'react-dom', 'react-router-dom', 'lucide-react'],
   },
   server: {
     port: 3001,
