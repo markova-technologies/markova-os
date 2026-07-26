@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { DOCS_URL, ROUTES } from '../config/site'
+import { ROUTES } from '../config/site'
 import './Pricing.css'
 
 /** Fallback when /v1/pricing is unreachable (e.g. static Vercel without API). */
@@ -76,11 +76,10 @@ const Pricing = () => {
         </Link>
         <div className="mk-pricing-nav-links">
           <Link to={ROUTES.home}>Home</Link>
-          {DOCS_URL ? (
-            <a href={DOCS_URL} target="_blank" rel="noreferrer">
-              Docs
-            </a>
-          ) : null}
+          <Link to={ROUTES.pricing} aria-current="page">
+            Pricing
+          </Link>
+          <Link to={ROUTES.docs}>Docs</Link>
           <Link to={ROUTES.login}>Sign in</Link>
           <Link className="mk-pricing-nav-cta" to={ROUTES.signup}>
             Get started

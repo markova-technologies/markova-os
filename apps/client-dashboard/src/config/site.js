@@ -5,6 +5,7 @@
 export const ROUTES = {
   home: '/',
   pricing: '/pricing',
+  docs: '/docs',
   login: '/login',
   signup: '/signup',
   forgotPassword: '/forgot-password',
@@ -23,14 +24,3 @@ export const ROUTES = {
   /** In-app invoices / plan management (after login) */
   billing: '/app/billing',
 }
-
-/**
- * Docs site origin.
- * Dev: http://localhost:3002
- * Prod: set VITE_DOCS_URL to the deployed docs origin.
- * Never default to same-origin `/docs` — that path is not served by this app
- * and the catch-all would bounce users back to the landing page.
- */
-export const DOCS_URL =
-  import.meta.env.VITE_DOCS_URL ||
-  (import.meta.env.DEV ? 'http://localhost:3002' : '')

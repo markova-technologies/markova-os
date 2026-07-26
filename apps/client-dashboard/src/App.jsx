@@ -18,9 +18,10 @@ import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Pricing from './pages/Pricing'
+import Docs from './pages/Docs'
 import Landing from '../../../packages/ui/landing/Landing'
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore } from './api/client'
-import { DOCS_URL, ROUTES } from './config/site'
+import { ROUTES } from './config/site'
 
 import { ToastProvider } from './contexts/ToastContext'
 import { EnvironmentProvider } from './contexts/EnvironmentContext'
@@ -109,7 +110,7 @@ function App() {
               <Landing
                 primaryTo={ROUTES.app}
                 primaryLabel="Open dashboard"
-                docsHref={DOCS_URL}
+                docsTo={ROUTES.docs}
                 pricingTo={ROUTES.pricing}
               />
             ) : (
@@ -118,7 +119,7 @@ function App() {
                 primaryLabel="Get started"
                 secondaryTo={ROUTES.login}
                 secondaryLabel="Sign in"
-                docsHref={DOCS_URL}
+                docsTo={ROUTES.docs}
                 pricingTo={ROUTES.pricing}
               />
             )
@@ -127,6 +128,7 @@ function App() {
 
         {/* Public product pages — before authenticated /app dashboard */}
         <Route path={ROUTES.pricing} element={<Pricing />} />
+        <Route path={ROUTES.docs} element={<Docs />} />
 
         {/* Public auth */}
         <Route
