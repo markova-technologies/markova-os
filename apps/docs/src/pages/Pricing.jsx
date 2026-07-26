@@ -4,6 +4,9 @@ import NextLinks from '../components/NextLinks'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
 
+const formatEtb = (n) =>
+  Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 })
+
 // Read from the same public /v1/pricing endpoint the dashboard uses, so the
 // published rates can never drift from the ones you are billed at.
 const Pricing = () => {
@@ -22,15 +25,19 @@ const Pricing = () => {
       <p className="docs-page-kicker">Product</p>
       <h1>Pricing</h1>
       <p className="lead">
-        Per minute, in birr, with no minimum and no sales call. Sandbox is free and needs no card, so
-        you can build the whole integration before you pay anything.
+        Monthly plans in birr, with included minutes. Sandbox is free and needs no card, so you can
+        build the whole integration before you pay anything.
       </p>
 
       {failed && (
         <Callout kind="note">
           <p>
-            Live rates come from the API and it isn't reachable from here right now. Start the gateway
-            or check <code>/v1/pricing</code> directly.
+            Live rates come from the API and it isn&apos;t reachable from here right now. Start the
+            gateway or check <code>/v1/pricing</code> directly.
+          </p>
+          <p>
+            Published rates: Basic 4,999 ETB / 900 min · Plus 15,000 ETB / 2,500 min with AI workforce
+            · Enterprise contact.
           </p>
         </Callout>
       )}
@@ -47,33 +54,30 @@ const Pricing = () => {
             </div>
 
             {pricing.tiers?.map((tier) => (
-              <div key={tier.id} className={`pricing-card ${tier.id === 'pro' ? 'is-featured' : ''}`}>
+              <div
+                key={tier.id}
+                className={`pricing-card ${tier.id === 'plus' ? 'is-featured' : ''}`}
+              >
                 <p className="pricing-name">{tier.name}</p>
                 <p className="pricing-rate">
-                  {tier.price_etb_per_minute_inbound}
+                  {tier.contact_sales
+                    ? 'Contact'
+                    : formatEtb(tier.price_etb_monthly)}
                   <span>
-                    {pricing.currency} / inbound min
+                    {tier.contact_sales
+                      ? 'custom pricing'
+                      : `${pricing.currency} / month`}
                   </span>
                 </p>
                 <p className="pricing-summary">{tier.summary}</p>
                 <ul className="pricing-facts">
+                  {tier.minutes_included != null && (
+                    <li>
+                      Included minutes: <strong>{tier.minutes_included.toLocaleString()}</strong>
+                    </li>
+                  )}
                   <li>
-                    Outbound:{' '}
-                    <strong>
-                      {tier.price_etb_per_minute_outbound
-                        ? `${tier.price_etb_per_minute_outbound} ${pricing.currency} / min`
-                        : 'add-on pack'}
-                    </strong>
-                  </li>
-                  <li>
-                    Included outbound minutes: <strong>{tier.outbound_minutes_included}</strong>
-                  </li>
-                  <li>
-                    Concurrent agents: <strong>{tier.concurrent_agents}</strong>
-                  </li>
-                  <li>
-                    Workflow actions:{' '}
-                    <strong>{tier.workflow_execution ? 'executed' : 'detected only'}</strong>
+                    AI workforce: <strong>{tier.ai_workforce ? 'yes' : 'no'}</strong>
                   </li>
                   <li>
                     Support: <strong>{tier.support}</strong>
@@ -83,42 +87,15 @@ const Pricing = () => {
             ))}
           </div>
 
-          {pricing.add_ons?.length > 0 && (
-            <>
-              <h2>Add-ons</h2>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Add-on</th>
-                    <th>Price</th>
-                    <th>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pricing.add_ons.map((addOn) => (
-                    <tr key={addOn.id}>
-                      <td>{addOn.name}</td>
-                      <td>
-                        {addOn.price_etb} {pricing.currency}
-                      </td>
-                      <td>{addOn.notes}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-
           <h2>How billing works</h2>
           <ul>
-            <li>Calls are metered per minute against the ledger you can read at /v1/usage.</li>
+            <li>Basic: 4,999 ETB/month with 900 included minutes.</li>
+            <li>Plus: 15,000 ETB/month with 2,500 included minutes and AI workforce.</li>
+            <li>Enterprise: contact us for custom volume and SLAs.</li>
             <li>
               Going over your included minutes bills automatically rather than cutting a call off
               mid-conversation.
             </li>
-            {pricing.annual_discount_percent ? (
-              <li>Paying annually takes {pricing.annual_discount_percent}% off.</li>
-            ) : null}
             <li>Sandbox usage is never billed, on any plan.</li>
           </ul>
         </>
@@ -126,9 +103,8 @@ const Pricing = () => {
 
       <Callout kind="sandbox">
         <p>
-          Workflow actions are the one real difference between Basic and Pro. On Basic an agent still
-          detects what should happen and records it — you just approve it yourself instead of it being
-          written to your systems automatically.
+          Plus includes AI workforce — agents that execute actions on your connected systems. Basic
+          answers and transcribes within your included minutes.
         </p>
       </Callout>
 

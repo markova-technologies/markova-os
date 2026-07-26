@@ -101,10 +101,20 @@ const BillingCenter = () => {
                       )}
                     </div>
                     <div className="plan-price">
-                      {tier.price_etb_per_minute_inbound} {pricing.currency}
-                      <span className="plan-price-unit">/ inbound minute</span>
+                      {tier.contact_sales
+                        ? 'Contact sales'
+                        : `${Number(tier.price_etb_monthly).toLocaleString()} ${pricing.currency}`}
+                      {!tier.contact_sales && (
+                        <span className="plan-price-unit">/ month</span>
+                      )}
                     </div>
-                    <p className="plan-summary">{tier.summary}</p>
+                    <p className="plan-summary">
+                      {tier.summary}
+                      {tier.minutes_included != null
+                        ? ` · ${tier.minutes_included.toLocaleString()} minutes included`
+                        : ''}
+                      {tier.ai_workforce ? ' · AI workforce' : ''}
+                    </p>
                   </div>
                 )
               })}
