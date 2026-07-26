@@ -20,6 +20,16 @@ from commerce import (
 
 logger = logging.getLogger(__name__)
 
+# Deterministic replies. They are named so the TTS layer can pre-render them at
+# startup: an exact string match is what turns a 2.5 s speech synthesis into a
+# cache hit, so these must never be re-typed inline.
+ASK_PRODUCT_TEMPLATE = "እሺ፣ ምን ማዘዝ ይፈልጋሉ? ለምሳሌ {examples} አሉን።"
+ASK_CUSTOMER_NAME = "ትዕዛዙን በማን ስም ልመዝግብ?"
+ASK_DELIVERY_ADDRESS = "ትዕዛዙ የሚደርስበትን ከተማ፣ ክፍለ ከተማና አካባቢ ይንገሩኝ።"
+ASK_ORDER_NUMBER = "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
+ORDER_NOT_FOUND = "በዚህ ትዕዛዝ ቁጥርና ስልክ የተመዘገበ ትዕዛዝ አላገኘሁም። እንደገና ያረጋግጡ።"
+ORDER_CANCELLED = "እሺ፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ልርዳዎ?"
+
 ORDER_WORDS = (
     "order",
     "buy",
@@ -290,6 +300,38 @@ class CommerceAgent:
                 extracted["phone"] = _phone(text)
         return extracted
 
+    @staticmethod
+    def _rules_are_decisive(
+        fallback: Dict[str, Any],
+        draft: Optional[Dict[str, Any]],
+    ) -> bool:
+        """Report whether the rules already pin down the next state transition.
+
+        Slot extraction costs a Groq round trip on the critical path of a live
+        call, so it is only worth paying for when the rules left something open.
+        """
+        if not draft:
+            # An opening turn only needs the model to interpret phrasing the
+            # catalog matcher could not resolve on its own.
+            if fallback.get("intent") == "order":
+                return bool(fallback.get("product_id"))
+            if fallback.get("intent") == "status":
+                return bool(fallback.get("order_number"))
+            return False
+        data = draft.get("data", {})
+        intent = draft.get("intent")
+        if intent == "status":
+            return bool(fallback.get("order_number"))
+        if intent != "order":
+            return False
+        if data.get("awaiting_confirmation"):
+            return bool(fallback.get("confirm") or fallback.get("reject"))
+        if data.get("items") and not data.get("customer_name"):
+            return bool(fallback.get("customer_name"))
+        if data.get("customer_name") and not data.get("address"):
+            return bool(fallback.get("address"))
+        return False
+
     async def _extract(
         self,
         text: str,
@@ -299,6 +341,9 @@ class CommerceAgent:
         if not self.groq_client:
             return fallback
         if not draft and fallback["intent"] == "other":
+            return fallback
+        if self._rules_are_decisive(fallback, draft):
+            logger.info("Commerce slots resolved by rules; skipping extraction call")
             return fallback
 
         products = [
@@ -371,6 +416,26 @@ class CommerceAgent:
             logger.warning("Commerce slot extraction fell back to rules: %s", exc)
             return fallback
 
+    def _ask_product_prompt(self) -> str:
+        products = self.repository.list_products()
+        examples = "፣ ".join(product["name_am"] for product in products[:3])
+        return ASK_PRODUCT_TEMPLATE.format(examples=examples)
+
+    def cacheable_prompts(self) -> list[str]:
+        """Return the deterministic replies worth pre-rendering as speech."""
+        prompts = [
+            ASK_CUSTOMER_NAME,
+            ASK_DELIVERY_ADDRESS,
+            ASK_ORDER_NUMBER,
+            ORDER_NOT_FOUND,
+            ORDER_CANCELLED,
+        ]
+        try:
+            prompts.append(self._ask_product_prompt())
+        except Exception as exc:
+            logger.warning("Could not build catalog prompt for TTS pre-warm: %s", exc)
+        return prompts
+
     @staticmethod
     def _cart_summary(data: Dict[str, Any], repository: CommerceRepository) -> str:
         parts = []
@@ -409,7 +474,7 @@ class CommerceAgent:
 
         await asyncio.to_thread(self.repository.save_draft, call_id, "status", data)
         if not data.get("order_number"):
-            return "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
+            return ASK_ORDER_NUMBER
 
         reference = data["order_number"]
         try:
@@ -436,7 +501,7 @@ class CommerceAgent:
                     self.repository.get_order, reference, data.get("phone")
                 )
         except NotFoundError:
-            return "በዚህ ትዕዛዝ ቁጥርና ስልክ የተመዘገበ ትዕዛዝ አላገኘሁም። እንደገና ያረጋግጡ።"
+            return ORDER_NOT_FOUND
 
         await asyncio.to_thread(self.repository.clear_draft, call_id)
         return (
@@ -456,7 +521,7 @@ class CommerceAgent:
 
         if extracted.get("reject") and data.get("awaiting_confirmation"):
             await asyncio.to_thread(self.repository.clear_draft, call_id)
-            return "እሺ፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ልርዳዎ?"
+            return ORDER_CANCELLED
 
         # The caller is answering a direct yes/no question. Confirmation must
         # win over noisy product extraction; otherwise a distorted "እሺ" can
@@ -523,15 +588,13 @@ class CommerceAgent:
 
         if not data["items"]:
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
-            products = await asyncio.to_thread(self.repository.list_products)
-            examples = "፣ ".join(product["name_am"] for product in products[:3])
-            return f"እሺ፣ ምን ማዘዝ ይፈልጋሉ? ለምሳሌ {examples} አሉን።"
+            return await asyncio.to_thread(self._ask_product_prompt)
         if not data.get("customer_name"):
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
-            return "ትዕዛዙን በማን ስም ልመዝግብ?"
+            return ASK_CUSTOMER_NAME
         if not data.get("address"):
             await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
-            return "ትዕዛዙ የሚደርስበትን ከተማ፣ ክፍለ ከተማና አካባቢ ይንገሩኝ።"
+            return ASK_DELIVERY_ADDRESS
 
         data["awaiting_confirmation"] = True
         await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)

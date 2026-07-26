@@ -24,6 +24,7 @@ from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks, Depe
 from fastapi.responses import Response, JSONResponse
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
@@ -229,6 +230,11 @@ _filler_index = 0
 def add_natural_filler(text: str) -> str:
     """Prepend a natural Amharic filler to make responses feel more human."""
     global _filler_index
+    # The system prompt already tells the model to open conversationally, so on a
+    # live call this usually produced a stutter ("በርግጥ፣ እሺ, …") while adding
+    # syllables to synthesise and play back. Opt in with VOICE_NATURAL_FILLERS.
+    if os.getenv("VOICE_NATURAL_FILLERS", "false").lower() not in ("1", "true", "yes"):
+        return text
     # Only add fillers to Amharic substantive responses (not 1-word or error replies)
     if not text or len(text) < 15:
         return text
@@ -719,6 +725,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Callers reach this service over Ethiopian mobile links where every turn ships
+# an uncompressed 8 kHz WAV back to FreeSWITCH. PCM gzips well, so this removes
+# roughly a third of the response transfer time for clients that opt in.
+app.add_middleware(GZipMiddleware, minimum_size=2048)
+
 @app.middleware("http")
 async def catch_exceptions_middleware(request: Request, call_next):
     try:
@@ -875,14 +886,26 @@ async def startup_event():
             try: os.remove(f)
             except: pass
 
+    # Speech synthesis is the single most expensive stage of a turn (~2.5 s), and
+    # the commerce flow answers most turns with a fixed sentence. Rendering those
+    # once at boot turns them into cache hits for every caller afterwards.
     logger.info("🔥 Pre-warming TTS cache for common phrases...")
-    tasks = [
-        generate_multilingual_voice(text, lang)
-        for text, lang in TTS_PREWARM_PHRASES
-    ]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    prewarm_phrases = list(TTS_PREWARM_PHRASES)
+    prewarm_phrases.append((FAREWELL_REPLY, "amharic"))
+    try:
+        prewarm_phrases.extend(
+            (prompt, "amharic")
+            for prompt in await asyncio.to_thread(commerce_agent.cacheable_prompts)
+        )
+    except Exception as prompt_error:
+        logger.warning(f"⚠️ Could not collect commerce prompts to pre-warm: {prompt_error}")
+
+    results = await asyncio.gather(
+        *(generate_multilingual_voice(text, lang) for text, lang in prewarm_phrases),
+        return_exceptions=True,
+    )
     hits = sum(1 for r in results if isinstance(r, str))
-    logger.info(f"✅ TTS pre-warm complete: {hits}/{len(TTS_PREWARM_PHRASES)} phrases cached")
+    logger.info(f"✅ TTS pre-warm complete: {hits}/{len(prewarm_phrases)} phrases cached")
 
     # Start ESL barge-in listener safely
     try:
@@ -1297,7 +1320,6 @@ class AmharicAIAssistant:
         if not self.groq_client and not openai_async_client: return "", "amharic"
         
         transcribe_started = time.perf_counter()
-        preprocess_started = transcribe_started
         temp_path = None
         processed_path = None
         
@@ -1311,44 +1333,51 @@ class AmharicAIAssistant:
                 content = await audio_file.read()
                 buffer.write(content)
             
-            # === ADVANCED AUDIO PREPROCESSING FOR WHISPER ===
-            # FreeSWITCH 8kHz phone audio needs heavy processing for Whisper to work
+            # === LAZY AUDIO PREPROCESSING FOR WHISPER-FAMILY MODELS ===
+            # Whisper needs filtered, normalized 16 kHz audio, but Scribe reads
+            # the raw telephone recording directly. Running the loudnorm pass
+            # eagerly charged every turn for output that was then discarded, so
+            # it now happens only when a fallback provider is really used.
             processed_path = Path(f"temp_processed_{hashlib.md5(audio_file.filename.encode()).hexdigest()}.wav")
             import subprocess
-            try:
-                # Advanced ffmpeg pipeline:
-                # 1. highpass=300  — remove phone line rumble/hum below 300Hz
-                # 2. lowpass=3400  — remove noise above phone speech band (300-3400Hz)
-                # 3. loudnorm      — normalize volume (quiet speakers become audible)
-                # 4. ar=16000      — upsample to 16kHz (Whisper's native rate)
-                # 5. acodec=pcm_s16le — 16-bit PCM for maximum compatibility
-                await asyncio.to_thread(
-                    subprocess.run,
-                    [
-                        'ffmpeg', '-y', '-i', str(temp_path),
-                        '-af', 'highpass=f=300,lowpass=f=3400,loudnorm=I=-16:TP=-1.5:LRA=11',
-                        '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
-                        str(processed_path)
-                    ],
-                    check=True, capture_output=True, timeout=15
-                )
-                transcribe_path = processed_path
-                transcribe_filename = processed_path.name
-                logger.info(f"🔄 Audio enhanced: {original_ext} → 16kHz WAV (filtered + normalized)")
-            except Exception as ffmpeg_err:
-                logger.warning(f"FFmpeg enhancement failed, using basic conversion: {ffmpeg_err}")
-                # Fallback: basic conversion without filters
+            transcribe_path = temp_path
+            transcribe_filename = temp_filename
+            preprocess_elapsed = 0.0
+            fallback_audio_prepared = False
+
+            def prepare_fallback_audio():
+                nonlocal transcribe_path, transcribe_filename
+                nonlocal preprocess_elapsed, fallback_audio_prepared
+                if fallback_audio_prepared:
+                    return
+                fallback_audio_prepared = True
+                started = time.perf_counter()
                 try:
-                    await asyncio.to_thread(
-                        subprocess.run,
-                        ['ffmpeg', '-y', '-i', str(temp_path), '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le', str(processed_path)],
-                        check=True, capture_output=True, timeout=10
+                    subprocess.run(
+                        [
+                            'ffmpeg', '-y', '-i', str(temp_path),
+                            '-af', 'highpass=f=300,lowpass=f=3400,loudnorm=I=-16:TP=-1.5:LRA=11',
+                            '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le',
+                            str(processed_path)
+                        ],
+                        check=True, capture_output=True, timeout=15
                     )
                     transcribe_path = processed_path
                     transcribe_filename = processed_path.name
-                except:
-                    transcribe_path = temp_path
-                    transcribe_filename = temp_filename
+                    logger.info(f"🔄 Audio enhanced: {original_ext} → 16kHz WAV (filtered + normalized)")
+                except Exception as ffmpeg_err:
+                    logger.warning(f"FFmpeg enhancement failed, using basic conversion: {ffmpeg_err}")
+                    try:
+                        subprocess.run(
+                            ['ffmpeg', '-y', '-i', str(temp_path), '-ar', '16000', '-ac', '1', '-acodec', 'pcm_s16le', str(processed_path)],
+                            check=True, capture_output=True, timeout=10
+                        )
+                        transcribe_path = processed_path
+                        transcribe_filename = processed_path.name
+                    except Exception:
+                        transcribe_path = temp_path
+                        transcribe_filename = temp_filename
+                preprocess_elapsed = time.perf_counter() - started
                 
             # === STAGE 1+6: OpenAI whisper-1 (primary) or Groq fallback ===
             WHISPER_PROMPT = (
@@ -1360,7 +1389,6 @@ class AmharicAIAssistant:
                 "ዋጋ price cost ብር birr ዴሊቨሪ delivery cash on delivery።"
             )
 
-            preprocess_elapsed = time.perf_counter() - preprocess_started
             provider_started = time.perf_counter()
             transcription_text = None
             detected_lang = "amharic"
@@ -1424,6 +1452,7 @@ class AmharicAIAssistant:
                 if not openai_async_client:
                     return False
                 try:
+                    await asyncio.to_thread(prepare_fallback_audio)
                     with open(transcribe_path, "rb") as audio_f:
                         transcription = await openai_async_client.audio.transcriptions.create(
                             file=(transcribe_filename, audio_f.read()),
@@ -1446,6 +1475,7 @@ class AmharicAIAssistant:
                 if not stt_client:
                     return False
                 try:
+                    prepare_fallback_audio()
                     with open(transcribe_path, "rb") as audio_f:
                         transcription = stt_client.audio.transcriptions.create(
                             file=(transcribe_filename, audio_f.read()),
@@ -1893,6 +1923,8 @@ def get_response(user_input: str, assistant: AmharicAIAssistant) -> Tuple[str, s
     
     return AMHARIC_RESPONSES["default"], "amharic"
 
+FAREWELL_REPLY = "ስለደወሉልን እናመሰግናለን፣ መልካም ቀን፣ ደህና ይሁኑ።"
+
 FAREWELL_WORDS = (
     "bye",
     "goodbye",
@@ -1926,7 +1958,7 @@ async def get_response_async(
                 assistant.call_id,
             )
         return (
-            "ስለደወሉልን እናመሰግናለን፣ መልካም ቀን፣ ደህና ይሁኑ።",
+            FAREWELL_REPLY,
             "amharic",
             True,
         )
@@ -2283,6 +2315,7 @@ async def stream_response(
     audio_file: UploadFile = File(None),
     call_id: str = Form(None),
     caller_id: str = Form(None),
+    single_utterance: bool = False,
 ):
     """
     Stage 4: Streaming TTS endpoint.
@@ -2356,18 +2389,22 @@ async def stream_response(
         asyncio.get_event_loop().run_in_executor(None, call_rec.save)
         asyncio.create_task(assistant.db.save_message(call_id, "assistant", response_text, lang))
 
-        # === Step 3: Split into sentences ===
-        sentences = split_into_sentences(response_text)
-        logger.info(f"📝 Split into {len(sentences)} sentence(s) for streaming")
-
-        # === Step 4: Generate TTS per sentence (parallel) ===
+        # === Step 3+4: Generate TTS ===
+        # SIP callers hear a single file, so splitting the reply there paid for
+        # several TTS requests and ffmpeg transcodes while discarding every
+        # sentence after the first. One utterance is both faster and complete.
         async def gen_sentence_audio(sentence: str, idx: int) -> dict:
             audio_url = await generate_multilingual_voice(sentence, lang, call_id=f"{call_id}_s{idx}")
             return {"text": sentence, "audio_url": audio_url}
 
         tts_started = time.perf_counter()
-        sentence_tasks = [gen_sentence_audio(s, i) for i, s in enumerate(sentences)]
-        sentence_results = await asyncio.gather(*sentence_tasks)
+        if single_utterance:
+            sentence_results = [await gen_sentence_audio(response_text, 0)]
+        else:
+            sentences = split_into_sentences(response_text)
+            logger.info(f"📝 Split into {len(sentences)} sentence(s) for streaming")
+            sentence_tasks = [gen_sentence_audio(s, i) for i, s in enumerate(sentences)]
+            sentence_results = await asyncio.gather(*sentence_tasks)
         tts_elapsed = time.perf_counter() - tts_started
 
         # Filter out failed TTS
@@ -2381,6 +2418,8 @@ async def stream_response(
         latency_breakdown = {
             "session_ms": round(session_elapsed * 1000, 1),
             "stt_ms": round(stt_elapsed * 1000, 1),
+            "stt_preprocess_ms": assistant.last_stt_timings.get("preprocess_ms", 0),
+            "stt_provider_ms": assistant.last_stt_timings.get("provider_ms", 0),
             "repair_ms": round(repair_elapsed * 1000, 1),
             "llm_ms": round(llm_elapsed * 1000, 1),
             "tts_ms": round(tts_elapsed * 1000, 1),
@@ -2427,7 +2466,13 @@ async def sip_response(
     connection to download the generated audio. A direct media response keeps
     the existing web JSON API intact while removing that extra SIP round trip.
     """
-    response = await stream_response(request, audio_file, call_id, caller_id)
+    response = await stream_response(
+        request,
+        audio_file,
+        call_id,
+        caller_id,
+        single_utterance=True,
+    )
     if response.status_code != 200:
         return response
 

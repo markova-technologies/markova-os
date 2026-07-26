@@ -16,6 +16,14 @@ services:
         value: 120
       - key: TTS_SAMPLE_RATE
         value: 8000
+      # A live caller hears the filler as a stutter because the model already
+      # opens conversationally, and it lengthens both synthesis and playback.
+      - key: VOICE_NATURAL_FILLERS
+        value: false
+      # Switch to llama-3.1-8b-instant to trade some catalog-answer quality for
+      # roughly a second less latency on turns that reach the language model.
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
       - key: DB_PATH
         value: system.db
       - key: AUDIO_DIR
