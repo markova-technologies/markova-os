@@ -16,7 +16,8 @@ Most Ethiopian SMBs that run a customer-facing phone line already have some syst
 - **Knowledge base with real vector search** — upload source documents, query them with pgvector-backed similarity search, and get tenant isolation that's architecturally enforced and covered by an isolation test — not a shared index with a filter bolted on.
 - **Workflow and tool execution with an audit trail** — Pro/Plus tiers let an agent actually execute an action against your system (not just report it), gated by a per-action confidence threshold; anything below threshold routes to an approval queue instead of auto-executing, and every execution is written to an immutable audit log.
 - **Usage-based billing, in Birr** — a real usage ledger (call minutes, STT seconds, TTS characters, LLM tokens) backs `GET /v1/usage`, invoices, and signature-verified billing webhooks. Public, no-login pricing.
-- **Developer-first** — a single `openapi.yaml` at the repo root is the source of truth for the API, a minimal Node SDK (`@markova/sdk`) is generated against it, and a documentation site walks through auth, agents, calls, numbers, knowledge, and webhooks.
+- **Client dashboard** — a full operator console (Command Center, Agent Studio, Call Center, Numbers, Knowledge Center, Integration Hub, Billing/Usage Centers, API Keys, Settings, guided onboarding) wired to the live API, with a real sandbox ↔ live environment switch that gates the step into billed telephony spend.
+- **Developer-first** — a single `openapi.yaml` at the repo root is the source of truth for the API, a minimal Node SDK (`@markova/sdk`) is generated against it, and a documentation site (`apps/docs`) covers quickstart, concepts (agents, calls, numbers, environments, knowledge, webhooks), an interactive Redoc API reference, SDKs, pricing, and a changelog.
 
 ## Architecture, at a glance
 
@@ -69,18 +70,19 @@ Your phone rings. Answer it and talk to the agent. Full walkthrough and API refe
 - **Knowledge service** — Python/FastAPI
 - **Voice orchestrator** — Python/FastAPI, Twilio, Whisper-class STT, edge/neural TTS, RAG
 - **Data** — PostgreSQL 15 + pgvector, Redis 7
-- **Frontend** — React + Vite (client dashboard)
+- **Frontend** — React + Vite (client dashboard, developer docs site)
 - **Contract** — OpenAPI 3.0 (`openapi.yaml`) + generated Node SDK
 
 ## Project status
 
 Backend Phases 0–4 of the implementation plan are complete: contract-breaking bugs fixed, the real `openapi.yaml` contract published, usage-based billing wired to real activity, and phone numbers/IVR/recording/voicemail/transfer, real vector search with tenant isolation, and workflow audit trails/confidence thresholds all shipped and covered by tests. Details and phase-by-phase acceptance criteria: [`docs/ssd/IMPLEMENTATION_PLAN.md`](docs/ssd/IMPLEMENTATION_PLAN.md) (authoritative scope) and [`PLAN.md`](PLAN.md) (voice-stack decisions, porting notes).
 
-The client dashboard is being wired from a design-complete UI to the real API surface above — treat the backend and its API contract as the stable, load-bearing layer right now.
+The client dashboard (`apps/client-dashboard`) is wired end-to-end against the live API — auth, agents, calls, numbers, knowledge, integrations, billing/usage, and API keys all read and write real backend state, with sandbox/live kept explicitly separate. The developer docs site (`apps/docs`) is a standalone Vite app served independently of the dashboard.
 
 ## Links
 
-- **API reference & developer docs:** `apps/docs` (Quickstart, concepts, OpenAPI reference, SDK, webhooks)
+- **Client dashboard:** `apps/client-dashboard`
+- **API reference & developer docs:** `apps/docs` (Quickstart, concepts, interactive OpenAPI reference, SDK, webhooks, changelog)
 - **API contract:** [`openapi.yaml`](openapi.yaml)
 - **Pricing:** public, no login required — served by the API gateway (`/pricing`, `/v1/pricing`)
 - **Implementation plan:** [`docs/ssd/IMPLEMENTATION_PLAN.md`](docs/ssd/IMPLEMENTATION_PLAN.md)
