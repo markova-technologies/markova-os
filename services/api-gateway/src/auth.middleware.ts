@@ -5,6 +5,7 @@ import { createClient } from 'redis';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { RateLimiterService } from './rate-limiter.service';
+import { generateServiceAuthHeader } from './service-auth.util';
 
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
@@ -42,14 +43,31 @@ export class AuthMiddleware implements NestMiddleware {
     res.setHeader('x-request-id', requestId);
 
     // 1. Skip Auth for Public Paths
+    // Transition window: /api/auth/*, /v1/auth/*, and legacy /api/clients/* login/register
     const publicPaths = [
       /^\/api\/auth\/register$/,
       /^\/api\/auth\/login$/,
+      /^\/api\/auth\/public-key$/,
+      /^\/api\/auth\/refresh-token$/,
+      /^\/v1\/auth\/register$/,
+      /^\/v1\/auth\/login$/,
+      /^\/v1\/auth\/refresh$/,
+      /^\/v1\/auth\/public-key$/,
+      /^\/api\/clients\/register$/,
+      /^\/api\/clients\/login$/,
       /^\/incoming-call$/,
       /^\/handle-input$/,
       /^\/stream-response$/,
+      /^\/twilio\//,
       /^\/health$/,
-      /^\/api\/contact$/
+      /^\/api\/contact$/,
+      /^\/openapi\.yaml$/,
+      /^\/v1\/openapi\.yaml$/,
+      /^\/docs\/?$/,
+      /^\/v1\/docs\/?$/,
+      /^\/pricing\/?$/,
+      /^\/v1\/pricing\/?$/,
+      /^\/v1\/billing\/webhooks\/[^/]+$/
     ];
 
     if (publicPaths.some(regex => regex.test(path))) {
@@ -80,7 +98,9 @@ export class AuthMiddleware implements NestMiddleware {
           sessionId: decoded.sessionId,
           role: decoded.role,
           permissions: decoded.permissions || [],
-          subscriptionPlan: decoded.subscriptionPlan
+          subscriptionPlan: decoded.subscriptionPlan,
+          // JWT sessions can operate against either env; default test for safety
+          environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
         };
       } catch (err) {
         return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Token invalid or expired' });
@@ -91,14 +111,24 @@ export class AuthMiddleware implements NestMiddleware {
     const apiKey = req.headers['x-api-key'] as string;
     if (!tenantContext.tenantId && apiKey) {
       try {
-        const response = await axios.post(`${this.TENANT_SERVICE_URL}/api/tenant/keys/verify`, { apiKey });
+        const response = await axios.post(
+          `${this.TENANT_SERVICE_URL}/api/tenant/keys/verify`,
+          { apiKey },
+          {
+            headers: {
+              'x-service-auth': generateServiceAuthHeader('api-gateway'),
+              'content-type': 'application/json',
+            },
+          },
+        );
         if (response.data.valid) {
           tenantContext = {
             tenantId: response.data.companyId,
             userId: 'api-key-auth',
             role: 'api',
             permissions: ['*'],
-            subscriptionPlan: response.data.plan || 'starter'
+            subscriptionPlan: response.data.plan || 'starter',
+            environment: response.data.environment || (apiKey.startsWith('mk_live_') ? 'live' : 'test'),
           };
         } else {
           return res.status(HttpStatus.FORBIDDEN).json({ error: 'Invalid API Key' });
@@ -135,6 +165,19 @@ export class AuthMiddleware implements NestMiddleware {
       req.headers['x-permissions'] = tenantContext.permissions.join(',');
     }
     if (tenantContext.subscriptionPlan) req.headers['x-subscription-plan'] = tenantContext.subscriptionPlan;
+    // Sandbox vs live — services branch on this header (Phase 2)
+    req.headers['x-markova-env'] = tenantContext.environment || 'test';
+    req.headers['x-company-id'] = tenantContext.tenantId;
+
+    // Sandbox guard: live-only destructive telephony blocked for test keys
+    const env = tenantContext.environment || 'test';
+    const isTestCall = /^\/v1\/agents\/[^/]+\/test-call$/.test(path);
+    if (isTestCall && env === 'live') {
+      return res.status(403).json({
+        error: 'test-call is sandbox-only. Use a mk_test_ API key.',
+        requestId,
+      });
+    }
 
     next();
   }

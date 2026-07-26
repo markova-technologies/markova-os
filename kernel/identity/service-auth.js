@@ -7,8 +7,10 @@ const crypto = require('crypto');
  */
 class ServiceAuth {
   constructor() {
-    // In production, this should be a strong securely injected secret
-    this.secret = process.env.SERVICE_AUTH_SECRET || 'internal-service-shared-secret-change-me';
+    this.secret = process.env.SERVICE_AUTH_SECRET;
+    if (!this.secret) {
+      throw new Error('SERVICE_AUTH_SECRET must be set in the environment (no default)');
+    }
   }
 
   /**

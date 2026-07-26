@@ -4,10 +4,11 @@
 ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id) ON DELETE CASCADE;
 
 -- Backfill company_id
-UPDATE knowledge_chunks kc 
-SET company_id = ks.company_id 
-FROM knowledge_sources ks 
-WHERE kc.source_id = ks.id AND kc.company_id IS NULL;
+UPDATE knowledge_chunks kc
+SET company_id = ks.company_id
+FROM knowledge_documents kd
+JOIN knowledge_sources ks ON kd.source_id = ks.id
+WHERE kc.document_id = kd.id AND kc.company_id IS NULL;
 
 -- Make it NOT NULL after backfill
 ALTER TABLE knowledge_chunks ALTER COLUMN company_id SET NOT NULL;

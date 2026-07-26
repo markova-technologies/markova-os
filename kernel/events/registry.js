@@ -16,6 +16,7 @@ const EventTypes = {
   LEAD_CREATED: 'lead.created',
   USER_LOGIN: 'user.login',
   USER_REGISTERED: 'user.registered',
+  TENANT_CREATED: 'tenant.created',
   APPROVAL_REQUESTED: 'approval.requested',
   APPROVAL_GRANTED: 'approval.granted',
   APPROVAL_DENIED: 'approval.denied'

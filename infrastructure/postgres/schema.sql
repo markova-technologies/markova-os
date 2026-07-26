@@ -2,15 +2,6 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- Knowledge Chunks
-CREATE TABLE IF NOT EXISTS knowledge_chunks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    document_id UUID REFERENCES knowledge_documents(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    embedding VECTOR(1536),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Companies (Tenants)
 CREATE TABLE IF NOT EXISTS companies (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -18,6 +9,14 @@ CREATE TABLE IF NOT EXISTS companies (
     plan VARCHAR(50) DEFAULT 'starter',
     status VARCHAR(50) DEFAULT 'active',
     max_agents INT DEFAULT 5,
+    workflow_settings JSONB NOT NULL DEFAULT '{
+      "confidence_thresholds": {
+        "default": 0.85,
+        "refund": 0.95,
+        "update_address": 0.70,
+        "update_contact": 0.75
+      }
+    }'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -28,7 +27,8 @@ CREATE TABLE IF NOT EXISTS tenant_api_keys (
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     name VARCHAR(100),
     key_hash VARCHAR(255) NOT NULL UNIQUE,
-    key_prefix VARCHAR(12) NOT NULL, -- e.g., mk_live_
+    key_prefix VARCHAR(12) NOT NULL, -- e.g., mk_test_ / mk_live_
+    environment VARCHAR(10) NOT NULL DEFAULT 'test' CHECK (environment IN ('test', 'live')),
     status VARCHAR(50) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS phone_numbers (
     provider VARCHAR(50) NOT NULL,
     phone_number VARCHAR(50) UNIQUE NOT NULL,
     status VARCHAR(50) DEFAULT 'active',
+    settings JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -165,17 +166,28 @@ CREATE TABLE IF NOT EXISTS knowledge_documents (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Knowledge Chunks (after documents — FK dependency)
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    document_id UUID REFERENCES knowledge_documents(id) ON DELETE CASCADE,
+    content TEXT NOT NULL,
+    embedding VECTOR(1536),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Calls
 CREATE TABLE IF NOT EXISTS calls (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
+    phone_number_id UUID REFERENCES phone_numbers(id) ON DELETE SET NULL,
     caller_number VARCHAR(50) NOT NULL,
     start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP,
     status VARCHAR(50) DEFAULT 'active',
     turn_count INT DEFAULT 0,
-    recording_url TEXT
+    recording_url TEXT,
+    transfer_context JSONB
 );
 
 -- Call Transcripts
@@ -285,7 +297,7 @@ CREATE TABLE IF NOT EXISTS routing_rules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     phone_number_id UUID REFERENCES phone_numbers(id) ON DELETE CASCADE,
-    rules JSONB,
+    rules JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -674,10 +686,11 @@ ALTER TABLE knowledge_chunks ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES
 
 -- If data exists, we'd need to migrate it by joining with knowledge_sources. 
 -- Assuming for now we can backfill:
-UPDATE knowledge_chunks kc 
-SET company_id = ks.company_id 
-FROM knowledge_sources ks 
-WHERE kc.source_id = ks.id AND kc.company_id IS NULL;
+UPDATE knowledge_chunks kc
+SET company_id = ks.company_id
+FROM knowledge_documents kd
+JOIN knowledge_sources ks ON kd.source_id = ks.id
+WHERE kc.document_id = kd.id AND kc.company_id IS NULL;
 
 -- Make it NOT NULL after backfill
 ALTER TABLE knowledge_chunks ALTER COLUMN company_id SET NOT NULL;
