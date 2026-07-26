@@ -17,7 +17,10 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
-import { getMe, logout as logoutRequest, tokenStore } from './api/client'
+import Pricing from './pages/Pricing'
+import Landing from '../../../packages/ui/landing/Landing'
+import { getMe, login as loginRequest, logout as logoutRequest, tokenStore } from './api/client'
+import { DOCS_URL, ROUTES } from './config/site'
 
 import { ToastProvider } from './contexts/ToastContext'
 import { EnvironmentProvider } from './contexts/EnvironmentContext'
@@ -43,26 +46,32 @@ function App() {
 
   useEffect(() => {
     const verifyToken = async () => {
-      // Skip verification for public routes
-      const publicRoutes = ['/login', '/signup', '/forgot-password', '/reset-password']
-      if (publicRoutes.includes(location.pathname)) {
-        return
+      let token = tokenStore.get()
+
+      // Local demo only — never auto-login in production (Vercel must show landing).
+      if (!token && import.meta.env.DEV) {
+        try {
+          const { data } = await loginRequest('demo@markova.et', 'MarkovaDemo2026!')
+          tokenStore.set(data.token, data.refreshToken)
+          localStorage.setItem('user', JSON.stringify(data.user))
+          token = data.token
+        } catch (err) {
+          // Demo auto-login failed; fall back to the normal login flow.
+        }
       }
 
-      const token = tokenStore.get()
+      if (!token) return
 
-      if (token) {
-        try {
-          const { data } = await getMe()
-          setIsAuthenticated(true)
-          setUser(data)
-          localStorage.setItem('user', JSON.stringify(data))
-        } catch (err) {
-          // Token invalid or expired
-          tokenStore.clear()
-          setIsAuthenticated(false)
-          setUser(null)
-        }
+      try {
+        const { data } = await getMe()
+        setIsAuthenticated(true)
+        setUser(data)
+        localStorage.setItem('user', JSON.stringify(data))
+      } catch (err) {
+        // Token invalid or expired
+        tokenStore.clear()
+        setIsAuthenticated(false)
+        setUser(null)
       }
     }
 
@@ -75,9 +84,9 @@ function App() {
 
     const onboardingDone = localStorage.getItem('onboardingComplete')
     if (!onboardingDone) {
-      navigate('/onboarding')
+      navigate(ROUTES.onboarding)
     } else {
-      navigate('/')
+      navigate(ROUTES.app)
     }
   }
 
@@ -86,47 +95,69 @@ function App() {
     setIsAuthenticated(false)
     setUser(null)
     tokenStore.clear()
-    navigate('/login')
+    navigate(ROUTES.home)
   }
-
-
-
 
   return (
     <ToastProvider>
       <Routes>
-        {/* Public Routes */}
+        {/* Public: marketing landing always at / */}
         <Route
-          path="/login"
+          path={ROUTES.home}
           element={
             isAuthenticated ? (
-              <Navigate to="/" replace />
+              <Landing
+                primaryTo={ROUTES.app}
+                primaryLabel="Open dashboard"
+                docsHref={DOCS_URL}
+                pricingTo={ROUTES.pricing}
+              />
+            ) : (
+              <Landing
+                primaryTo={ROUTES.signup}
+                primaryLabel="Get started"
+                secondaryTo={ROUTES.login}
+                secondaryLabel="Sign in"
+                docsHref={DOCS_URL}
+                pricingTo={ROUTES.pricing}
+              />
+            )
+          }
+        />
+
+        {/* Public product pages — before authenticated /app dashboard */}
+        <Route path={ROUTES.pricing} element={<Pricing />} />
+
+        {/* Public auth */}
+        <Route
+          path={ROUTES.login}
+          element={
+            isAuthenticated ? (
+              <Navigate to={ROUTES.app} replace />
             ) : (
               <Login
                 onLogin={handleLogin}
-                onSwitchToSignup={() => navigate('/signup')}
+                onSwitchToSignup={() => navigate(ROUTES.signup)}
               />
             )
           }
         />
         <Route
-          path="/signup"
+          path={ROUTES.signup}
           element={
             isAuthenticated ? (
-              <Navigate to="/" replace />
+              <Navigate to={ROUTES.app} replace />
             ) : (
-              <Signup onBackToLogin={() => navigate('/login')} onLogin={handleLogin} />
+              <Signup onBackToLogin={() => navigate(ROUTES.login)} onLogin={handleLogin} />
             )
           }
         />
-        <Route path="/forgot-password" element={<ForgotPassword />} />
-        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path={ROUTES.forgotPassword} element={<ForgotPassword />} />
+        <Route path={ROUTES.resetPassword} element={<ResetPassword />} />
 
-
-
-        {/* Main App Routes - Require authentication */}
+        {/* Authenticated product shell — all console UI under /app/* */}
         <Route
-          path="/*"
+          path={`${ROUTES.app}/*`}
           element={
             isAuthenticated ? (
               <EnvironmentProvider>
@@ -148,32 +179,33 @@ function App() {
                     )}
                     <div className="content-wrapper">
                       <Routes>
-                        <Route path="/" element={<CommandCenter />} />
-                        <Route path="/onboarding" element={<OnboardingCenter />} />
-                        <Route path="/dashboard" element={<Navigate to="/" replace />} />
-                        <Route path="/agent-studio" element={<AgentStudio />} />
-                        <Route path="/knowledge" element={<KnowledgeCenter />} />
-                        <Route path="/numbers" element={<Numbers />} />
-                        <Route path="/keys" element={<Keys />} />
-                        <Route path="/integrations" element={<IntegrationHub />} />
-                        <Route path="/call-center" element={<CallCenter />} />
-                        <Route path="/call-center/:callId" element={<CallCenter />} />
-                        <Route path="/usage" element={<UsageCenter />} />
-                        <Route path="/analytics" element={<Navigate to="/usage" replace />} />
-                        <Route path="/settings" element={<Settings />} />
-                        <Route path="/billing" element={<BillingCenter />} />
-                        {/* Catch-all for authenticated users */}
-                        <Route path="*" element={<Navigate to="/" replace />} />
+                        <Route index element={<CommandCenter />} />
+                        <Route path="onboarding" element={<OnboardingCenter />} />
+                        <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
+                        <Route path="agent-studio" element={<AgentStudio />} />
+                        <Route path="knowledge" element={<KnowledgeCenter />} />
+                        <Route path="numbers" element={<Numbers />} />
+                        <Route path="keys" element={<Keys />} />
+                        <Route path="integrations" element={<IntegrationHub />} />
+                        <Route path="call-center" element={<CallCenter />} />
+                        <Route path="call-center/:callId" element={<CallCenter />} />
+                        <Route path="usage" element={<UsageCenter />} />
+                        <Route path="analytics" element={<Navigate to={ROUTES.usage} replace />} />
+                        <Route path="settings" element={<Settings />} />
+                        <Route path="billing" element={<BillingCenter />} />
+                        <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
                       </Routes>
                     </div>
                   </div>
                 </div>
               </EnvironmentProvider>
             ) : (
-              <Navigate to="/login" state={{ from: location }} replace />
+              <Navigate to={ROUTES.login} state={{ from: location }} replace />
             )
           }
         />
+
+        <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
       </Routes>
     </ToastProvider>
   )

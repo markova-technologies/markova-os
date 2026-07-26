@@ -19,6 +19,7 @@ import {
 } from 'react-icons/io5';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSocket } from '../../contexts/SocketContext';
+import { ROUTES } from '../../config/site';
 
 const Sidebar = ({ isOpen, onClose }) => {
     const { theme, toggleTheme } = useTheme();
@@ -34,15 +35,15 @@ const Sidebar = ({ isOpen, onClose }) => {
     }, []);
 
     const menuItems = [
-        { path: '/', icon: IoHome, label: 'Dashboard' },
-        { path: '/companies', icon: IoPersonCircle, label: 'Companies Management' },
-        { path: '/revenue', icon: IoAnalytics, label: 'Revenue Analytics' },
-        { path: '/calls', icon: IoFlask, label: 'Active Calls' },
-        { path: '/health', icon: IoHeartCircle, label: 'Platform Health' },
-        { path: '/usage', icon: IoBarChart, label: 'Tenant Usage' },
-        { path: '/tickets', icon: IoTicket, label: 'Support Tickets' },
-        { path: '/audit', icon: IoDocumentText, label: 'Global Audit Logs' },
-        { path: '/settings', icon: IoSettings, label: 'Settings' },
+        { path: ROUTES.dashboard, icon: IoHome, label: 'Dashboard' },
+        { path: ROUTES.companies, icon: IoPersonCircle, label: 'Companies Management' },
+        { path: ROUTES.revenue, icon: IoAnalytics, label: 'Revenue Analytics' },
+        { path: ROUTES.calls, icon: IoFlask, label: 'Active Calls' },
+        { path: ROUTES.health, icon: IoHeartCircle, label: 'Platform Health' },
+        { path: ROUTES.usage, icon: IoBarChart, label: 'Tenant Usage' },
+        { path: ROUTES.tickets, icon: IoTicket, label: 'Support Tickets' },
+        { path: ROUTES.audit, icon: IoDocumentText, label: 'Global Audit Logs' },
+        { path: ROUTES.settings, icon: IoSettings, label: 'Settings' },
     ];
 
     return (

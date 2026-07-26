@@ -17,6 +17,7 @@ import {
   CreditCard,
   Settings
 } from 'lucide-react'
+import { ROUTES } from '../config/site'
 import './Sidebar.css'
 
 const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
@@ -44,61 +45,61 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
   const menuItems = [
     {
       title: 'Command Center',
-      path: '/',
+      path: ROUTES.app,
       icon: LayoutDashboard,
       color: 'text-emerald-400'
     },
     {
       title: 'Agent Studio',
-      path: '/agent-studio',
+      path: ROUTES.agentStudio,
       icon: Bot,
       color: 'text-purple-400'
     },
     {
       title: 'Knowledge Center',
-      path: '/knowledge',
+      path: ROUTES.knowledge,
       icon: BookOpen,
       color: 'text-rose-400'
     },
     {
       title: 'Numbers',
-      path: '/numbers',
+      path: ROUTES.numbers,
       icon: Phone,
       color: 'text-indigo-400'
     },
     {
       title: 'API Keys',
-      path: '/keys',
+      path: ROUTES.keys,
       icon: Key,
       color: 'text-amber-400'
     },
     {
       title: 'Integration Hub',
-      path: '/integrations',
+      path: ROUTES.integrations,
       icon: Plug,
       color: 'text-cyan-400'
     },
     {
       title: 'Call Center',
-      path: '/call-center',
+      path: ROUTES.callCenter,
       icon: Headphones,
       color: 'text-pink-400'
     },
     {
       title: 'Usage',
-      path: '/usage',
+      path: ROUTES.usage,
       icon: BarChart3,
       color: 'text-teal-400'
     },
     {
       title: 'Billing',
-      path: '/billing',
+      path: ROUTES.billing,
       icon: CreditCard,
       color: 'text-green-500'
     },
     {
       title: 'Settings',
-      path: '/settings',
+      path: ROUTES.settings,
       icon: Settings,
       color: 'text-gray-400'
     }
@@ -125,7 +126,7 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
         <ul className="nav-menu">
           {menuItems.map((item, index) => {
             const Icon = item.icon
-            const isActive = location.pathname === item.path || (location.pathname === '/dashboard' && item.path === '/')
+            const isActive = location.pathname === item.path || (item.path !== ROUTES.app && location.pathname.startsWith(item.path + '/'))
             return (
                <motion.li
                 key={item.path}

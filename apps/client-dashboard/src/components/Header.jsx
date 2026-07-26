@@ -12,6 +12,7 @@ import {
   Menu
 } from 'lucide-react'
 import './Header.css'
+import { ROUTES } from '../config/site'
 
 const Header = ({ user, onLogout, toggleMobileMenu }) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
@@ -137,7 +138,7 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                       className="dropdown-item"
                       onClick={() => {
                         setShowUserMenu(false)
-                        navigate('/settings')
+                        navigate(ROUTES.settings)
                       }}
                     >
                       <User size={16} />
@@ -147,7 +148,7 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                       className="dropdown-item"
                       onClick={() => {
                         setShowUserMenu(false)
-                        navigate('/settings')
+                        navigate(ROUTES.settings)
                       }}
                     >
                       <Settings size={16} />
@@ -157,7 +158,7 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                       className="dropdown-item"
                       onClick={() => {
                         setShowUserMenu(false)
-                        navigate('/settings', { state: { tab: 'billing' } })
+                        navigate(ROUTES.settings, { state: { tab: 'billing' } })
                       }}
                     >
                       <CreditCard size={16} />
