@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { useLocation } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { ExternalLink, Menu, X } from 'lucide-react'
 import Waveform from '../../../../packages/ui/waveform/Waveform'
 import { DocsLink, DocsNavLink, useDocsBase } from '../docsBase'
@@ -103,7 +103,9 @@ const DocsLayout = ({ children, wide = false }) => {
           ))}
         </aside>
 
-        <main className={`docs-main ${wide ? 'is-wide' : ''}`}>{children}</main>
+        <main className={`docs-main ${wide ? 'is-wide' : ''}`}>
+          {children ?? <Outlet />}
+        </main>
       </div>
     </div>
   )
