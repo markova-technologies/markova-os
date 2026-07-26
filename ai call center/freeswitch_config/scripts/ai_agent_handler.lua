@@ -106,7 +106,7 @@ function download_audio(url, target_file)
         ext = "wav"  -- Force WAV for FreeSWITCH compatibility
     end
     local local_file = target_file or (temp_dir .. "\\ai_response_" .. uuid .. "." .. ext)
-    local cmd = string.format('curl.exe -s -o "%s" "%s"', local_file, url)
+    local cmd = string.format('curl.exe -s --compressed --tcp-nodelay -o "%s" "%s"', local_file, url)
     freeswitch.consoleLog("info", "[AI Agent] Downloading: " .. url .. " -> " .. local_file .. "\n")
     os.execute(cmd)
     
@@ -203,7 +203,7 @@ function stream_response(rec_file)
     pcall(function() os.remove(out_file) end)
     pcall(function() os.remove(header_file) end)
     local cmd = string.format(
-        'curl.exe -s -D "%s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --max-time 30',
+        'curl.exe -s --compressed --tcp-nodelay -D "%s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --max-time 30',
         header_file, url, rec_file, uuid, caller_id, out_file
     )
     freeswitch.consoleLog("info", "[AI Agent] Calling /sip-response...\n")
@@ -238,7 +238,21 @@ function stream_response(rec_file)
     return true, should_end_call
 end
 
+-- === HELPER: Wake the backend without blocking the call ===
+-- The host suspends idle free-tier instances, so the first request of a call
+-- can pay a ~30 second cold start. Because the greeting is served from a local
+-- cache, nothing would otherwise touch the backend until the caller has already
+-- finished speaking. Dispatching a detached request here lets the wake-up
+-- overlap the greeting playback instead of the caller's first answer.
+function warm_backend()
+    local cmd = string.format('start /B "" curl.exe -s -m 45 -o NUL "%s/"', backend_url)
+    os.execute(cmd)
+    freeswitch.consoleLog("info", "[AI Agent] Backend warm-up dispatched\n")
+end
+
 -- === MAIN CONVERSATION FLOW ===
+
+warm_backend()
 
 -- 1. Cache the static greeting locally. Repeat calls avoid both the greeting
 -- endpoint and audio download, while invalid/non-WAV cache entries self-heal.

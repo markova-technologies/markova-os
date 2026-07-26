@@ -134,6 +134,12 @@ SEED_PRODUCTS = [
     },
 ]
 
+# Voice matching also consults the seed aliases so an operator editing a product
+# in the dashboard cannot accidentally drop a spoken name the agent relies on.
+_SEED_ALIASES_BY_SKU = {
+    product["sku"]: tuple(product.get("aliases", ())) for product in SEED_PRODUCTS
+}
+
 
 class CommerceError(Exception):
     """Base domain error."""
@@ -175,6 +181,8 @@ def normalize_phone(phone: Optional[str]) -> str:
 class CommerceRepository:
     def __init__(self, db_path: Optional[str] = None):
         self.db_path = db_path or os.getenv("DB_PATH", "system.db")
+        self._match_index: Dict[int, tuple] = {}
+        self._match_index_signature: Optional[tuple] = None
 
     @contextmanager
     def _connect(self) -> Iterator[sqlite3.Connection]:
@@ -345,26 +353,16 @@ class CommerceRepository:
         for heard, canonical in observed_voice_variants.items():
             normalized = normalized.replace(heard, canonical)
 
+        products = self.list_products()
+        candidates_by_product = self._match_candidates(products)
+
         best: Optional[Dict[str, Any]] = None
         best_length = 0
-        products = self.list_products()
         for product in products:
-            seeded = next(
-                (item for item in SEED_PRODUCTS if item["sku"] == product["sku"]),
-                None,
-            )
-            candidates = [
-                product["sku"],
-                product["name_en"],
-                product["name_am"],
-                *product["aliases"],
-                *((seeded or {}).get("aliases", [])),
-            ]
-            for candidate in candidates:
-                candidate_normalized = str(candidate).casefold()
-                if candidate_normalized in normalized and len(candidate_normalized) > best_length:
+            for candidate in candidates_by_product[product["id"]]:
+                if len(candidate) > best_length and candidate in normalized:
                     best = product
-                    best_length = len(candidate_normalized)
+                    best_length = len(candidate)
         if best:
             return best
 
@@ -376,29 +374,68 @@ class CommerceRepository:
         }
         best_score = 0.0
         for product in products:
-            seeded = next(
-                (item for item in SEED_PRODUCTS if item["sku"] == product["sku"]),
-                None,
-            )
-            candidates = [
-                product["sku"],
-                product["name_en"],
-                product["name_am"],
-                *product["aliases"],
-                *((seeded or {}).get("aliases", [])),
-            ]
-            for candidate in candidates:
-                candidate_normalized = str(candidate).casefold().strip()
-                is_amharic = any("\u1200" <= char <= "\u137f" for char in candidate_normalized)
-                if len(candidate_normalized) < (3 if is_amharic else 4):
+            for candidate in candidates_by_product[product["id"]]:
+                is_amharic = any("\u1200" <= char <= "\u137f" for char in candidate)
+                if len(candidate) < (3 if is_amharic else 4):
                     continue
+                threshold = 0.78 if len(candidate) <= 5 else 0.72
                 for window in windows:
-                    score = SequenceMatcher(None, candidate_normalized, window).ratio()
-                    threshold = 0.78 if len(candidate_normalized) <= 5 else 0.72
+                    # A similarity ratio cannot exceed 2*min(len)/sum(len), so
+                    # length alone rules out most pairs before paying for the
+                    # quadratic comparison. This prunes without changing which
+                    # product wins.
+                    ceiling = 2 * min(len(candidate), len(window)) / (
+                        len(candidate) + len(window)
+                    )
+                    if ceiling < threshold or ceiling <= best_score:
+                        continue
+                    matcher = SequenceMatcher(None, candidate, window)
+                    if matcher.quick_ratio() < max(threshold, best_score):
+                        continue
+                    score = matcher.ratio()
                     if score >= threshold and score > best_score:
                         best = product
                         best_score = score
         return best
+
+    def _match_candidates(self, products: List[Dict[str, Any]]) -> Dict[int, tuple]:
+        """Return each product's normalized match strings, rebuilt only on change.
+
+        Voice matching runs on every conversational turn, so the alias lists and
+        their case folding are prepared once per catalog revision rather than
+        reassembled from the seed data on each lookup.
+        """
+        signature = tuple(
+            (
+                product["id"],
+                product["sku"],
+                product["name_en"],
+                product["name_am"],
+                tuple(product["aliases"]),
+            )
+            for product in products
+        )
+        if self._match_index_signature == signature:
+            return self._match_index
+
+        index: Dict[int, tuple] = {}
+        for product in products:
+            unique: List[str] = []
+            for candidate in (
+                product["sku"],
+                product["name_en"],
+                product["name_am"],
+                *product["aliases"],
+                *_SEED_ALIASES_BY_SKU.get(product["sku"], ()),
+            ):
+                normalized_candidate = str(candidate).casefold().strip()
+                if normalized_candidate and normalized_candidate not in unique:
+                    unique.append(normalized_candidate)
+            index[product["id"]] = tuple(unique)
+
+        self._match_index = index
+        self._match_index_signature = signature
+        return index
 
     def upsert_product(self, data: Dict[str, Any], product_id: Optional[int] = None) -> Dict[str, Any]:
         required = ("sku", "name_en", "name_am", "category", "price", "stock")

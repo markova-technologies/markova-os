@@ -161,6 +161,37 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("በማን ስም", watch_response)
         self.assertIn("በማን ስም", inflected_phone_response)
 
+    async def test_decisive_rules_skip_the_extraction_model(self):
+        """Free-text and yes/no turns must not pay for a slot-extraction call.
+
+        That request sits on the critical path of a live call, so the state
+        machine only earns its latency when the rules leave a slot open.
+        """
+        calls = []
+
+        class RecordingCompletions:
+            @staticmethod
+            def create(**kwargs):
+                calls.append(kwargs)
+                raise AssertionError("extraction model must not be called")
+
+        class RecordingGroq:
+            chat = type("Chat", (), {"completions": RecordingCompletions()})()
+
+        agent = CommerceAgent(self.repo, groq_client=RecordingGroq())
+        call_id = "rules-only-call"
+
+        # Opening turn: the rules already matched a catalog product.
+        self.assertIn("በማን ስም", await agent.process_turn("ስልክ ልግዛ", call_id))
+        # Name and address turns are verbatim free text.
+        self.assertIn("የሚደርስበትን", await agent.process_turn("ሀና በቀለ", call_id))
+        self.assertIn("ላረጋግጥ", await agent.process_turn("አዲስ አበባ ቦሌ", call_id))
+        # Confirmation is a yes/no answer the rules recognise on their own.
+        self.assertIn("ተመዝግቧል", await agent.process_turn("እሺ", call_id))
+
+        self.assertEqual(calls, [])
+        self.assertEqual(len(self.repo.list_orders()), 1)
+
     async def test_noisy_scribe_confirmation_creates_order(self):
         call_id = "noisy-confirmation"
         await self.agent.process_turn("ስልክ ልግዛ", call_id)
