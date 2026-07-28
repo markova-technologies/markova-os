@@ -41,6 +41,10 @@ class DashboardReporter:
         """Send heartbeat every 10 seconds"""
         if not self.api_key:
             return
+            
+        if "localhost" in self.dashboard_url or "127.0.0.1" in self.dashboard_url:
+            # Don't try to heartbeat to localhost when deployed on Render or without actual dashboard
+            return
 
         try:
             async with httpx.AsyncClient() as client:
@@ -55,7 +59,7 @@ class DashboardReporter:
                     timeout=5.0
                 )
         except Exception as e:
-            logger.error(f"❌ Heartbeat failed: {e}")
+            pass # Silently ignore heartbeat errors to avoid log spam
     
     async def _calculate_health(self) -> int:
         """Calculate health score from recent metrics"""

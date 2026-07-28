@@ -417,9 +417,21 @@ class CommerceAgent:
             return fallback
 
     def _ask_product_prompt(self) -> str:
-        products = self.repository.list_products()
-        examples = "፣ ".join(product["name_am"] for product in products[:3])
-        return ASK_PRODUCT_TEMPLATE.format(examples=examples)
+        """Dynamically generate the prompt including a few sample products."""
+        try:
+            # When pre-warming on a separate thread, the CWD might be different
+            # or the DB might not be fully initialized.
+            with commerce_repository() as repo:
+                samples = repo.list_products(limit=3)
+                names = [p["name_am"] for p in samples]
+                if names:
+                    examples = "፣ ".join(names[:-1]) + " ወይም " + names[-1]
+                else:
+                    examples = "የተለያዩ ዕቃዎች"
+        except Exception as e:
+            examples = "የተለያዩ ዕቃዎች"
+            
+        return ASK_PRODUCT_TEMPLATE.replace("{examples}", examples)
 
     def cacheable_prompts(self) -> list[str]:
         """Return the deterministic replies worth pre-rendering as speech."""
