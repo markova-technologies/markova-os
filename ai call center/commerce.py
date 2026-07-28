@@ -49,7 +49,7 @@ SEED_PRODUCTS = [
         "category": "electronics",
         "price": 18000,
         "stock": 12,
-        "aliases": ["phone", "smartphone", "mobile", "ስልክ", "ሞባይል", "ስማርት ስልክ", "a15", "ጋላክሲ"],
+        "aliases": ["phone", "smartphone", "mobile", "ስልክ", "ሞባይል", "ስማርት ስልክ", "a15", "ጋላክሲ", "ስልካ", "ሞባይሌ", "ሞባይሌን", "ስልኬ", "ፎን", "ጋላክሴ", "ሳምሰንግ"],
     },
     {
         "sku": "MKV-EARBUDS-01",
@@ -58,7 +58,7 @@ SEED_PRODUCTS = [
         "category": "electronics",
         "price": 2500,
         "stock": 30,
-        "aliases": ["earbuds", "earphone", "headphone", "የጆሮ ማዳመጫ", "ኢርበድ", "ገመድ አልባ"],
+        "aliases": ["earbuds", "earphone", "headphone", "የጆሮ ማዳመጫ", "ኢርበድ", "ገመድ አልባ", "ጆሮ", "ጆሮ ማዳመጫ", "ኢርፓድ", "airpod", "airpods", "ሄድፎን"],
     },
     {
         "sku": "MKV-POWER-20K",
@@ -76,7 +76,7 @@ SEED_PRODUCTS = [
         "category": "electronics",
         "price": 5500,
         "stock": 15,
-        "aliases": ["smart watch", "smartwatch", "watch", "ስማርት ሰዓት", "ሰዓት"],
+        "aliases": ["smart watch", "smartwatch", "watch", "ስማርት ሰዓት", "ሰዓት", "ሶዓት", "ሳዓት", "ወደብ ሰዓት", "ዝናብ ሰዓት"],
     },
     {
         "sku": "MKV-SHOE-RUN",
@@ -378,7 +378,7 @@ class CommerceRepository:
                 is_amharic = any("\u1200" <= char <= "\u137f" for char in candidate)
                 if len(candidate) < (3 if is_amharic else 4):
                     continue
-                threshold = 0.78 if len(candidate) <= 5 else 0.72
+                threshold = 0.78 if len(candidate) <= 5 else 0.65
                 for window in windows:
                     # A similarity ratio cannot exceed 2*min(len)/sum(len), so
                     # length alone rules out most pairs before paying for the

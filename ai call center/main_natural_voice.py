@@ -1427,7 +1427,17 @@ class AmharicAIAssistant:
                                 media_type,
                             )
                         }
-                        data = {"model_id": "scribe_v2", "language_code": "am"}
+                        amharic_vocab = [
+                            "ጋላክሲ", "ስልክ", "ሞባይል", "ኢርፓድ", "ኢርበድ", "ፓወር ባንክ", "ስማርት ሰዓት",
+                            "ጫማ", "ቦርሳ", "ቡና ማፍያ", "ብሌንደር", "ቲሸርት", "ላፕቶፕ ማስቀመጫ",
+                            "ትዕዛዝ", "ማዘዝ", "ልዘዝ", "ልግዛ", "እፈልጋለሁ", "አዎ", "እሺ", "ይሁን",
+                            "ስምዬ", "አድራሻ", "ቃሊቲ", "ቦሌ", "ፒያሳ", "አዲስ አበባ",
+                        ]
+                        data = {
+                            "model_id": "scribe_v2", 
+                            "language_code": "am",
+                            "vocabulary": ", ".join(amharic_vocab)
+                        }
                         resp = await client.post(
                             "https://api.elevenlabs.io/v1/speech-to-text",
                             headers={"xi-api-key": elevenlabs_key},

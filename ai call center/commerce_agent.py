@@ -29,6 +29,11 @@ ASK_DELIVERY_ADDRESS = "ትዕዛዙ የሚደርስበትን ከተማ፣ ክ�
 ASK_ORDER_NUMBER = "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
 ORDER_NOT_FOUND = "በዚህ ትዕዛዝ ቁጥርና ስልክ የተመዘገበ ትዕዛዝ አላገኘሁም። እንደገና ያረጋግጡ።"
 ORDER_CANCELLED = "እሺ፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ልርዳዎ?"
+PRODUCT_NOT_FOUND_REPLY = (
+    "ይቅርታ፣ ያዘዙትን ምርት ካታሎጋችን ውስጥ ማግኘት አልቻልኩም። "
+    "እናቀርባቸዋለን። "
+    "ስልካቸውን፣ ኢርፓድ፣ ፓወር ባንክ፣ ሰዓት፣ ጫማ፣ ቦርሳ፣ ቡና ማፍያ ወይም ብሌንደር ማዘዝ ይፈልጋሉ?"
+)
 
 ORDER_WORDS = (
     "order",
@@ -441,6 +446,7 @@ class CommerceAgent:
             ASK_ORDER_NUMBER,
             ORDER_NOT_FOUND,
             ORDER_CANCELLED,
+            PRODUCT_NOT_FOUND_REPLY,
         ]
         try:
             prompts.append(self._ask_product_prompt())
@@ -559,6 +565,11 @@ class CommerceAgent:
             )
 
         product_id = extracted.get("product_id")
+        
+        if not data.get("items") and not product_id:
+            # The caller wants to order but we couldn't match any product
+            return PRODUCT_NOT_FOUND_REPLY
+            
         if product_id:
             product = await asyncio.to_thread(self.repository.get_product, int(product_id))
             quantity = max(1, min(int(extracted.get("quantity") or 1), 10))
