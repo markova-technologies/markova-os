@@ -1,4 +1,4 @@
-﻿.phone-channels {
+.phone-channels {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -10,6 +10,8 @@
   padding: 1.5rem 2rem 0;
   border-bottom: 1px solid var(--border-main);
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   flex-shrink: 0;
 }
 
@@ -92,6 +94,8 @@
 
 .overview-card {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 1rem;
   padding: 1.5rem;
@@ -135,6 +139,8 @@
 
 .channel-card {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 1rem;
   padding: 1.5rem;
@@ -239,6 +245,8 @@
 /* SIP TRUNKING PANEL */
 .sip-panel {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 1rem;
   padding: 2rem;
@@ -331,6 +339,8 @@
 
 .routing-rule-card {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 1rem;
   padding: 1.5rem;
@@ -408,6 +418,8 @@
 
 .modal-content {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   padding: 2rem;
   border-radius: 1rem;
   width: 500px;

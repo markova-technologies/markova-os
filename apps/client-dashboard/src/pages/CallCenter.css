@@ -1,4 +1,4 @@
-﻿.call-center {
+.call-center {
   display: flex;
   height: 100%;
   background: var(--bg-main);
@@ -9,6 +9,8 @@
 .cc-sidebar {
   width: 350px;
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border-right: 1px solid var(--border-main);
   display: flex;
   flex-direction: column;
@@ -207,6 +209,8 @@
 
 .transcript-box {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 1rem;
   padding: 1.5rem;
@@ -267,6 +271,8 @@
 
 .insight-card {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 1rem;
   padding: 1.25rem;

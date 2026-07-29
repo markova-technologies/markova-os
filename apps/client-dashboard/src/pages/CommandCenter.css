@@ -40,6 +40,8 @@
   border-radius: 8px;
   border: 1px solid var(--border-main);
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   color: var(--text-main);
   font-size: 0.86rem;
   font-family: var(--font-body);
@@ -76,6 +78,8 @@
 
 .stat-card {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 12px;
   padding: 1.15rem 1.25rem;
@@ -133,6 +137,8 @@
 
 .cc-section {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 12px;
   padding: 1.35rem;

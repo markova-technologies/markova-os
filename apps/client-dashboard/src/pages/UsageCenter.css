@@ -50,6 +50,8 @@
   padding: 1.1rem;
   text-align: left;
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 0.75rem;
   cursor: pointer;
@@ -85,6 +87,8 @@
 .usage-chart-card,
 .usage-table-card {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
   border-radius: 0.75rem;
   padding: 1.25rem;

@@ -58,13 +58,38 @@
 
   /* Semantic Variables (Mapping to old components) */
   --bg-main: var(--bg-primary);
-  --bg-card: var(--bg-secondary);
-  --bg-sidebar: var(--bg-secondary);
+  --bg-card: var(--bg-glass);
+  --bg-sidebar: var(--bg-glass);
   --text-main: var(--text-primary);
   --border-main: var(--border-primary);
   --shadow: var(--shadow-sm);
   --dark: var(--bg-primary);
   --gray: var(--text-muted);
+}
+
+/* Glassmorphism Utilities */
+.glass-panel {
+  background: var(--bg-glass);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-primary);
+  box-shadow: var(--shadow-md);
+}
+
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition);
+}
+
+.glass-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-glow);
+  border-color: rgba(99, 102, 241, 0.4);
 }
 
 /* Light Theme */
@@ -293,6 +318,8 @@ select option {
 
 .export-modal-v2 {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   backdrop-filter: blur(25px);
   border: 1px solid var(--border-main);
   border-radius: 24px;
@@ -443,6 +470,8 @@ select option {
 
 .table-row-v2:hover {
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border-color: var(--primary);
 }
 

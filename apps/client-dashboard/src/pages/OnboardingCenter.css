@@ -16,6 +16,8 @@
   max-width: 1000px;
   min-height: 600px;
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border-radius: 1rem;
   border: 1px solid var(--border-main);
   overflow: hidden;
@@ -57,6 +59,8 @@
   align-items: center;
   justify-content: center;
   background: var(--bg-card);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
 }
 
