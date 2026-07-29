@@ -12,13 +12,16 @@ import UsageCenter from './pages/UsageCenter'
 import Settings from './pages/Settings'
 import BillingCenter from './pages/BillingCenter'
 import Keys from './pages/Keys'
-import Numbers from './pages/Numbers'
+import PhoneChannels from './pages/PhoneChannels'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import ForgotPassword from './pages/ForgotPassword'
 import ResetPassword from './pages/ResetPassword'
 import Pricing from './pages/Pricing'
 import DocsSite from './pages/DocsSite'
+import CRM from './pages/CRM'
+import Governance from './pages/Governance'
+import Organization from './pages/Organization'
 import Landing from '../../../packages/ui/landing/Landing'
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
 import { ROUTES } from './config/site'
@@ -201,7 +204,7 @@ function App() {
                         <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
                         <Route path="agent-studio" element={<AgentStudio />} />
                         <Route path="knowledge" element={<KnowledgeCenter />} />
-                        <Route path="numbers" element={<Numbers />} />
+                        <Route path="phone-channels" element={<PhoneChannels />} />
                         <Route path="keys" element={<Keys />} />
                         <Route path="integrations" element={<IntegrationHub />} />
                         <Route path="call-center" element={<CallCenter />} />
@@ -210,6 +213,9 @@ function App() {
                         <Route path="analytics" element={<Navigate to={ROUTES.usage} replace />} />
                         <Route path="settings" element={<Settings />} />
                         <Route path="billing" element={<BillingCenter />} />
+                        <Route path="crm" element={<CRM />} />
+                        <Route path="governance" element={<Governance />} />
+                        <Route path="organization" element={<Organization />} />
                         <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
                       </Routes>
                     </div>

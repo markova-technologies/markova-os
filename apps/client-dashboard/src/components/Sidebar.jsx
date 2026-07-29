@@ -15,7 +15,12 @@ import {
   Sun,
   X,
   CreditCard,
-  Settings
+  Settings,
+  Shield,
+  Users,
+  Building,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react'
 import { ROUTES } from '../config/site'
 import './Sidebar.css'
@@ -40,8 +45,8 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
 
-  // In-scope IA only (Brief §4). Out-of-scope pages (Flow Builder, Governance,
-  // Phone & Channels, CRM, Organization) are disabled — no /v1 backend.
+  // In-scope IA only (Brief §4). Flow Builder deleted as requested.
+  // Phone & Channels = Numbers. CRM, Organization, Governance are enabled in UI.
   const menuItems = [
     {
       title: 'Command Center',
@@ -50,20 +55,34 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       color: 'text-emerald-400'
     },
     {
-      title: 'Agent Studio',
-      path: ROUTES.agentStudio,
+      title: 'Agents',
       icon: Bot,
-      color: 'text-purple-400'
+      color: 'text-purple-400',
+      isDropdown: true,
+      subItems: [
+        {
+          title: 'Agent Studio',
+          path: ROUTES.agentStudio,
+          icon: Bot,
+          color: 'text-purple-400'
+        },
+        {
+          title: 'Knowledge Center',
+          path: ROUTES.knowledge,
+          icon: BookOpen,
+          color: 'text-rose-400'
+        },
+        {
+          title: 'Governance',
+          path: ROUTES.governance,
+          icon: Shield,
+          color: 'text-amber-500'
+        }
+      ]
     },
     {
-      title: 'Knowledge Center',
-      path: ROUTES.knowledge,
-      icon: BookOpen,
-      color: 'text-rose-400'
-    },
-    {
-      title: 'Numbers',
-      path: ROUTES.numbers,
+      title: 'Phone & Channels',
+      path: ROUTES.phoneChannels,
       icon: Phone,
       color: 'text-indigo-400'
     },
@@ -99,9 +118,29 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
     },
     {
       title: 'Settings',
-      path: ROUTES.settings,
       icon: Settings,
-      color: 'text-gray-400'
+      color: 'text-gray-400',
+      isDropdown: true,
+      subItems: [
+        {
+          title: 'General Settings',
+          path: ROUTES.settings,
+          icon: Settings,
+          color: 'text-gray-400'
+        },
+        {
+          title: 'Organization',
+          path: ROUTES.organization,
+          icon: Building,
+          color: 'text-indigo-400'
+        }
+      ]
+    },
+    {
+      title: 'CRM',
+      path: ROUTES.crm,
+      icon: Users,
+      color: 'text-blue-400'
     }
   ]
 
@@ -126,6 +165,54 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
         <ul className="nav-menu">
           {menuItems.map((item, index) => {
             const Icon = item.icon
+
+            if (item.isDropdown) {
+              const isActive = item.subItems.some(sub => location.pathname === sub.path || (sub.path !== ROUTES.app && location.pathname.startsWith(sub.path + '/')))
+              const isOpen = openDropdown === item.title
+
+              return (
+                <motion.li
+                  key={item.title}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                >
+                  <button
+                    className={`nav-link ${isActive ? 'active' : ''}`}
+                    onClick={() => setOpenDropdown(isOpen ? null : item.title)}
+                    style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', outline: 'none' }}
+                  >
+                    <Icon className={`nav-icon ${item.color}`} size={20} />
+                    <span className="nav-text" style={{ flex: 1 }}>{item.title}</span>
+                    {isOpen ? <ChevronDown size={16} className="nav-icon" /> : <ChevronRight size={16} className="nav-icon" />}
+                  </button>
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.ul
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        style={{ overflow: 'hidden', paddingLeft: '2.5rem', listStyle: 'none', margin: 0 }}
+                      >
+                        {item.subItems.map(sub => {
+                          const SubIcon = sub.icon
+                          const isSubActive = location.pathname === sub.path || (sub.path !== ROUTES.app && location.pathname.startsWith(sub.path + '/'))
+                          return (
+                            <li key={sub.path} style={{ marginTop: '0.25rem' }}>
+                              <Link to={sub.path} className={`nav-link ${isSubActive ? 'active' : ''}`} style={{ padding: '0.5rem 1rem' }}>
+                                <SubIcon className={`nav-icon ${sub.color}`} size={18} />
+                                <span className="nav-text" style={{ fontSize: '0.9em' }}>{sub.title}</span>
+                              </Link>
+                            </li>
+                          )
+                        })}
+                      </motion.ul>
+                    )}
+                  </AnimatePresence>
+                </motion.li>
+              )
+            }
+
             const isActive = location.pathname === item.path || (item.path !== ROUTES.app && location.pathname.startsWith(item.path + '/'))
             return (
                <motion.li

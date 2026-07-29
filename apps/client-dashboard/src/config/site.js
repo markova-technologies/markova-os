@@ -15,12 +15,15 @@ export const ROUTES = {
   onboarding: '/app/onboarding',
   agentStudio: '/app/agent-studio',
   knowledge: '/app/knowledge',
-  numbers: '/app/numbers',
+  phoneChannels: '/app/phone-channels',
   keys: '/app/keys',
   integrations: '/app/integrations',
   callCenter: '/app/call-center',
   usage: '/app/usage',
   settings: '/app/settings',
+  crm: '/app/crm',
+  governance: '/app/governance',
+  organization: '/app/organization',
   /** In-app invoices / plan management (after login) */
   billing: '/app/billing',
 }

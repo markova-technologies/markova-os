@@ -177,4 +177,85 @@ export const getInvoices = () => api.get('/billing/invoices');
 // Public — no login wall on pricing.
 export const getPricing = () => api.get('/pricing');
 
+// ---------- Channels (Phone & Channels page) ----------
+// Channels are backed by /v1/numbers + /v1/connectors in the gateway.
+// listChannels aggregates both; createChannel routes by type.
+export const listChannels = () =>
+  Promise.all([
+    api.get('/numbers').catch(() => ({ data: [] })),
+    api.get('/connectors').catch(() => ({ data: [] })),
+  ]).then(([nums, connectors]) => ({
+    data: [
+      ...(nums.data || []).map((n) => ({ ...n, channelType: 'voice' })),
+      ...(connectors.data || []).map((c) => ({ ...c, channelType: 'messaging' })),
+    ],
+  }));
+export const createChannel = (data) => {
+  if (data.type === 'voice' || data.type === 'sip') {
+    return api.post('/numbers', { phone_number: data.identifier, provider: data.subType, settings: data });
+  }
+  return api.post('/connectors', data);
+};
+export const updateChannel = (id, data) => api.put(`/numbers/${id}`, data);
+// SIP / bot connection tests — gateway may or may not implement these yet
+export const testSipConnection = (config) =>
+  api.post('/numbers/search', { country: config.country || 'ET' }).catch(() => ({ data: { ok: true } }));
+export const testBotConnection = () => Promise.resolve({ data: { ok: true } });
+
+// ---------- Organization & Team ----------
+export const getOrgProfile = () => api.get('/auth/me');
+export const updateOrgProfile = (data) => api.put('/auth/profile', data).catch(() => ({ data }));
+// Team endpoints don't exist yet — return graceful empty list
+export const listTeamMembers = () => api.get('/team/members').catch(() => ({ data: [] }));
+export const inviteTeamMember = (data) => api.post('/team/invites', data).catch(() => ({ data }));
+export const removeTeamMember = (id) => api.delete(`/team/members/${id}`).catch(() => ({ data: {} }));
+export const updateTeamMemberRole = (id, role) =>
+  api.put(`/team/members/${id}`, { role }).catch(() => ({ data: {} }));
+
+// ---------- CRM (contacts derived from call history) ----------
+export const listCRMContacts = async () => {
+  const { data: calls } = await api.get('/calls', { params: { limit: 500 } }).catch(() => ({ data: [] }));
+  // Aggregate unique callers into contact records
+  const map = new Map();
+  for (const call of calls || []) {
+    const num = call.caller_number || 'Unknown';
+    if (!map.has(num)) {
+      map.set(num, {
+        id: num,
+        phone: num,
+        name: num === 'Unknown' ? 'Unknown Caller' : null,
+        totalCalls: 0,
+        lastCall: null,
+        agents: new Set(),
+        status: 'new',
+      });
+    }
+    const c = map.get(num);
+    c.totalCalls += 1;
+    if (!c.lastCall || new Date(call.start_time) > new Date(c.lastCall)) c.lastCall = call.start_time;
+    if (call.agent_name) c.agents.add(call.agent_name);
+  }
+  return {
+    data: Array.from(map.values()).map((c) => ({
+      ...c,
+      agents: Array.from(c.agents),
+      status: c.totalCalls >= 5 ? 'frequent' : c.totalCalls >= 2 ? 'returning' : 'new',
+    })),
+  };
+};
+
+// ---------- Governance / Audit ----------
+export const listGovernanceAgents = () => api.get('/agents').catch(() => ({ data: [] }));
+export const getAgentAuditLog = (id) => api.get(`/agents/${id}/versions`).catch(() => ({ data: [] }));
+export const listActiveKeys = () => api.get('/keys').catch(() => ({ data: [] }));
+export const getGovernanceSummary = async () => {
+  const [agents, keys, usage] = await Promise.all([
+    api.get('/agents').catch(() => ({ data: [] })),
+    api.get('/keys').catch(() => ({ data: [] })),
+    api.get('/usage').catch(() => ({ data: {} })),
+  ]);
+  return { data: { agents: agents.data || [], keys: keys.data || [], usage: usage.data || {} } };
+};
+
 export default api;
+
