@@ -508,3 +508,10 @@
 .kc-modal-input { width: 100%; padding: 0.75rem 1rem; background: var(--bg-main); border: 1px solid var(--border-main); border-radius: 10px; color: var(--text-main); font-size: 0.9rem; transition: border-color 0.2s; }
 .kc-modal-input:focus { outline: none; border-color: var(--primary); }
 .kc-modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem; }
+
+/* -- Knowledge Item Row with Actions ------------------------------------- */
+.kc-doc-item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.6rem 0.8rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-main); border-radius: 8px; margin-bottom: 0.4rem; }
+.kc-doc-item-main { display: flex; align-items: center; gap: 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.kc-doc-item-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.kc-doc-delete { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0.25rem; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
+.kc-doc-delete:hover { background: rgba(232, 92, 74, 0.15); color: #e85c4a; }

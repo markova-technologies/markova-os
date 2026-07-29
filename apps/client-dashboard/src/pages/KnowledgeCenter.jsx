@@ -13,6 +13,7 @@ import {
   X,
   BookOpen,
   Table,
+  Trash2,
 } from 'lucide-react'
 import {
   listKnowledgeSources,
@@ -20,6 +21,8 @@ import {
   listKnowledgeDocuments,
   uploadKnowledgeDocument,
   searchKnowledge,
+  deleteKnowledgeSource,
+  deleteKnowledgeDocument,
 } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import './KnowledgeCenter.css'
@@ -118,8 +121,8 @@ const KnowledgeCenter = () => {
   }
 
   const closeModal = () => {
+    setModalStep(null)
     setAddModalCategory(null)
-    setModalStep('category')
     setSelectedMethod(null)
     setInputUrl('')
   }
@@ -148,9 +151,9 @@ const KnowledgeCenter = () => {
       await createKnowledgeSource({
         name: `${addModalCategory.name} (${selectedMethod})`,
         type: selectedMethod,
-        config: { url: inputUrl.trim() }
+        config: { url: inputUrl.trim(), categoryKey: addModalCategory.key }
       })
-      toast.success(`${selectedMethod.toUpperCase()} knowledge source added to ${addModalCategory.name}.`, 'Source added')
+      toast.success(`${selectedMethod.toUpperCase()} source added to ${addModalCategory.name}.`, 'Source added')
       await load()
       closeModal()
     } catch {
@@ -194,8 +197,63 @@ const KnowledgeCenter = () => {
     setConsented(true)
   }
 
+  const getItemsForCategory = (category) => {
+    // Find all sources matching this category
+    const catSources = sources.filter((s) => {
+      if (s.config?.categoryKey === category.key) return true
+      const sName = (s.name || '').toLowerCase()
+      const cName = category.name.toLowerCase()
+      return sName.includes(cName) || sName.includes(category.key.replace('-', ''))
+    })
+
+    const items = []
+    catSources.forEach((src) => {
+      if (src.type === 'upload') {
+        const docs = documents[src.id] || []
+        docs.forEach((doc) => {
+          items.push({
+            id: doc.id,
+            sourceId: src.id,
+            itemType: 'doc',
+            name: doc.file_name,
+            status: doc.status || 'uploaded',
+            icon: FileText,
+          })
+        })
+      } else {
+        let icon = Globe
+        if (src.type === 'notion') icon = BookOpen
+        if (src.type === 'sheets') icon = Table
+        items.push({
+          id: src.id,
+          sourceId: src.id,
+          itemType: 'source',
+          name: src.config?.url || src.name,
+          status: src.type || 'active',
+          icon: icon,
+        })
+      }
+    })
+
+    return items
+  }
+
+  const handleDeleteItem = async (item) => {
+    try {
+      if (item.itemType === 'doc') {
+        await deleteKnowledgeDocument(item.sourceId, item.id)
+      } else {
+        await deleteKnowledgeSource(item.id)
+      }
+      toast.success(`Removed ${item.name} from Knowledge.`, 'Item removed')
+      await load()
+    } catch {
+      toast.error('Could not remove item. Try again.', 'Error')
+    }
+  }
+
   const sourceForCategory = (category) =>
-    sources.find((s) => s.name === category.name)
+    sources.find((s) => s.config?.categoryKey === category.key || s.name === category.name)
 
   const pickFile = (category) => {
     pendingCategory.current = category
@@ -212,7 +270,11 @@ const KnowledgeCenter = () => {
     try {
       let source = sourceForCategory(category)
       if (!source) {
-        const created = await createKnowledgeSource({ name: category.name, type: 'upload' })
+        const created = await createKnowledgeSource({
+          name: category.name,
+          type: 'upload',
+          config: { categoryKey: category.key }
+        })
         source = created.data
       }
       const formData = new FormData()
@@ -400,9 +462,8 @@ const KnowledgeCenter = () => {
 
       <section className="kc-categories">
         {CATEGORIES.map((category) => {
-          const Icon = category.icon
-          const source = sourceForCategory(category)
-          const docs = source ? documents[source.id] || [] : []
+          const CatIcon = category.icon
+          const items = getItemsForCategory(category)
 
           return (
             <motion.div
@@ -412,7 +473,7 @@ const KnowledgeCenter = () => {
               animate={{ opacity: 1, y: 0 }}
             >
               <div className="kc-category-head">
-                <span className="kc-category-icon"><Icon size={18} /></span>
+                <span className="kc-category-icon"><CatIcon size={18} /></span>
                 <div>
                   <h3>{category.name}</h3>
                   <p>{category.blurb}</p>
@@ -421,17 +482,31 @@ const KnowledgeCenter = () => {
 
               {loading ? (
                 <div className="kc-skeleton" />
-              ) : docs.length === 0 ? (
+              ) : items.length === 0 ? (
                 <p className="kc-category-empty">Nothing here yet — click "Add Knowledge" above to get started.</p>
               ) : (
                 <ul className="kc-doc-list">
-                  {docs.map((doc) => (
-                    <li key={doc.id}>
-                      <FileText size={14} />
-                      <span className="kc-doc-name mono">{doc.file_name}</span>
-                      <span className={`kc-doc-status ${doc.status || 'uploaded'}`}>{doc.status || 'uploaded'}</span>
-                    </li>
-                  ))}
+                  {items.map((item) => {
+                    const ItemIcon = item.icon
+                    return (
+                      <li key={item.id} className="kc-doc-item">
+                        <div className="kc-doc-item-main">
+                          <ItemIcon size={14} />
+                          <span className="kc-doc-name mono">{item.name}</span>
+                        </div>
+                        <div className="kc-doc-item-actions">
+                          <span className={`kc-doc-status ${item.status}`}>{item.status}</span>
+                          <button
+                            className="kc-doc-delete"
+                            onClick={() => handleDeleteItem(item)}
+                            title="Remove from knowledge"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  })}
                 </ul>
               )}
             </motion.div>

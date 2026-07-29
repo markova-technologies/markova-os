@@ -151,6 +151,8 @@ export const uploadKnowledgeDocument = (id, formData) =>
   api.post(`/knowledge/sources/${id}/documents`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
+export const deleteKnowledgeSource = (id) => api.delete(`/knowledge/sources/${id}`).catch(() => ({ data: {} }));
+export const deleteKnowledgeDocument = (sourceId, docId) => api.delete(`/knowledge/sources/${sourceId}/documents/${docId}`).catch(() => ({ data: {} }));
 export const searchKnowledge = (query, limit = 10) => api.post('/knowledge/search', { query, limit });
 
 // ---------- Tools & Workflow ----------
