@@ -529,6 +529,15 @@ class CommerceRepository:
         with self._connect() as db:
             db.execute("DELETE FROM commerce_order_drafts WHERE call_id=?", (call_id,))
 
+    def expire_old_drafts(self, max_age_minutes: int = 30) -> None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=max_age_minutes)).isoformat()
+        try:
+            with self._connect() as db:
+                db.execute("DELETE FROM commerce_order_drafts WHERE updated_at < ?", (cutoff,))
+        except Exception as e:
+            import logging
+            logging.error(f"Failed to expire old commerce drafts: {e}")
+
     @staticmethod
     def _order_number(order_id: int) -> str:
         date = datetime.now(timezone.utc).strftime("%Y%m%d")

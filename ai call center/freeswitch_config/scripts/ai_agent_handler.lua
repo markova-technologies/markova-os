@@ -52,7 +52,7 @@ function http_post(endpoint, post_data)
     freeswitch.consoleLog("info", "[AI Agent] POST " .. url .. "\n")
     
     local cmd = string.format(
-        'curl.exe -s -X POST "%s" -d "%s"',
+        'curl.exe -s --connect-timeout 10 --max-time 90 -X POST "%s" -d "%s"',
         url, post_data
     )
     
@@ -73,7 +73,7 @@ function upload_audio(filepath)
     freeswitch.consoleLog("info", "[AI Agent] Uploading audio: " .. filepath .. " to " .. url .. "\n")
     
     local cmd = string.format(
-        'curl.exe -s -X POST "%s" -F "AudioFile=@%s" -F "CallSid=%s"',
+        'curl.exe -s --connect-timeout 10 --max-time 90 -X POST "%s" -F "AudioFile=@%s" -F "CallSid=%s"',
         url, filepath, uuid
     )
     
@@ -106,7 +106,7 @@ function download_audio(url, target_file)
         ext = "wav"  -- Force WAV for FreeSWITCH compatibility
     end
     local local_file = target_file or (temp_dir .. "\\ai_response_" .. uuid .. "." .. ext)
-    local cmd = string.format('curl.exe -s --compressed --tcp-nodelay -o "%s" "%s"', local_file, url)
+    local cmd = string.format('curl.exe -s --connect-timeout 10 --max-time 90 --compressed --tcp-nodelay -o "%s" "%s"', local_file, url)
     freeswitch.consoleLog("info", "[AI Agent] Downloading: " .. url .. " -> " .. local_file .. "\n")
     os.execute(cmd)
     
@@ -203,7 +203,7 @@ function stream_response(rec_file)
     pcall(function() os.remove(out_file) end)
     pcall(function() os.remove(header_file) end)
     local cmd = string.format(
-        'curl.exe -s --compressed --tcp-nodelay -D "%s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --max-time 30',
+        'curl.exe -s --compressed --tcp-nodelay -D "%s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --connect-timeout 10 --max-time 90',
         header_file, url, rec_file, uuid, caller_id, out_file
     )
     freeswitch.consoleLog("info", "[AI Agent] Calling /sip-response...\n")

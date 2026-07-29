@@ -1549,73 +1549,30 @@ class AmharicAIAssistant:
                     except:
                         pass
 
-    def _analyze_and_repair(self, user_input: str) -> dict:
-        """
-        Unified function to Detect Language AND Repair Phonetic Input simultaneously.
-        This solves the issue where 'Amharic' verification blocks repair of phonetic English.
-        """
-        if not self.groq_client: return {"language": "amharic", "text": user_input}
-        llm_model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
-        
-        try:
-            response = self.groq_client.chat.completions.create(
-                model=llm_model,
-                messages=[
-                    {"role": "system", "content": """Analyze the user's text. It might be in Amharic script (Ge'ez) but actually be phonetic English/Spanish/French.
-                    
-                    Your job is to:
-                    1. Identify the TRUE underlying language.
-                    2. If it is phonetic (e.g. 'ከሃው አር ዩ' -> 'How are you'), REPAIR it to the correct script.
-                    3. If it is standard Amharic, keep it as is.
-                    
-                    Examples:
-                    Input: 'ከሃው አር ዩ' -> Output JSON: {"language": "english", "text": "How are you"}
-                    Input: 'ሰላም ነው' -> Output JSON: {"language": "amharic", "text": "ሰላም ነው"}
-                    Input: 'Hello' -> Output JSON: {"language": "english", "text": "Hello"}
-                    
-                    Respond with VALID JSON ONLY: {"language": "...", "text": "..."}"""},
-                    {"role": "user", "content": user_input}
-                ],
-                max_tokens=150,
-                temperature=0.0
-                # Note: response_format removed — not supported by Gemini
-            )
-            raw = response.choices[0].message.content.strip()
-            # Extract JSON from response (works even if model wraps it in markdown)
-            import re
-            json_match = re.search(r'\{.*?\}', raw, re.DOTALL)
-            if json_match:
-                result = json.loads(json_match.group())
-            else:
-                result = json.loads(raw)
-            return {
-                "language": result.get("language", "english").lower(), 
-                "text": result.get("text", user_input)
-            }
-        except Exception as e:
-            logger.warning(f"Analysis failed: {e}")
-            # Fallback: heavily bias towards English if we can't be sure, as Amharic usually works fine
-            return {"language": "english", "text": user_input}
+    def detect_language_from_text(self, user_input: str) -> str:
+        """Detect language by character composition — zero latency, no LLM."""
+        if not user_input:
+            return "amharic"
+        amharic_count = sum(1 for c in user_input if 0x1200 <= ord(c) <= 0x137F)
+        latin_count = sum(1 for c in user_input if c.isascii() and c.isalpha())
+        total = amharic_count + latin_count
+        if total == 0:
+            return "amharic"
+        if amharic_count / total >= 0.4:
+            return "amharic"
+        return "english"
 
     def generate_response(self, user_input: str) -> str:
         """Generate response with multi-language routing and Amharic-first policy"""
         if not self.groq_client:
             return "ይቅርታ፣ ቴክኒካል ችግር ተፈጥሯል። እባክዎ ቆይተው ይደውሉ።"
         
-        # 1. Analyze and Repair Input — ONLY for non-Amharic text
-        # Skip repair for Amharic because _analyze_and_repair mangles 
-        # Whisper's noisy output into random English, breaking the AI
+        # 1. Analyze and Detect Language — Fast Char Counting
         if self.detected_language == "amharic":
-            # Trust the raw input — the LLM can handle noisy Amharic
+            # Trust the raw input — the STT already flagged it as Amharic
             new_lang = "amharic"
         else:
-            analysis = self._analyze_and_repair(user_input)
-            new_lang = analysis["language"]
-            repaired_input = analysis["text"]
-            
-            if repaired_input != user_input:
-                 logger.info(f"🔧 Input Repaired: {user_input} -> {repaired_input}")
-                 user_input = repaired_input
+            new_lang = self.detect_language_from_text(user_input)
 
         # Redirect Arabic to Amharic (Whisper confuses them)
         if new_lang == "arabic":

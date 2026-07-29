@@ -380,6 +380,7 @@ class CommerceAgent:
                 "address": "string or null",
                 "note": "string or null",
                 "order_number": "string or null",
+                "unmatched_product": "string (the product name they asked for if it is not in the catalog) or null",
                 "confirm": "boolean",
                 "reject": "boolean",
             },
@@ -567,8 +568,13 @@ class CommerceAgent:
         product_id = extracted.get("product_id")
         
         if not data.get("items") and not product_id:
-            # The caller wants to order but we couldn't match any product
-            return PRODUCT_NOT_FOUND_REPLY
+            if draft:
+                # We already asked them what they want on a previous turn, but they
+                # replied with something we still couldn't match to a product.
+                return PRODUCT_NOT_FOUND_REPLY
+            else:
+                # Very first turn. Let it fall through to ask them what they want.
+                pass
             
         if product_id:
             product = await asyncio.to_thread(self.repository.get_product, int(product_id))
@@ -633,6 +639,7 @@ class CommerceAgent:
         call_id: str,
         caller_phone: Optional[str] = None,
     ) -> Optional[str]:
+        await asyncio.to_thread(self.repository.expire_old_drafts)
         draft = await asyncio.to_thread(self.repository.get_draft, call_id)
         extracted = await self._extract(text, draft)
         intent = extracted.get("intent", "other")
