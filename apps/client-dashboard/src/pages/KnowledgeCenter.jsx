@@ -100,12 +100,28 @@ const KnowledgeCenter = () => {
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState(null)
   const [addModalCategory, setAddModalCategory] = useState(null)
+  const [modalStep, setModalStep] = useState('category') // 'category' | 'method'
   const pendingCategory = useRef(null)
   const fileInputRef = useRef(null)
   const toast = useToast()
 
-  const handleMockClick = (sourceType) => {
+  const openModal = () => {
+    setModalStep('category')
     setAddModalCategory(null)
+  }
+
+  const closeModal = () => {
+    setAddModalCategory(null)
+    setModalStep('category')
+  }
+
+  const selectCategory = (category) => {
+    setAddModalCategory(category)
+    setModalStep('method')
+  }
+
+  const handleMockClick = (sourceType) => {
+    closeModal()
     toast.success(`${sourceType} integration is coming soon.`, 'Coming soon')
   }
 
@@ -193,26 +209,31 @@ const KnowledgeCenter = () => {
 
   if (!consented) return <ConsentGate onAccept={acceptConsent} />
 
-  const totalDocs = Object.values(documents).reduce((n, d) => n + d.length, 0)
+  const showModal = modalStep === 'category' || (modalStep === 'method' && addModalCategory)
 
   return (
     <div className="knowledge-center">
-      <header className="page-header">
-        <h1>Knowledge</h1>
-        <p>Give your agent the material it needs to answer callers accurately.</p>
+      <header className="page-header kc-page-header">
+        <div>
+          <h1>Knowledge</h1>
+          <p>Give your agent the material it needs to answer callers accurately.</p>
+        </div>
+        <button className="btn-primary kc-global-add" onClick={openModal}>
+          <UploadCloud size={16} /> Add Knowledge
+        </button>
       </header>
 
       <input type="file" ref={fileInputRef} onChange={handleFile} style={{ display: 'none' }} accept=".txt,.md,.csv,.pdf,.doc,.docx" />
 
-      {/* Add Knowledge Modal */}
+      {/* Add Knowledge Modal - 2-step */}
       <AnimatePresence>
-        {addModalCategory && (
+        {showModal && (
           <motion.div
             className="kc-modal-overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={() => setAddModalCategory(null)}
+            onClick={closeModal}
           >
             <motion.div
               className="kc-modal"
@@ -222,36 +243,71 @@ const KnowledgeCenter = () => {
               transition={{ type: 'spring', stiffness: 300, damping: 28 }}
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="kc-modal-header">
-                <div>
-                  <h2>Add Knowledge</h2>
-                  <p>Choose how you'd like to add content to <strong>{addModalCategory.name}</strong></p>
-                </div>
-                <button className="kc-modal-close" onClick={() => setAddModalCategory(null)}><X size={20} /></button>
-              </div>
-              <div className="kc-modal-options">
-                <button className="kc-modal-option" onClick={() => { pickFile(addModalCategory); setAddModalCategory(null); }}>
-                  <div className="kc-modal-option-icon"><FileText size={24} /></div>
-                  <div>
-                    <span>File Upload</span>
-                    <p>Upload a .txt, .pdf, .csv, .doc or .md file from your computer</p>
+              {/* Step 1: Pick Category */}
+              {modalStep === 'category' && (
+                <>
+                  <div className="kc-modal-header">
+                    <div>
+                      <h2>Add Knowledge</h2>
+                      <p>Choose which category to add content to</p>
+                    </div>
+                    <button className="kc-modal-close" onClick={closeModal}><X size={20} /></button>
                   </div>
-                </button>
-                <button className="kc-modal-option" onClick={() => handleMockClick('Website URL')}>
-                  <div className="kc-modal-option-icon"><Globe size={24} /></div>
-                  <div>
-                    <span>Website URL</span>
-                    <p>Paste a link and we'll extract the content automatically</p>
+                  <div className="kc-modal-categories">
+                    {CATEGORIES.map((cat) => {
+                      const CatIcon = cat.icon
+                      return (
+                        <button key={cat.key} className="kc-modal-cat-option" onClick={() => selectCategory(cat)}>
+                          <div className="kc-modal-option-icon"><CatIcon size={22} /></div>
+                          <div>
+                            <span>{cat.name}</span>
+                            <p>{cat.blurb}</p>
+                          </div>
+                        </button>
+                      )
+                    })}
                   </div>
-                </button>
-                <button className="kc-modal-option" onClick={() => handleMockClick('Google Drive')}>
-                  <div className="kc-modal-option-icon"><HardDrive size={24} /></div>
-                  <div>
-                    <span>Google Drive</span>
-                    <p>Connect your Drive and pick documents directly</p>
+                </>
+              )}
+
+              {/* Step 2: Pick Upload Method */}
+              {modalStep === 'method' && addModalCategory && (
+                <>
+                  <div className="kc-modal-header">
+                    <div>
+                      <button className="kc-modal-back" onClick={() => setModalStep('category')}>
+                        ← Back
+                      </button>
+                      <h2>Add to <span className="kc-modal-cat-label">{addModalCategory.name}</span></h2>
+                      <p>Choose how you'd like to add content</p>
+                    </div>
+                    <button className="kc-modal-close" onClick={closeModal}><X size={20} /></button>
                   </div>
-                </button>
-              </div>
+                  <div className="kc-modal-options">
+                    <button className="kc-modal-option" onClick={() => { pickFile(addModalCategory); closeModal(); }}>
+                      <div className="kc-modal-option-icon"><FileText size={24} /></div>
+                      <div>
+                        <span>File Upload</span>
+                        <p>Upload a .txt, .pdf, .csv, .doc or .md file from your computer</p>
+                      </div>
+                    </button>
+                    <button className="kc-modal-option" onClick={() => handleMockClick('Website URL')}>
+                      <div className="kc-modal-option-icon"><Globe size={24} /></div>
+                      <div>
+                        <span>Website URL</span>
+                        <p>Paste a link and we'll extract the content automatically</p>
+                      </div>
+                    </button>
+                    <button className="kc-modal-option" onClick={() => handleMockClick('Google Drive')}>
+                      <div className="kc-modal-option-icon"><HardDrive size={24} /></div>
+                      <div>
+                        <span>Google Drive</span>
+                        <p>Connect your Drive and pick documents directly</p>
+                      </div>
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </motion.div>
         )}
@@ -264,7 +320,6 @@ const KnowledgeCenter = () => {
           const Icon = category.icon
           const source = sourceForCategory(category)
           const docs = source ? documents[source.id] || [] : []
-          const busy = uploadingKey === category.key
 
           return (
             <motion.div
@@ -284,7 +339,7 @@ const KnowledgeCenter = () => {
               {loading ? (
                 <div className="kc-skeleton" />
               ) : docs.length === 0 ? (
-                <p className="kc-category-empty">Nothing here yet — add a file so your agent can use it.</p>
+                <p className="kc-category-empty">Nothing here yet — click "Add Knowledge" above to get started.</p>
               ) : (
                 <ul className="kc-doc-list">
                   {docs.map((doc) => (
@@ -296,14 +351,6 @@ const KnowledgeCenter = () => {
                   ))}
                 </ul>
               )}
-
-              <button
-                className="btn-secondary kc-add"
-                onClick={() => setAddModalCategory(category)}
-                disabled={busy}
-              >
-                <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add Knowledge'}
-              </button>
             </motion.div>
           )
         })}

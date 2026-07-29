@@ -411,3 +411,93 @@
 }
 
 .kc-add { margin-top: 1.5rem; }
+
+/* ── Page header with button ───────────────────────────────────────────────── */
+.kc-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 2rem;
+}
+
+.kc-global-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Step 1: category picker ───────────────────────────────────────────────── */
+.kc-modal-categories {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1rem;
+}
+
+.kc-modal-cat-option {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.kc-modal-cat-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-main);
+}
+
+.kc-modal-cat-option:hover .kc-modal-option-icon {
+  background: rgba(91, 100, 120, 0.15);
+  border-color: var(--primary);
+}
+
+.kc-modal-cat-option > div:last-child span {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.2rem;
+}
+
+.kc-modal-cat-option > div:last-child p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Step 2: back button and category label ────────────────────────────────── */
+.kc-modal-back {
+  background: none;
+  border: none;
+  color: var(--primary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  margin-bottom: 0.4rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  transition: opacity 0.2s;
+}
+
+.kc-modal-back:hover {
+  opacity: 0.75;
+}
+
+.kc-modal-cat-label {
+  color: var(--primary);
+  font-weight: 700;
+}
