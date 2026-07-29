@@ -10,7 +10,7 @@ import {
   UploadCloud,
   Globe,
   HardDrive,
-  ChevronDown,
+  X,
 } from 'lucide-react'
 import {
   listKnowledgeSources,
@@ -99,12 +99,13 @@ const KnowledgeCenter = () => {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState(null)
-  const [openDropdownId, setOpenDropdownId] = useState(null)
+  const [addModalCategory, setAddModalCategory] = useState(null)
   const pendingCategory = useRef(null)
   const fileInputRef = useRef(null)
   const toast = useToast()
 
   const handleMockClick = (sourceType) => {
+    setAddModalCategory(null)
     toast.success(`${sourceType} integration is coming soon.`, 'Coming soon')
   }
 
@@ -203,6 +204,59 @@ const KnowledgeCenter = () => {
 
       <input type="file" ref={fileInputRef} onChange={handleFile} style={{ display: 'none' }} accept=".txt,.md,.csv,.pdf,.doc,.docx" />
 
+      {/* Add Knowledge Modal */}
+      <AnimatePresence>
+        {addModalCategory && (
+          <motion.div
+            className="kc-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setAddModalCategory(null)}
+          >
+            <motion.div
+              className="kc-modal"
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="kc-modal-header">
+                <div>
+                  <h2>Add Knowledge</h2>
+                  <p>Choose how you'd like to add content to <strong>{addModalCategory.name}</strong></p>
+                </div>
+                <button className="kc-modal-close" onClick={() => setAddModalCategory(null)}><X size={20} /></button>
+              </div>
+              <div className="kc-modal-options">
+                <button className="kc-modal-option" onClick={() => { pickFile(addModalCategory); setAddModalCategory(null); }}>
+                  <div className="kc-modal-option-icon"><FileText size={24} /></div>
+                  <div>
+                    <span>File Upload</span>
+                    <p>Upload a .txt, .pdf, .csv, .doc or .md file from your computer</p>
+                  </div>
+                </button>
+                <button className="kc-modal-option" onClick={() => handleMockClick('Website URL')}>
+                  <div className="kc-modal-option-icon"><Globe size={24} /></div>
+                  <div>
+                    <span>Website URL</span>
+                    <p>Paste a link and we'll extract the content automatically</p>
+                  </div>
+                </button>
+                <button className="kc-modal-option" onClick={() => handleMockClick('Google Drive')}>
+                  <div className="kc-modal-option-icon"><HardDrive size={24} /></div>
+                  <div>
+                    <span>Google Drive</span>
+                    <p>Connect your Drive and pick documents directly</p>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {loadError && <div className="kc-error">{loadError}</div>}
 
       <section className="kc-categories">
@@ -243,36 +297,13 @@ const KnowledgeCenter = () => {
                 </ul>
               )}
 
-              <div className="kc-add-container">
-                <button
-                  className="btn-secondary kc-add"
-                  onClick={() => setOpenDropdownId(openDropdownId === category.key ? null : category.key)}
-                  disabled={busy}
-                >
-                  <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add Knowledge'} <ChevronDown size={14} />
-                </button>
-                <AnimatePresence>
-                  {openDropdownId === category.key && (
-                    <motion.div
-                      className="kc-dropdown-menu"
-                      initial={{ opacity: 0, y: -5 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -5 }}
-                      transition={{ duration: 0.15 }}
-                    >
-                      <button onClick={() => { pickFile(category); setOpenDropdownId(null); }}>
-                        <FileText size={15} /> File Upload
-                      </button>
-                      <button onClick={() => { handleMockClick('Website URL'); setOpenDropdownId(null); }}>
-                        <Globe size={15} /> Website URL
-                      </button>
-                      <button onClick={() => { handleMockClick('Google Drive'); setOpenDropdownId(null); }}>
-                        <HardDrive size={15} /> Google Drive
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
+              <button
+                className="btn-secondary kc-add"
+                onClick={() => setAddModalCategory(category)}
+                disabled={busy}
+              >
+                <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add Knowledge'}
+              </button>
             </motion.div>
           )
         })}

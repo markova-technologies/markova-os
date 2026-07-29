@@ -279,8 +279,135 @@
   .kc-categories { grid-template-columns: 1fr; }
 }
 
-.kc-add-container { position: relative; margin-top: 1.5rem; }
-.kc-dropdown-menu { position: absolute; top: calc(100% + 0.5rem); left: 0; background: var(--bg-card); backdrop-filter: blur(16px) saturate(180%); -webkit-backdrop-filter: blur(16px) saturate(180%); border: 1px solid var(--border-main); border-radius: 12px; padding: 0.5rem; display: flex; flex-direction: column; gap: 0.25rem; min-width: 180px; box-shadow: var(--shadow-lg); z-index: 10; }
-.kc-dropdown-menu button { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; background: transparent; border: none; color: var(--text-main); font-size: 0.9rem; border-radius: 8px; cursor: pointer; transition: all 0.2s; text-align: left; }
-.kc-dropdown-menu button:hover { background: rgba(255, 255, 255, 0.05); }
-.kc-add { margin-top: 0 !important; }
+/* ── Add Knowledge Modal ───────────────────────────────────────────────────── */
+.kc-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1.5rem;
+}
+
+.kc-modal {
+  background: var(--bg-card);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--border-main);
+  border-radius: 20px;
+  width: 100%;
+  max-width: 480px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+}
+
+.kc-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.75rem 1.75rem 1.25rem;
+  border-bottom: 1px solid var(--border-main);
+}
+
+.kc-modal-header h2 {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 0.3rem;
+}
+
+.kc-modal-header p {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+.kc-modal-header p strong {
+  color: var(--text-main);
+}
+
+.kc-modal-close {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border-main);
+  border-radius: 8px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 0.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.kc-modal-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-main);
+}
+
+.kc-modal-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 1rem;
+}
+
+.kc-modal-option {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.2s;
+  width: 100%;
+}
+
+.kc-modal-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-main);
+}
+
+.kc-modal-option-icon {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary);
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.kc-modal-option:hover .kc-modal-option-icon {
+  background: rgba(var(--primary-rgb, 91, 100, 120), 0.15);
+  border-color: var(--primary);
+}
+
+.kc-modal-option > div:last-child span {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.2rem;
+}
+
+.kc-modal-option > div:last-child p {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.kc-add { margin-top: 1.5rem; }
