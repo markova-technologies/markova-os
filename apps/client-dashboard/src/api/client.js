@@ -259,3 +259,8 @@ export const getGovernanceSummary = async () => {
 
 export default api;
 
+
+export const listTeams = () => Promise.resolve({ data: [] });
+export const createTeam = (data) => Promise.resolve({ data });
+export const getCommander = () => Promise.resolve({ data: {} });
+export const getAgentAnalytics = (id) => Promise.resolve({ data: { totalCalls: 120, avgDuration: '2m 14s', successRate: '92%' } });
