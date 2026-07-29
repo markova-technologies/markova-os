@@ -18,50 +18,72 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
   const notificationsRef = useRef(null)
+  const userMenuRef = useRef(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
-        console.log("Click outside detected - closing notifications");
         setShowNotifications(false);
+      }
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setShowUserMenu(false);
       }
     };
 
-    if (showNotifications) {
+    if (showNotifications || showUserMenu) {
       document.addEventListener('mousedown', handleClickOutside);
     }
 
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showNotifications]);
+  }, [showNotifications, showUserMenu]);
 
-  const notifications = [
+  const [notifications, setNotifications] = useState([
     {
       id: 1,
       title: 'New Call Completed',
       message: 'AI Agent handled a customer call successfully',
       time: '2 min ago',
-      unread: true
+      unread: true,
+      path: ROUTES.callCenter
     },
     {
       id: 2,
       title: 'Monthly Report Ready',
       message: 'Your analytics report is now available',
       time: '1 hour ago',
-      unread: true
+      unread: true,
+      path: ROUTES.analytics
     },
     {
       id: 3,
       title: 'System Update',
       message: 'Maintenance completed successfully',
       time: '5 hours ago',
-      unread: false
+      unread: false,
+      path: ROUTES.app
     }
-  ]
+  ])
 
   const unreadCount = notifications.filter(n => n.unread).length
+
+  const handleNotificationClick = (notification) => {
+    setNotifications(prev =>
+      prev.map(n => n.id === notification.id ? { ...n, unread: false } : n)
+    )
+    setShowNotifications(false)
+    if (notification.path) {
+      navigate(notification.path)
+    }
+  }
+
+  const handleMarkAllRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })))
+    setShowNotifications(false)
+    navigate(ROUTES.analytics)
+  }
 
   return (
     <header className="header">
@@ -93,7 +115,7 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
             )}
           </motion.button>
 
-          <div className="user-menu-container">
+          <div className="user-menu-container" ref={userMenuRef}>
             <motion.button
               className="user-button"
               onClick={() => setShowUserMenu(!showUserMenu)}
@@ -190,7 +212,6 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
             transition={{ duration: 0.2 }}
             ref={notificationsRef}
             onClick={() => {
-              console.log("Overlay clicked - closing notifications");
               setShowNotifications(false);
             }}
           >
@@ -201,7 +222,6 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
               exit={{ opacity: 0, scale: 0.9, y: -10 }}
               transition={{ duration: 0.2 }}
               onClick={(e) => {
-                console.log("Panel clicked - stopping propagation");
                 e.stopPropagation();
               }}
             >
@@ -215,21 +235,19 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                   <div
                     key={notification.id}
                     className={`notification-item ${notification.unread ? 'unread' : ''}`}
+                    onClick={() => handleNotificationClick(notification)}
                   >
                     <div className="notification-content">
                       <h4>{notification.title}</h4>
                       <p>{notification.message}</p>
                       <span className="notification-time">{notification.time}</span>
                     </div>
-                    {notification.unread && (
-                      <div className="unread-indicator"></div>
-                    )}
                   </div>
                 ))}
               </div>
 
               <div className="notifications-footer">
-                <button className="view-all-btn">View All Notifications</button>
+                <button className="view-all-btn" onClick={handleMarkAllRead}>View All Notifications</button>
               </div>
             </motion.div>
           </motion.div>
