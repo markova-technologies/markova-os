@@ -11,6 +11,8 @@ import {
   Globe,
   HardDrive,
   X,
+  BookOpen,
+  Table,
 } from 'lucide-react'
 import {
   listKnowledgeSources,
@@ -100,7 +102,10 @@ const KnowledgeCenter = () => {
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState(null)
   const [addModalCategory, setAddModalCategory] = useState(null)
-  const [modalStep, setModalStep] = useState('category') // 'category' | 'method'
+  const [modalStep, setModalStep] = useState('category') // 'category' | 'method' | 'input'
+  const [selectedMethod, setSelectedMethod] = useState(null) // 'upload' | 'website' | 'notion' | 'sheets'
+  const [inputUrl, setInputUrl] = useState('')
+  const [submittingSource, setSubmittingSource] = useState(false)
   const pendingCategory = useRef(null)
   const fileInputRef = useRef(null)
   const toast = useToast()
@@ -108,11 +113,15 @@ const KnowledgeCenter = () => {
   const openModal = () => {
     setModalStep('category')
     setAddModalCategory(null)
+    setSelectedMethod(null)
+    setInputUrl('')
   }
 
   const closeModal = () => {
     setAddModalCategory(null)
     setModalStep('category')
+    setSelectedMethod(null)
+    setInputUrl('')
   }
 
   const selectCategory = (category) => {
@@ -120,9 +129,35 @@ const KnowledgeCenter = () => {
     setModalStep('method')
   }
 
-  const handleMockClick = (sourceType) => {
-    closeModal()
-    toast.success(`${sourceType} integration is coming soon.`, 'Coming soon')
+  const selectMethod = (method) => {
+    if (method === 'upload') {
+      pickFile(addModalCategory)
+      closeModal()
+      return
+    }
+    setSelectedMethod(method)
+    setInputUrl('')
+    setModalStep('input')
+  }
+
+  const handleSourceSubmit = async (e) => {
+    e.preventDefault()
+    if (!inputUrl.trim() || !addModalCategory) return
+    setSubmittingSource(true)
+    try {
+      await createKnowledgeSource({
+        name: `${addModalCategory.name} (${selectedMethod})`,
+        type: selectedMethod,
+        config: { url: inputUrl.trim() }
+      })
+      toast.success(`${selectedMethod.toUpperCase()} knowledge source added to ${addModalCategory.name}.`, 'Source added')
+      await load()
+      closeModal()
+    } catch {
+      toast.error('Could not create knowledge source. Please try again.', 'Error')
+    } finally {
+      setSubmittingSource(false)
+    }
   }
 
   const load = useCallback(async () => {
@@ -284,28 +319,76 @@ const KnowledgeCenter = () => {
                     <button className="kc-modal-close" onClick={closeModal}><X size={20} /></button>
                   </div>
                   <div className="kc-modal-options">
-                    <button className="kc-modal-option" onClick={() => { pickFile(addModalCategory); closeModal(); }}>
+                    <button className="kc-modal-option" onClick={() => selectMethod('upload')}>
                       <div className="kc-modal-option-icon"><FileText size={24} /></div>
                       <div>
                         <span>File Upload</span>
                         <p>Upload a .txt, .pdf, .csv, .doc or .md file from your computer</p>
                       </div>
                     </button>
-                    <button className="kc-modal-option" onClick={() => handleMockClick('Website URL')}>
+                    <button className="kc-modal-option" onClick={() => selectMethod('website')}>
                       <div className="kc-modal-option-icon"><Globe size={24} /></div>
                       <div>
                         <span>Website URL</span>
-                        <p>Paste a link and we'll extract the content automatically</p>
+                        <p>Extract facts and FAQs directly from a web page</p>
                       </div>
                     </button>
-                    <button className="kc-modal-option" onClick={() => handleMockClick('Google Drive')}>
-                      <div className="kc-modal-option-icon"><HardDrive size={24} /></div>
+                    <button className="kc-modal-option" onClick={() => selectMethod('notion')}>
+                      <div className="kc-modal-option-icon"><BookOpen size={24} /></div>
                       <div>
-                        <span>Google Drive</span>
-                        <p>Connect your Drive and pick documents directly</p>
+                        <span>Notion Page</span>
+                        <p>Sync structured notes and docs from a Notion workspace</p>
+                      </div>
+                    </button>
+                    <button className="kc-modal-option" onClick={() => selectMethod('sheets')}>
+                      <div className="kc-modal-option-icon"><Table size={24} /></div>
+                      <div>
+                        <span>Google Sheets</span>
+                        <p>Connect pricing tables or inventory spreadsheets</p>
                       </div>
                     </button>
                   </div>
+                </>
+              )}
+
+              {/* Step 3: Enter URL / Link */}
+              {modalStep === 'input' && addModalCategory && selectedMethod && (
+                <>
+                  <div className="kc-modal-header">
+                    <div>
+                      <button className="kc-modal-back" onClick={() => setModalStep('method')}>
+                        ← Back
+                      </button>
+                      <h2>Connect {selectedMethod === 'website' ? 'Website' : selectedMethod === 'notion' ? 'Notion' : 'Google Sheets'}</h2>
+                      <p>Enter the location for <strong>{addModalCategory.name}</strong></p>
+                    </div>
+                    <button className="kc-modal-close" onClick={closeModal}><X size={20} /></button>
+                  </div>
+                  <form className="kc-modal-form" onSubmit={handleSourceSubmit}>
+                    <label className="kc-modal-label">
+                      {selectedMethod === 'website' && 'Web Page URL'}
+                      {selectedMethod === 'notion' && 'Notion Page or Database URL'}
+                      {selectedMethod === 'sheets' && 'Google Sheets Share Link'}
+                    </label>
+                    <input
+                      type="url"
+                      required
+                      placeholder={
+                        selectedMethod === 'website' ? 'https://example.com/faq' :
+                        selectedMethod === 'notion' ? 'https://notion.so/workspace/page-id' :
+                        'https://docs.google.com/spreadsheets/d/...'
+                      }
+                      value={inputUrl}
+                      onChange={(e) => setInputUrl(e.target.value)}
+                      className="kc-modal-input"
+                    />
+                    <div className="kc-modal-actions">
+                      <button type="button" className="btn-secondary" onClick={closeModal}>Cancel</button>
+                      <button type="submit" className="btn-primary" disabled={submittingSource || !inputUrl.trim()}>
+                        {submittingSource ? 'Connecting…' : 'Add Source'}
+                      </button>
+                    </div>
+                  </form>
                 </>
               )}
             </motion.div>

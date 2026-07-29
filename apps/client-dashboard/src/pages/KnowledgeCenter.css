@@ -501,3 +501,10 @@
   color: var(--primary);
   font-weight: 700;
 }
+
+/* -- Step 3: Form Inputs --------------------------------------------------- */
+.kc-modal-form { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.25rem; }
+.kc-modal-label { font-size: 0.88rem; font-weight: 600; color: var(--text-main); display: block; margin-bottom: -0.5rem; }
+.kc-modal-input { width: 100%; padding: 0.75rem 1rem; background: var(--bg-main); border: 1px solid var(--border-main); border-radius: 10px; color: var(--text-main); font-size: 0.9rem; transition: border-color 0.2s; }
+.kc-modal-input:focus { outline: none; border-color: var(--primary); }
+.kc-modal-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; margin-top: 0.5rem; }
