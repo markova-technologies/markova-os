@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
 * {
   margin: 0;
@@ -6,46 +6,65 @@
   box-sizing: border-box;
 }
 
-/* Markova brand tokens (docs/ui/MARKOVA_UI_FULL_BRIEF.md §1) — the only 5 named colors. */
+/* Markova Website Ultra-Modern Dark Theme Tokens */
 :root {
-  --signal-ink: #12172B;
-  --wire-white: #F5F6F3;
-  --live-amber: #E8A33D;
-  --coral-pulse: #E85C4A;
-  --slate-wire: #5B6478;
+  --primary: white;
+  --secondary: white;
+  --accent: #f59e0b;
+  --success: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --info: #3b82f6;
 
-  --font-display: 'Space Grotesk', 'Inter', sans-serif;
-  --font-body: 'Inter', -apple-system, sans-serif;
+  --font-display: 'Poppins', -apple-system, sans-serif;
+  --font-body: 'Poppins', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 :root {
-  --primary: var(--live-amber);
-  --primary-dark: #C9852E;
-  --secondary: var(--slate-wire);
-  --success: var(--live-amber);
-  --warning: var(--live-amber);
-  --danger: var(--coral-pulse);
-  --dark: var(--signal-ink);
-  --dark-light: #1B2140;
-  --gray: var(--slate-wire);
-  --light: var(--wire-white);
-  --white: var(--wire-white);
-  --border: rgba(245, 246, 243, 0.1);
-  --glass-bg: rgba(18, 23, 43, 0.8);
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #2a2a2a;
+  --bg-glass: rgba(26, 26, 26, 0.8);
+
+  --neon-blue: #3b82f6;
+  --neon-purple: #a259f7;
+  --live-amber: #f59e0b;
+  --coral-pulse: #ef4444;
+
+  --text-primary: white;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+
+  --border-primary: rgba(255, 255, 255, 0.1);
+  --border-secondary: rgba(255, 255, 255, 0.05);
+
+  --shadow-sm: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 40px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 60px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 40px rgba(99, 102, 241, 0.3);
+
+  --radius-sm: 8px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: all 0.2s ease-out;
+  --transition-slow: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+
   --sidebar-width: 260px;
   --header-height: 70px;
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
-  /* Semantic Variables (Dark - Default) */
-  --bg-main: var(--signal-ink);
-  --bg-card: #1B2140;
-  --bg-sidebar: var(--signal-ink);
-  --text-main: var(--wire-white);
-  --text-muted: var(--slate-wire);
-  --border-main: rgba(245, 246, 243, 0.1);
+  /* Semantic Variables (Mapping to old components) */
+  --bg-main: var(--bg-primary);
+  --bg-card: var(--bg-secondary);
+  --bg-sidebar: var(--bg-secondary);
+  --text-main: var(--text-primary);
+  --border-main: var(--border-primary);
+  --shadow: var(--shadow-sm);
+  --dark: var(--bg-primary);
+  --gray: var(--text-muted);
 }
 
 /* Light Theme */
@@ -139,24 +158,25 @@ code, .mono, kbd {
 .btn {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   padding: 0.6rem 1.2rem;
-  border-radius: 0.5rem;
+  border-radius: var(--radius-sm);
   font-weight: 600;
   cursor: pointer;
   border: none;
-  transition: var(--transition);
+  transition: var(--transition-fast);
 }
 
 .btn-primary {
-  background-color: var(--primary);
-  color: white;
+  background: linear-gradient(90deg, var(--live-amber), #f59e0b);
+  color: #000;
 }
 
 .btn-primary:hover {
-  background-color: var(--primary-dark);
+  filter: brightness(1.1);
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(232, 163, 61, 0.2);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4);
 }
 
 @media (max-width: 1024px) {
