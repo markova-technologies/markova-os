@@ -46,6 +46,7 @@
   flex: 1;
   padding: 1.5rem 0;
   overflow-y: auto;
+  overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
@@ -121,33 +122,33 @@
 }
 
 .sidebar-footer {
-  padding: 1rem 1.25rem 1.5rem;
+  padding: 1rem 1.5rem 1.5rem;
   margin-top: auto;
   border-top: 1px solid var(--border-main);
+  display: flex;
+  justify-content: flex-start;
 }
 
-.theme-toggle {
+.theme-toggle-icon-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.6rem;
-  width: 100%;
-  padding: 0.75rem 1rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
   background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
-  border-radius: 10px;
   color: var(--text-main);
-  font-size: 0.88rem;
-  font-weight: 600;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.theme-toggle:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
+.theme-toggle-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.25);
+  color: var(--primary);
   transform: translateY(-1px);
 }
 

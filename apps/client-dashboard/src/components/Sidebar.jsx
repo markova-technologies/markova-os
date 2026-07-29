@@ -214,9 +214,12 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="theme-toggle" onClick={toggleTheme}>
+        <button
+          className="theme-toggle-icon-btn"
+          onClick={toggleTheme}
+          title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
           {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-          <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
       </div>
     </motion.aside>
