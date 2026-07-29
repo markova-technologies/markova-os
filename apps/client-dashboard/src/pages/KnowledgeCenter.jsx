@@ -109,6 +109,7 @@ const KnowledgeCenter = () => {
   const [selectedMethod, setSelectedMethod] = useState(null) // 'upload' | 'website' | 'notion' | 'sheets'
   const [inputUrl, setInputUrl] = useState('')
   const [submittingSource, setSubmittingSource] = useState(false)
+  const [showConsentModal, setShowConsentModal] = useState(false)
   const pendingCategory = useRef(null)
   const fileInputRef = useRef(null)
   const toast = useToast()
@@ -118,6 +119,30 @@ const KnowledgeCenter = () => {
     setAddModalCategory(null)
     setSelectedMethod(null)
     setInputUrl('')
+  }
+
+  const openModalForCategory = (category) => {
+    if (!consented) {
+      pendingCategory.current = category
+      setShowConsentModal(true)
+      return
+    }
+    if (category) {
+      selectCategory(category)
+    } else {
+      openModal()
+    }
+  }
+
+  const handleConsentAgree = () => {
+    acceptConsent()
+    setShowConsentModal(false)
+    if (pendingCategory.current) {
+      selectCategory(pendingCategory.current)
+      pendingCategory.current = null
+    } else {
+      openModal()
+    }
   }
 
   const closeModal = () => {
@@ -189,8 +214,8 @@ const KnowledgeCenter = () => {
   }, [])
 
   useEffect(() => {
-    if (consented) load()
-  }, [consented, load])
+    load()
+  }, [load])
 
   const acceptConsent = () => {
     localStorage.setItem(consentKey(), 'true')
@@ -304,9 +329,7 @@ const KnowledgeCenter = () => {
     }
   }
 
-  if (!consented) return <ConsentGate onAccept={acceptConsent} />
-
-  const showModal = modalStep === 'category' || (modalStep === 'method' && addModalCategory)
+  const showModal = Boolean(modalStep)
 
   return (
     <div className="knowledge-center">
@@ -315,12 +338,54 @@ const KnowledgeCenter = () => {
           <h1>Knowledge</h1>
           <p>Give your agent the material it needs to answer callers accurately.</p>
         </div>
-        <button className="btn-primary kc-global-add" onClick={openModal}>
+        <button className="btn-primary kc-global-add" onClick={() => openModalForCategory(null)}>
           <UploadCloud size={16} /> Add Knowledge
         </button>
       </header>
 
       <input type="file" ref={fileInputRef} onChange={handleFile} style={{ display: 'none' }} accept=".txt,.md,.csv,.pdf,.doc,.docx" />
+
+      {/* Consent Gate Modal (shows only on upload if not consented yet) */}
+      <AnimatePresence>
+        {showConsentModal && (
+          <motion.div
+            className="kc-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowConsentModal(false)}
+          >
+            <motion.div
+              className="kc-modal"
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="kc-modal-header">
+                <div>
+                  <h2>Data Privacy Agreement</h2>
+                  <p>Read this once before adding material to your agent</p>
+                </div>
+                <button className="kc-modal-close" onClick={() => setShowConsentModal(false)}><X size={20} /></button>
+              </div>
+              <div className="kc-consent-modal-body">
+                <ul className="kc-consent-list">
+                  <li>Your documents are stored against your company only, and every search is filtered to your company.</li>
+                  <li>Your content is never used to improve a shared model. We do not offer that option.</li>
+                  <li>Your agent reads this material to answer callers. Do not upload anything you would not want it to say out loud.</li>
+                  <li>You can delete a source at any time, which removes it from what your agent can retrieve.</li>
+                </ul>
+                <div className="kc-modal-actions">
+                  <button className="btn-secondary" onClick={() => setShowConsentModal(false)}>Cancel</button>
+                  <button className="btn-primary" onClick={handleConsentAgree}>Agree & Continue</button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Knowledge Modal - 2-step */}
       <AnimatePresence>
@@ -483,31 +548,41 @@ const KnowledgeCenter = () => {
               {loading ? (
                 <div className="kc-skeleton" />
               ) : items.length === 0 ? (
-                <p className="kc-category-empty">Nothing here yet — click "Add Knowledge" above to get started.</p>
+                <div className="kc-category-empty-box">
+                  <p className="kc-category-empty">Nothing here yet — add material to train your agent on {category.name.toLowerCase()}.</p>
+                  <button className="btn-secondary kc-card-add" onClick={() => openModalForCategory(category)}>
+                    <UploadCloud size={14} /> Add Knowledge
+                  </button>
+                </div>
               ) : (
-                <ul className="kc-doc-list">
-                  {items.map((item) => {
-                    const ItemIcon = item.icon
-                    return (
-                      <li key={item.id} className="kc-doc-item">
-                        <div className="kc-doc-item-main">
-                          <ItemIcon size={14} />
-                          <span className="kc-doc-name mono">{item.name}</span>
-                        </div>
-                        <div className="kc-doc-item-actions">
-                          <span className={`kc-doc-status ${item.status}`}>{item.status}</span>
-                          <button
-                            className="kc-doc-delete"
-                            onClick={() => handleDeleteItem(item)}
-                            title="Remove from knowledge"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
+                <>
+                  <ul className="kc-doc-list">
+                    {items.map((item) => {
+                      const ItemIcon = item.icon
+                      return (
+                        <li key={item.id} className="kc-doc-item">
+                          <div className="kc-doc-item-main">
+                            <ItemIcon size={14} />
+                            <span className="kc-doc-name mono">{item.name}</span>
+                          </div>
+                          <div className="kc-doc-item-actions">
+                            <span className={`kc-doc-status ${item.status}`}>{item.status}</span>
+                            <button
+                              className="kc-doc-delete"
+                              onClick={() => handleDeleteItem(item)}
+                              title="Remove from knowledge"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                  <button className="btn-secondary kc-card-add" onClick={() => openModalForCategory(category)}>
+                    <Plus size={14} /> Add more
+                  </button>
+                </>
               )}
             </motion.div>
           )

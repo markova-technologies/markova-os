@@ -1,16 +1,16 @@
 .sidebar {
   position: fixed;
   left: 0;
-  top: 32px;
+  top: 0;
   width: var(--sidebar-width);
-  height: calc(100vh - 32px);
+  height: 100vh;
   background: var(--bg-sidebar);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border-right: 1px solid var(--border-main);
   display: flex;
   flex-direction: column;
-  z-index: 1000;
+  z-index: 1001;
   padding: 1.5rem 0;
   box-shadow: 4px 0 24px rgba(0, 0, 0, 0.2);
 }
