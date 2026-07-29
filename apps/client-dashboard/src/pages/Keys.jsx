@@ -120,7 +120,7 @@ const Keys = () => {
             <ShieldAlert size={15} /> Live
           </button>
         </div>
-        <button type="submit" className="key-create-btn" disabled={creating}>
+        <button type="submit" className="btn-primary" disabled={creating}>
           <Plus size={16} /> {creating ? 'Creating…' : 'Create key'}
         </button>
       </form>

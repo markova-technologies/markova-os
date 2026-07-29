@@ -193,7 +193,7 @@ const KnowledgeCenter = () => {
         <p>Give your agent the material it needs to answer callers accurately.</p>
       </header>
 
-      <input type="file" ref={fileInputRef} onChange={handleFile} hidden accept=".txt,.md,.csv,.pdf,.doc,.docx" />
+      <input type="file" ref={fileInputRef} onChange={handleFile} style={{ display: 'none' }} accept=".txt,.md,.csv,.pdf,.doc,.docx" />
 
       {loadError && <div className="kc-error">{loadError}</div>}
 
@@ -236,7 +236,7 @@ const KnowledgeCenter = () => {
               )}
 
               <button className="btn-secondary kc-add" onClick={() => pickFile(category)} disabled={busy}>
-                <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add a file'}
+                <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add Knowledge'}
               </button>
             </motion.div>
           )
