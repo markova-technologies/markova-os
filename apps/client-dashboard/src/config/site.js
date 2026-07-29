@@ -25,6 +25,7 @@ export const ROUTES = {
   crm: '/app/crm',
   governance: '/app/governance',
   organization: '/app/organization',
+  notifications: '/app/notifications',
   /** In-app invoices / plan management (after login) */
   billing: '/app/billing',
 }

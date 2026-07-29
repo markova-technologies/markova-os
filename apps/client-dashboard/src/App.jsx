@@ -23,6 +23,7 @@ import DocsSite from './pages/DocsSite'
 import CRM from './pages/CRM'
 import Governance from './pages/Governance'
 import Organization from './pages/Organization'
+import Notifications from './pages/Notifications'
 import Landing from '../../../packages/ui/landing/Landing'
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
 import { ROUTES } from './config/site'
@@ -217,6 +218,7 @@ function App() {
                         <Route path="crm" element={<CRM />} />
                         <Route path="governance" element={<Governance />} />
                         <Route path="organization" element={<Organization />} />
+                        <Route path="notifications" element={<Notifications />} />
                         <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
                       </Routes>
                     </div>

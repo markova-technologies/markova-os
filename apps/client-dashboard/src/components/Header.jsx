@@ -82,7 +82,7 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
   const handleMarkAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, unread: false })))
     setShowNotifications(false)
-    navigate(ROUTES.analytics)
+    navigate(ROUTES.notifications)
   }
 
   return (
