@@ -925,19 +925,19 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
     # Map friendly language name to ISO code
     lang_code = LANG_TTS_MAP.get(lang_name.lower(), "am")
     
-    # Method 0: Addis AI TTS (Primary for Amharic)
+    # Method 1: Edge TTS (Primary — FREE native neural voices, fastest latency)
+    if method in ["auto", "edge"]:
+        audio_url = await generate_edge_tts(text, lang_code, call_id)
+        if audio_url:
+            return audio_url
+
+    # Method 2: Addis AI TTS (Fallback)
     if method in ["auto", "addisai"]:
         audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
         if audio_url:
             return audio_url
     
-    # Method 1: Edge TTS (FREE native neural voices — Fallback 1)
-    if method in ["auto", "edge"]:
-        audio_url = await generate_edge_tts(text, lang_code, call_id)
-        if audio_url:
-            return audio_url
-    
-    # Method 2: Google Translate TTS (Fallback 2)
+    # Method 3: Google Translate TTS (Fallback 2)
     if method in ["auto", "google"]:
         audio_url = await generate_enhanced_google_tts(text, lang_code, call_id)
         if audio_url:
@@ -1087,11 +1087,11 @@ async def generate_edge_tts(text: str, lang: str = "am", call_id: str = None) ->
             logger.warning(f"Edge TTS generated empty/tiny file for {lang}")
             return None
         
-        # Convert to WAV for FreeSWITCH compatibility (16kHz, mono)
+        # Convert to WAV for FreeSWITCH compatibility (8kHz mono telephony rate)
         import subprocess
         try:
             subprocess.run(
-                ['ffmpeg', '-y', '-i', str(mp3_path), '-ar', '16000', '-ac', '1', str(wav_path)],
+                ['ffmpeg', '-y', '-i', str(mp3_path), '-ar', '8000', '-ac', '1', '-acodec', 'pcm_s16le', str(wav_path)],
                 check=True, capture_output=True, timeout=10
             )
             logger.info(f"✅ Generated Edge TTS {lang} audio ({voice}): {wav_filename}")
@@ -1593,10 +1593,11 @@ class AmharicAIAssistant:
                     # persists the final language on its event loop.
                     pass
 
-        # 2. Choose Model Routing (Updated for 2026 decommissionings)
-        # Spanish, French, English, Amharic, Arabic -> Llama 3.3 70B (Versatile)
-        # Note: All DeepSeek-R1 distill models have been decommissioned on Groq as of early 2026.
-        model = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+        # 2. Choose Model Routing
+        # Default Gemini model is gemini-2.5-pro (or gemini-2.5-flash / gemini-1.5-pro)
+        # Default Groq model is llama-3.3-70b-versatile
+        default_model = "gemini-2.5-pro" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
+        model = os.getenv("LLM_MODEL", default_model)
 
         # 3. EN-Specific Fallback (Groq only)
         if self.detected_language == "english" and os.getenv("USE_ENGLISH_FALLBACK") == "true" and os.getenv("LLM_PROVIDER", "groq") == "groq":
@@ -1917,7 +1918,7 @@ async def get_response_async(
     assistant: AmharicAIAssistant,
     caller_phone: Optional[str] = None,
 ) -> Tuple[str, str, bool]:
-    """Execute commerce tools first, then fall back to catalog conversation."""
+    """Execute commerce tools and catalog conversation in parallel to eliminate latency."""
     if is_farewell(user_input):
         if assistant.call_id:
             await asyncio.to_thread(
@@ -1930,15 +1931,24 @@ async def get_response_async(
             True,
         )
 
-    commerce_response = await commerce_agent.process_turn(
-        user_input,
-        assistant.call_id or "default-session",
-        caller_phone,
+    # Launch both tasks in parallel to eliminate sequential turn delay
+    commerce_task = asyncio.create_task(
+        commerce_agent.process_turn(
+            user_input,
+            assistant.call_id or "default-session",
+            caller_phone,
+        )
     )
+    llm_task = asyncio.create_task(
+        asyncio.to_thread(get_response, user_input, assistant)
+    )
+
+    commerce_response = await commerce_task
     if commerce_response:
+        llm_task.cancel()  # Commerce handled this turn
         return commerce_response, "amharic", False
 
-    response, lang = await asyncio.to_thread(get_response, user_input, assistant)
+    response, lang = await llm_task
     if assistant.call_id:
         asyncio.create_task(
             assistant.db.update_session_language(assistant.call_id, lang)
@@ -2046,8 +2056,9 @@ def should_repair_transcription(text: str, provider: str) -> bool:
     """Only spend an extra LLM round-trip on transcripts that look uncertain."""
     if not text or len(text) < 3:
         return False
-    if provider != "elevenlabs-scribe_v2":
-        return True
+    if provider == "elevenlabs-scribe_v2":
+        # Scribe v2 is authoritative for native Amharic Ge'ez; skipping repair saves 300-800ms
+        return False
 
     meaningful = [char for char in text if char.isalpha()]
     if not meaningful:
@@ -2056,9 +2067,6 @@ def should_repair_transcription(text: str, provider: str) -> bool:
     latin_count = sum(("a" <= char.lower() <= "z") for char in meaningful)
     geez_ratio = geez_count / len(meaningful)
 
-    # Scribe's clean native-Ge'ez output is already the highest-quality source
-    # in our benchmark. Mixed Latin/code-switching and low-Ge'ez output still
-    # benefit from the repair pass.
     return geez_ratio < 0.85 or latin_count > 0
 
 async def repair_amharic_transcription(text: str) -> str:
@@ -2304,9 +2312,16 @@ async def stream_response(
         session_started = time.perf_counter()
         assistant = await session_manager.get_session(call_id)
         session_elapsed = time.perf_counter() - session_started
+
+        # Fire background draft cleanup while STT runs to overlap latency
+        cleanup_task = asyncio.create_task(
+            asyncio.to_thread(commerce_repository.expire_old_drafts)
+        )
+
         stt_started = time.perf_counter()
         user_text, detected_lang = await assistant.transcribe_audio(audio_file)
         stt_elapsed = time.perf_counter() - stt_started
+        await cleanup_task
 
         if not user_text or is_garbage_transcription(user_text):
             retry_msg = get_polite_retry()
