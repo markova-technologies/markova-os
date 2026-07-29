@@ -146,7 +146,6 @@ const Settings = () => {
     { id: 'organization', label: 'Organization', icon: Building2 },
     { id: 'users', label: 'Users & Roles', icon: UsersIcon },
     { id: 'security', label: 'Security', icon: Shield },
-    { id: 'apikeys', label: 'API Keys', icon: Key },
     { id: 'providers', label: 'Provider Configurations', icon: Plug },
     { id: 'audit', label: 'Audit & Activity', icon: Activity },
     { id: 'notifications', label: 'Notifications', icon: Bell },
@@ -353,34 +352,6 @@ const Settings = () => {
     </div>
   )
 
-  const toggleKeyVisibility = (id) => {
-    setShowKeys(prev => ({ ...prev, [id]: !prev[id] }))
-  }
-
-  const renderApiKeysTab = () => (
-    <div className="settings-section">
-      <h3>API Keys</h3>
-      <p style={{ color: 'var(--gray)', marginBottom: '1.5rem' }}>Manage API keys for external integrations and programmatic access.</p>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {apiKeys.map(k => (
-          <div key={k.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', background: 'var(--bg-main)', borderRadius: '0.5rem', border: '1px solid var(--border-main)' }}>
-            <div>
-              <div style={{ fontWeight: 600, color: 'var(--text-main)' }}>{k.name}</div>
-              <code style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>{showKeys[k.id] ? k.key.replace(/•/g, 'X') : k.key}</code>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button className="btn btn-secondary" onClick={() => toggleKeyVisibility(k.id)} style={{padding:'0.4rem 0.75rem', fontSize:'0.85rem'}}>
-                {showKeys[k.id] ? <EyeOff size={14}/> : <Eye size={14}/>} {showKeys[k.id] ? 'Hide' : 'Reveal'}
-              </button>
-              <button className="btn btn-secondary" style={{padding:'0.4rem 0.75rem', fontSize:'0.85rem', color:'var(--coral-pulse)'}}>Revoke</button>
-            </div>
-          </div>
-        ))}
-      </div>
-      <button className="btn btn-primary" style={{marginTop:'1rem'}}><Key size={16}/> Generate New Key</button>
-    </div>
-  )
-
   const renderProvidersTab = () => (
     <div className="settings-section">
       <h3>Provider Configurations</h3>
@@ -539,7 +510,6 @@ const Settings = () => {
       case 'organization': return renderOrganizationTab()
       case 'users': return renderUsersTab()
       case 'security': return renderSecurityTab()
-      case 'apikeys': return renderApiKeysTab()
       case 'providers': return renderProvidersTab()
       case 'audit': return renderAuditTab()
       case 'notifications': return renderNotificationsTab()
