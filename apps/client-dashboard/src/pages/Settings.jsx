@@ -148,8 +148,7 @@ const Settings = () => {
     { id: 'security', label: 'Security', icon: Shield },
     { id: 'providers', label: 'Provider Configurations', icon: Plug },
     { id: 'audit', label: 'Audit & Activity', icon: Activity },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
-    { id: 'billing', label: 'Billing', icon: CreditCard }
+    { id: 'notifications', label: 'Notifications', icon: Bell }
   ]
 
   const handleProfileChange = (field, value) => {
@@ -513,7 +512,6 @@ const Settings = () => {
       case 'providers': return renderProvidersTab()
       case 'audit': return renderAuditTab()
       case 'notifications': return renderNotificationsTab()
-      case 'billing': return renderBillingTab()
       default: return renderProfileTab()
     }
   }

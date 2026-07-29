@@ -111,32 +111,6 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       color: 'text-teal-400'
     },
     {
-      title: 'Billing',
-      path: ROUTES.billing,
-      icon: CreditCard,
-      color: 'text-green-500'
-    },
-    {
-      title: 'Settings',
-      icon: Settings,
-      color: 'text-gray-400',
-      isDropdown: true,
-      subItems: [
-        {
-          title: 'General Settings',
-          path: ROUTES.settings,
-          icon: Settings,
-          color: 'text-gray-400'
-        },
-        {
-          title: 'Organization',
-          path: ROUTES.organization,
-          icon: Building,
-          color: 'text-indigo-400'
-        }
-      ]
-    },
-    {
       title: 'CRM',
       path: ROUTES.crm,
       icon: Users,

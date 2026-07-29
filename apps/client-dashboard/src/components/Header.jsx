@@ -158,7 +158,7 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                       className="dropdown-item"
                       onClick={() => {
                         setShowUserMenu(false)
-                        navigate(ROUTES.settings, { state: { tab: 'billing' } })
+                        navigate(ROUTES.billing)
                       }}
                     >
                       <CreditCard size={16} />
