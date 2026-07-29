@@ -389,9 +389,10 @@ class CommerceAgent:
             "utterance": text,
         }
         try:
+            model_name = "gemini-2.0-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.1-8b-instant"
             response = await asyncio.to_thread(
                 self.groq_client.chat.completions.create,
-                model="llama-3.1-8b-instant",
+                model=model_name,
                 messages=[
                     {
                         "role": "system",
@@ -402,7 +403,6 @@ class CommerceAgent:
                     },
                     {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
                 ],
-                response_format={"type": "json_object"},
                 temperature=0,
                 max_tokens=220,
             )

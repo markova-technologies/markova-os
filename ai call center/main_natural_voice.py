@@ -790,10 +790,12 @@ try:
     if llm_provider == "gemini":
         gemini_api_key = os.getenv("GEMINI_API_KEY")
         if gemini_api_key:
-            # Gemini uses OpenAI-compatible API — no code changes needed elsewhere!
+            # Gemini uses OpenAI-compatible API — set 10s timeout to prevent hanging calls
             groq_client = OpenAI(
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-                api_key=gemini_api_key
+                api_key=gemini_api_key,
+                timeout=10.0,
+                max_retries=1
             )
             logger.info("✅ Gemini client initialized successfully (via OpenAI-compatible API)")
         else:
@@ -803,7 +805,7 @@ try:
     if llm_provider == "groq":
         groq_api_key = os.getenv('GROQ_API_KEY')
         if groq_api_key:
-            groq_client = Groq(api_key=groq_api_key)
+            groq_client = Groq(api_key=groq_api_key, timeout=10.0, max_retries=1)
             logger.info("✅ Groq client initialized successfully")
         else:
             logger.warning("⚠️ GROQ_API_KEY not found in environment")
@@ -1594,9 +1596,9 @@ class AmharicAIAssistant:
                     pass
 
         # 2. Choose Model Routing
-        # Default Gemini model is gemini-2.5-pro (or gemini-2.5-flash / gemini-1.5-pro)
+        # Default Gemini model is gemini-2.0-flash
         # Default Groq model is llama-3.3-70b-versatile
-        default_model = "gemini-2.5-pro" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
+        default_model = "gemini-2.0-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
         model = os.getenv("LLM_MODEL", default_model)
 
         # 3. EN-Specific Fallback (Groq only)
@@ -1918,7 +1920,7 @@ async def get_response_async(
     assistant: AmharicAIAssistant,
     caller_phone: Optional[str] = None,
 ) -> Tuple[str, str, bool]:
-    """Execute commerce tools and catalog conversation in parallel to eliminate latency."""
+    """Execute commerce tools first, then fall back to catalog conversation."""
     if is_farewell(user_input):
         if assistant.call_id:
             await asyncio.to_thread(
@@ -1931,24 +1933,15 @@ async def get_response_async(
             True,
         )
 
-    # Launch both tasks in parallel to eliminate sequential turn delay
-    commerce_task = asyncio.create_task(
-        commerce_agent.process_turn(
-            user_input,
-            assistant.call_id or "default-session",
-            caller_phone,
-        )
+    commerce_response = await commerce_agent.process_turn(
+        user_input,
+        assistant.call_id or "default-session",
+        caller_phone,
     )
-    llm_task = asyncio.create_task(
-        asyncio.to_thread(get_response, user_input, assistant)
-    )
-
-    commerce_response = await commerce_task
     if commerce_response:
-        llm_task.cancel()  # Commerce handled this turn
         return commerce_response, "amharic", False
 
-    response, lang = await llm_task
+    response, lang = await asyncio.to_thread(get_response, user_input, assistant)
     if assistant.call_id:
         asyncio.create_task(
             assistant.db.update_session_language(assistant.call_id, lang)
