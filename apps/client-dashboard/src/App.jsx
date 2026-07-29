@@ -9,6 +9,7 @@ import KnowledgeCenter from './pages/KnowledgeCenter'
 import IntegrationHub from './pages/IntegrationHub'
 import CallCenter from './pages/CallCenter'
 import UsageCenter from './pages/UsageCenter'
+import AnalyticsCenter from './pages/AnalyticsCenter'
 import Settings from './pages/Settings'
 import BillingCenter from './pages/BillingCenter'
 import Keys from './pages/Keys'
@@ -210,7 +211,7 @@ function App() {
                         <Route path="call-center" element={<CallCenter />} />
                         <Route path="call-center/:callId" element={<CallCenter />} />
                         <Route path="usage" element={<UsageCenter />} />
-                        <Route path="analytics" element={<Navigate to={ROUTES.usage} replace />} />
+                        <Route path="analytics" element={<AnalyticsCenter />} />
                         <Route path="settings" element={<Settings />} />
                         <Route path="billing" element={<BillingCenter />} />
                         <Route path="crm" element={<CRM />} />

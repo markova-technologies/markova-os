@@ -20,6 +20,7 @@ export const ROUTES = {
   integrations: '/app/integrations',
   callCenter: '/app/call-center',
   usage: '/app/usage',
+  analytics: '/app/analytics',
   settings: '/app/settings',
   crm: '/app/crm',
   governance: '/app/governance',

@@ -111,6 +111,12 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       color: 'text-teal-400'
     },
     {
+      title: 'Analytics Center',
+      path: ROUTES.analytics,
+      icon: BarChart3,
+      color: 'text-pink-400'
+    },
+    {
       title: 'CRM',
       path: ROUTES.crm,
       icon: Users,
