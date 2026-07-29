@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   Briefcase,
   FileText,
@@ -8,6 +8,9 @@ import {
   Search,
   ShieldCheck,
   UploadCloud,
+  Globe,
+  HardDrive,
+  ChevronDown,
 } from 'lucide-react'
 import {
   listKnowledgeSources,
@@ -96,9 +99,14 @@ const KnowledgeCenter = () => {
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState(null)
+  const [openDropdownId, setOpenDropdownId] = useState(null)
   const pendingCategory = useRef(null)
   const fileInputRef = useRef(null)
   const toast = useToast()
+
+  const handleMockClick = (sourceType) => {
+    toast.success(`${sourceType} integration is coming soon.`, 'Coming soon')
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -235,9 +243,36 @@ const KnowledgeCenter = () => {
                 </ul>
               )}
 
-              <button className="btn-secondary kc-add" onClick={() => pickFile(category)} disabled={busy}>
-                <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add Knowledge'}
-              </button>
+              <div className="kc-add-container">
+                <button
+                  className="btn-secondary kc-add"
+                  onClick={() => setOpenDropdownId(openDropdownId === category.key ? null : category.key)}
+                  disabled={busy}
+                >
+                  <UploadCloud size={15} /> {busy ? 'Adding…' : 'Add Knowledge'} <ChevronDown size={14} />
+                </button>
+                <AnimatePresence>
+                  {openDropdownId === category.key && (
+                    <motion.div
+                      className="kc-dropdown-menu"
+                      initial={{ opacity: 0, y: -5 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -5 }}
+                      transition={{ duration: 0.15 }}
+                    >
+                      <button onClick={() => { pickFile(category); setOpenDropdownId(null); }}>
+                        <FileText size={15} /> File Upload
+                      </button>
+                      <button onClick={() => { handleMockClick('Website URL'); setOpenDropdownId(null); }}>
+                        <Globe size={15} /> Website URL
+                      </button>
+                      <button onClick={() => { handleMockClick('Google Drive'); setOpenDropdownId(null); }}>
+                        <HardDrive size={15} /> Google Drive
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             </motion.div>
           )
         })}
