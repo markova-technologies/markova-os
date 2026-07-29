@@ -45,8 +45,7 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
 
-  // In-scope IA only (Brief §4). Flow Builder deleted as requested.
-  // Phone & Channels = Numbers. CRM, Organization, Governance are enabled in UI.
+  // Navigation menu items
   const menuItems = [
     {
       title: 'Command Center',

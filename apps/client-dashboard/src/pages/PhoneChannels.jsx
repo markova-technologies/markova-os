@@ -418,7 +418,7 @@ const PhoneChannels = () => {
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}>
       <h3 className="pc-section-title">Channel Assignment Table</h3>
       <p style={{ color: 'var(--gray)', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-        Assign connected numbers and messaging bots to specific teams or agents. For advanced multi-channel routing logic, use the <a href="/flow-builder" style={{ color: 'var(--primary)', textDecoration: 'none' }}>Flow Builder</a>.
+        Assign connected numbers and messaging bots to specific teams or agents.
       </p>
 
       <div style={{ background: 'var(--bg-card)', borderRadius: '1rem', border: '1px solid var(--border-main)', overflow: 'hidden' }}>

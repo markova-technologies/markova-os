@@ -159,8 +159,7 @@ export const createTool = (data) => api.post('/tools', data);
 export const updateTool = (id, data) => api.put(`/tools/${id}`, data);
 export const deleteTool = (id) => api.delete(`/tools/${id}`);
 export const executeTool = (id, data) => api.post(`/tools/${id}/execute`, data);
-export const getWorkflowSettings = () => api.get('/workflow-settings');
-export const updateWorkflowSettings = (data) => api.put('/workflow-settings', data);
+
 
 // ---------- Connectors ----------
 export const listConnectors = () => api.get('/connectors');
