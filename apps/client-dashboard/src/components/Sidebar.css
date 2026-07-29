@@ -46,12 +46,25 @@
   flex: 1;
   padding: 1.5rem 0;
   overflow-y: auto;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  display: none; /* Chrome, Safari and Opera */
+  width: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
 }
 
 .nav-menu {
@@ -108,66 +121,36 @@
 }
 
 .sidebar-footer {
-  padding: 0 1.5rem;
+  padding: 1rem 1.25rem 1.5rem;
   margin-top: auto;
-}
-
-.theme-logout-section {
-  display: flex;
-  gap: 0.75rem;
-  padding: 1.5rem 0;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--border-main);
 }
 
 .theme-toggle {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  flex: 1;
-  padding: 0.75rem 0.5rem;
-  background: var(--bg-card);
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(16px) saturate(180%);
   -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border-main);
-  border-radius: 0.75rem;
+  border-radius: 10px;
   color: var(--text-main);
-  font-size: 0.85rem;
-  font-weight: 500;
+  font-size: 0.88rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: var(--transition);
-  justify-content: center;
+  transition: all 0.2s ease;
 }
 
 .theme-toggle:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
+  transform: translateY(-1px);
 }
 
-.logout-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: 1;
-  padding: 0.75rem 0.5rem;
-  background: rgba(232, 92, 74, 0.15);
-  border: 1px solid rgba(232, 92, 74, 0.3);
-  border-radius: 0.75rem;
-  color: var(--danger);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: var(--transition);
-  justify-content: center;
-}
-
-.logout-btn:hover {
-  background: rgba(232, 92, 74, 0.25);
-  border-color: rgba(232, 92, 74, 0.5);
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(232, 92, 74, 0.2);
-}
 
 .mobile-close-btn {
   display: none;
