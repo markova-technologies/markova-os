@@ -775,7 +775,7 @@ async def get_provider_http_client() -> httpx.AsyncClient:
             # rather than causing a 30-second silence gap for the caller.
             timeout=httpx.Timeout(5.0, connect=2.0),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         )
     return provider_http_client
 
