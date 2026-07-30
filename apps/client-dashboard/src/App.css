@@ -1,62 +1,87 @@
-/* App.css will be used for additional styling if needed */
+/* App.css - Mobile Responsive Layout Rules */
 
-/* Page Loader for Lazy Loading */
-.page-loader {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 60vh;
-    color: var(--slate-wire);
-}
-
-.loader-spinner {
-    width: 48px;
-    height: 48px;
-    border: 3px solid rgba(91, 100, 120, 0.2);
-    border-top-color: var(--slate-wire);
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-    margin-bottom: 1rem;
-}
-
-@keyframes spin {
-    to {
-        transform: rotate(360deg);
-    }
+.app-container {
+  display: flex;
+  min-height: 100vh;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  position: relative;
+  overflow-x: hidden;
 }
 
 .main-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    margin-left: var(--sidebar-width);
-    margin-top: 32px;
-    transition: var(--transition);
-    min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  margin-left: var(--sidebar-width);
+  margin-top: 32px;
+  transition: var(--transition);
+  min-width: 0;
+}
+
+.content-wrapper {
+  flex: 1;
+  padding: 1.5rem;
+  min-width: 0;
 }
 
 .mobile-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.5);
-    backdrop-filter: blur(4px);
-    z-index: 999;
-    animation: fadeIn 0.3s ease;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 1000;
+  animation: fadeIn 0.25s ease;
+}
+
+.page-loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  color: var(--text-muted);
+}
+
+.loader-spinner {
+  width: 44px;
+  height: 44px;
+  border: 3px solid rgba(255, 255, 255, 0.15);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 1rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-    }
-
-    to {
-        opacity: 1;
-    }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @media (max-width: 1024px) {
-    .main-content {
-        margin-left: 0;
-    }
+  .main-content {
+    margin-left: 0;
+    margin-top: 0;
+  }
+
+  .content-wrapper {
+    padding: clamp(0.85rem, 3vw, 1.25rem);
+  }
+}
+
+@media (max-width: 768px) {
+  .content-wrapper {
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+  }
 }

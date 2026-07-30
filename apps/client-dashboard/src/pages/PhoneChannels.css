@@ -111,12 +111,12 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
 }
 
-.overview-icon.voice     { background: transparent;  color: var(--icon-success-color); }
-.overview-icon.messaging { background: transparent;   color: var(--icon-accent-color);  }
-.overview-icon.routing   { background: transparent;  color: var(--icon-primary-color); }
+.overview-icon.voice { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.overview-icon.messaging { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+.overview-icon.routing { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
 
 .overview-stats h3 {
   margin: 0 0 0.25rem 0;
@@ -165,18 +165,18 @@
   width: 44px;
   height: 44px;
   border-radius: 0.5rem;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.05);
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-main);
 }
 
-.channel-icon.twilio, .channel-icon.voice { background: transparent;  color: var(--icon-success-color); }
-.channel-icon.sip      { background: transparent; color: var(--icon-primary-color); }
-.channel-icon.telegram { background: transparent;  color: var(--icon-accent-color);  }
-.channel-icon.whatsapp { background: transparent; color: var(--icon-success-color); }
-.channel-icon.email    { background: transparent;  color: var(--icon-danger-color);  }
+.channel-icon.twilio, .channel-icon.voice { background: rgba(16, 185, 129, 0.1); color: #10b981; }
+.channel-icon.sip { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.channel-icon.telegram { background: rgba(56, 189, 248, 0.1); color: #38bdf8; }
+.channel-icon.whatsapp { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+.channel-icon.email { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 
 .channel-identity h3 {
   margin: 0;
@@ -199,12 +199,12 @@
   gap: 0.3rem;
 }
 .channel-status.active, .channel-status.connected {
-  background: var(--icon-success-bg);
-  color: var(--icon-success-color);
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
 }
 .channel-status.disconnected, .channel-status.error {
-  background: var(--icon-danger-bg);
-  color: var(--icon-danger-color);
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
 }
 
 .channel-details {
