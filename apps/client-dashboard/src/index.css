@@ -56,6 +56,13 @@
   --sidebar-width: 260px;
   --header-height: 70px;
 
+  /* Responsive Dynamic Sizing Tokens */
+  --gutter: clamp(0.75rem, 3vw, 1.5rem);
+  --tap-min: 44px;
+  --card-radius: clamp(12px, 2vw, 24px);
+  --font-h1: clamp(1.45rem, 5vw, 2.5rem);
+  --font-h2: clamp(1.2rem, 3.5vw, 1.85rem);
+
   /* Semantic Variables (Mapping to old components) */
   --bg-main: var(--bg-primary);
   --bg-card: var(--bg-glass);

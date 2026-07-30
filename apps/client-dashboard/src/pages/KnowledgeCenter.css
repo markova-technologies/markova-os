@@ -531,3 +531,42 @@
 .kc-doc-item-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 .kc-doc-delete { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0.25rem; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
 .kc-doc-delete:hover { background: var(--icon-danger-bg); color: var(--icon-danger-color); }
+
+/* ── Mobile Responsive Overrides ───────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .kc-container {
+    padding: 1.25rem;
+  }
+
+  .kc-grid {
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .kc-container {
+    padding: 0.85rem 0.5rem;
+  }
+
+  .kc-page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .kc-global-add {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .kc-modal {
+    width: 95% !important;
+    max-width: 95% !important;
+    margin: 1rem auto;
+  }
+
+  .kc-modal-option {
+    padding: 0.85rem;
+  }
+}
+

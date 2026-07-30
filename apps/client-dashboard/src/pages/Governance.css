@@ -546,3 +546,44 @@ input:checked + .toggle-slider:before {
   background: #dc2626;
   box-shadow: 0 0 15px var(--icon-danger-bg);
 }
+
+/* ── Mobile Responsive Overrides ───────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .governance-container {
+    padding: 1.25rem;
+  }
+
+  .policies-grid,
+  .sla-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .governance-container {
+    padding: 0.85rem 0.5rem !important;
+  }
+
+  .gov-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .tab-bar {
+    width: 100%;
+    overflow-x: auto;
+    padding-bottom: 0.25rem;
+  }
+
+  .card-action-bar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .gov-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

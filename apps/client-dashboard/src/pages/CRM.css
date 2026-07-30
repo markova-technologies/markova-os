@@ -369,3 +369,38 @@
   color: var(--text-main);
   margin: 0;
 }
+
+/* ── Mobile Responsive Overrides ───────────────────────────────────────── */
+@media (max-width: 1024px) {
+  .crm-content {
+    flex-direction: column;
+  }
+
+  .crm-detail-panel {
+    width: 100% !important;
+    border-left: none;
+    border-top: 1px solid var(--border-main);
+  }
+}
+
+@media (max-width: 768px) {
+  .crm-container {
+    padding: 0.85rem 0.5rem !important;
+  }
+
+  .crm-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .crm-table-container {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .crm-table {
+    min-width: 600px;
+  }
+}
+
