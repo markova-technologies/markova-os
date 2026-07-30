@@ -790,12 +790,12 @@ try:
     if llm_provider == "gemini":
         gemini_api_key = os.getenv("GEMINI_API_KEY")
         if gemini_api_key:
-            # Gemini uses OpenAI-compatible API — set 10s timeout to prevent hanging calls
+            # Gemini OpenAI-compatible endpoint. 30s is plenty for Flash (non-thinking).
             groq_client = OpenAI(
                 base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
                 api_key=gemini_api_key,
-                timeout=10.0,
-                max_retries=1
+                timeout=30.0,
+                max_retries=0  # Don't retry — fall back to Groq immediately on error
             )
             logger.info("✅ Gemini client initialized successfully (via OpenAI-compatible API)")
         else:
@@ -805,7 +805,10 @@ try:
     if llm_provider == "groq":
         groq_api_key = os.getenv('GROQ_API_KEY')
         if groq_api_key:
-            groq_client = Groq(api_key=groq_api_key, timeout=10.0, max_retries=1)
+            # llama-3.3-70b-versatile with full conversation context can take 8-20s.
+            # A 10s timeout kills every single response. Use 60s (Groq's own default).
+            # max_retries=0 so a timeout doesn't double the wait.
+            groq_client = Groq(api_key=groq_api_key, timeout=60.0, max_retries=0)
             logger.info("✅ Groq client initialized successfully")
         else:
             logger.warning("⚠️ GROQ_API_KEY not found in environment")
@@ -815,7 +818,8 @@ except Exception as e:
 
 commerce_agent.set_groq_client(groq_client)
 
-# Always keep a dedicated Groq client for Whisper STT & fast LLM fallback
+# Always keep a dedicated Groq client for Whisper STT & fast LLM sub-tasks
+# STT and fast slot extraction have tight 10s budgets — these are fine.
 stt_client = None
 fast_llm_client = None
 try:
