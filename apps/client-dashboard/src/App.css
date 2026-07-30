@@ -7,6 +7,22 @@
   color: var(--text-primary);
   position: relative;
   overflow-x: hidden;
+  width: 100%;
+}
+
+/* Global Typography & Layout Utilities */
+.text-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.text-truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .main-content {
@@ -144,6 +160,13 @@
     width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Prevent horizontal scrolling globally */
+  body, #root {
+    overflow-x: hidden;
+    width: 100%;
+    position: relative;
   }
 }
 

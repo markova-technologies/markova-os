@@ -553,13 +553,21 @@
   justify-content: center;
 }
 
+.mobile-header-logo {
+  display: none;
+}
+
 @media (max-width: 1024px) {
   .header {
     padding: 0 1rem;
+    position: relative;
+    justify-content: space-between;
   }
 
   .mobile-menu-btn {
     display: flex;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .search-container {
@@ -568,5 +576,23 @@
 
   .user-info {
     display: none;
+  }
+  
+  .icon-button,
+  .user-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .mobile-header-logo {
+    display: flex;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 1.25rem;
+    letter-spacing: -0.5px;
+    color: var(--text-main);
   }
 }

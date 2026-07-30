@@ -440,6 +440,18 @@
 @media (max-width: 768px) {
   .agent-studio {
     padding: 0.85rem 0.5rem;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .teams-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-main);
+  }
+
+  .studio-main {
+    overflow: visible;
   }
 
   .studio-header {

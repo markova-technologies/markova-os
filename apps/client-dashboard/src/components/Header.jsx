@@ -101,6 +101,10 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
         </div>
       </div>
 
+      <div className="mobile-header-logo">
+        <span className="logo-text">MARKOVA</span>
+      </div>
+
       <div className="header-right">
         <div className="header-actions">
           <motion.button
