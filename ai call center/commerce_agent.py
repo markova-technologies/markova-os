@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from typing import Any, Dict, Optional
 
@@ -248,12 +249,17 @@ class CommerceAgent:
         self,
         repository: CommerceRepository = commerce_repository,
         groq_client: Any = None,
+        fast_client: Any = None,
     ):
         self.repository = repository
         self.groq_client = groq_client
+        self.fast_client = fast_client
 
     def set_groq_client(self, client: Any) -> None:
         self.groq_client = client
+
+    def set_fast_client(self, client: Any) -> None:
+        self.fast_client = client
 
     @staticmethod
     def _automatic_voice_phone(call_id: str, caller_phone: Optional[str]) -> str:
@@ -388,10 +394,20 @@ class CommerceAgent:
             "catalog": products,
             "utterance": text,
         }
+        client = self.fast_client or self.groq_client
+        if not client:
+            return fallback
+
         try:
-            model_name = "gemini-2.0-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.1-8b-instant"
+            # Groq fast model vs Gemini 2.5 Flash
+            is_groq = hasattr(client, "base_url") is False or "groq" in str(getattr(client, "base_url", "")).lower()
+            model_name = "llama-3.1-8b-instant" if is_groq else "gemini-2.5-flash"
+            extra_kwargs = {}
+            if not is_groq:
+                extra_kwargs["extra_body"] = {"thinking": {"thinking_budget": 0}}
+
             response = await asyncio.to_thread(
-                self.groq_client.chat.completions.create,
+                client.chat.completions.create,
                 model=model_name,
                 messages=[
                     {
@@ -405,6 +421,7 @@ class CommerceAgent:
                 ],
                 temperature=0,
                 max_tokens=220,
+                **extra_kwargs,
             )
             parsed = json.loads(response.choices[0].message.content)
             merged = {

@@ -815,16 +815,19 @@ except Exception as e:
 
 commerce_agent.set_groq_client(groq_client)
 
-# Always keep a dedicated Groq client for Whisper STT fallback
-# (Gemini has no Whisper endpoint, so STT always uses Groq regardless of LLM_PROVIDER)
+# Always keep a dedicated Groq client for Whisper STT & fast LLM fallback
 stt_client = None
+fast_llm_client = None
 try:
     groq_api_key = os.getenv('GROQ_API_KEY')
     if groq_api_key:
-        stt_client = Groq(api_key=groq_api_key)
-        logger.info("✅ Groq STT (Whisper) client ready")
+        stt_client = Groq(api_key=groq_api_key, timeout=10.0, max_retries=1)
+        fast_llm_client = stt_client
+        logger.info("✅ Groq STT & Fast LLM client ready")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize STT client: {e}")
+    logger.error(f"❌ Failed to initialize STT/Fast LLM client: {e}")
+
+commerce_agent.set_fast_client(fast_llm_client)
 
 # === STAGE 1: OpenAI GPT-4o + Whisper-1 clients (Primary) ===
 # Groq above is the fallback. OpenAI is primary when OPENAI_API_KEY is real.
@@ -1596,9 +1599,9 @@ class AmharicAIAssistant:
                     pass
 
         # 2. Choose Model Routing
-        # Default Gemini model is gemini-2.0-flash
+        # Default Gemini model is gemini-2.5-flash
         # Default Groq model is llama-3.3-70b-versatile
-        default_model = "gemini-2.0-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
+        default_model = "gemini-2.5-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
         model = os.getenv("LLM_MODEL", default_model)
 
         # 3. EN-Specific Fallback (Groq only)
@@ -1714,16 +1717,35 @@ class AmharicAIAssistant:
                 except Exception as oai_err:
                     logger.warning(f"OpenAI LLM failed, falling back to Groq: {oai_err}")
 
-            if ai_response is None:
-                # Groq fallback
-                response = self.groq_client.chat.completions.create(
-                    model=model,
-                    messages=messages_with_rag,
-                    temperature=0.7,
-                    max_tokens=max_tokens
-                )
-                ai_response = response.choices[0].message.content.strip()
-                logger.info(f"🤖 LLM: Using Groq {model} (fallback)")
+            if ai_response is None and self.groq_client:
+                try:
+                    extra_kwargs = {}
+                    if llm_provider == "gemini" and "2.5" in model:
+                        extra_kwargs["extra_body"] = {"thinking": {"thinking_budget": 0}}
+
+                    response = self.groq_client.chat.completions.create(
+                        model=model,
+                        messages=messages_with_rag,
+                        temperature=0.7,
+                        max_tokens=max_tokens,
+                        **extra_kwargs
+                    )
+                    ai_response = response.choices[0].message.content.strip()
+                    logger.info(f"🤖 LLM: Using primary [{llm_provider}] model '{model}'")
+                except Exception as primary_err:
+                    logger.warning(f"⚠️ Primary LLM ({llm_provider}/{model}) failed: {primary_err}")
+                    if fast_llm_client and llm_provider != "groq":
+                        try:
+                            fb_resp = fast_llm_client.chat.completions.create(
+                                model="llama-3.3-70b-versatile",
+                                messages=messages_with_rag,
+                                temperature=0.7,
+                                max_tokens=max_tokens
+                            )
+                            ai_response = fb_resp.choices[0].message.content.strip()
+                            logger.info("🤖 LLM Fallback: Using Groq llama-3.3-70b-versatile (SUCCESS)")
+                        except Exception as fb_err:
+                            logger.error(f"❌ Groq fallback LLM failed: {fb_err}")
 
             # Clean DeepSeek thinking blocks
             if "<think>" in ai_response:
@@ -2067,12 +2089,19 @@ async def repair_amharic_transcription(text: str) -> str:
     Lightweight LLM pass to repair Whisper's common Amharic phonetic mistakes.
     Uses a fast small model to minimize latency.
     """
-    if not groq_client or len(text) < 3:
+    repair_client = fast_llm_client or groq_client
+    if not repair_client or len(text) < 3:
         return text
     try:
+        is_groq = hasattr(repair_client, "base_url") is False or "groq" in str(getattr(repair_client, "base_url", "")).lower()
+        repair_model = "llama-3.1-8b-instant" if is_groq else "gemini-2.5-flash"
+        extra_kwargs = {}
+        if not is_groq:
+            extra_kwargs["extra_body"] = {"thinking": {"thinking_budget": 0}}
+
         response = await asyncio.to_thread(
-            groq_client.chat.completions.create,
-            model="llama-3.1-8b-instant",  # Fast, cheap model
+            repair_client.chat.completions.create,
+            model=repair_model,
             messages=[{
                 "role": "system",
                 "content": (
@@ -2090,7 +2119,8 @@ async def repair_amharic_transcription(text: str) -> str:
                 "content": text
             }],
             max_tokens=120,
-            temperature=0.0
+            temperature=0.0,
+            **extra_kwargs
         )
         repaired = response.choices[0].message.content.strip()
         if repaired and repaired != text:
