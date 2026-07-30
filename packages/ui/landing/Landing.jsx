@@ -49,8 +49,8 @@ const Landing = ({
         Markova
       </Link>
       <div className="mk-landing-nav-links">
-        <a className="mk-landing-nav-link" href="#how" onClick={scrollToId('how')}>
-          How it works
+        <a className="mk-landing-nav-link" href="https://markova.tech" target="_blank" rel="noopener noreferrer">
+          Website
         </a>
         {pricingTo ? (
           <Link className="mk-landing-nav-link" to={pricingTo}>
