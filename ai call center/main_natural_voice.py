@@ -1719,16 +1719,11 @@ class AmharicAIAssistant:
 
             if ai_response is None and self.groq_client:
                 try:
-                    extra_kwargs = {}
-                    if llm_provider == "gemini" and "2.5" in model:
-                        extra_kwargs["extra_body"] = {"thinking": {"thinking_budget": 0}}
-
                     response = self.groq_client.chat.completions.create(
                         model=model,
                         messages=messages_with_rag,
                         temperature=0.7,
-                        max_tokens=max_tokens,
-                        **extra_kwargs
+                        max_tokens=max_tokens
                     )
                     ai_response = response.choices[0].message.content.strip()
                     logger.info(f"🤖 LLM: Using primary [{llm_provider}] model '{model}'")
@@ -1746,6 +1741,9 @@ class AmharicAIAssistant:
                             logger.info("🤖 LLM Fallback: Using Groq llama-3.3-70b-versatile (SUCCESS)")
                         except Exception as fb_err:
                             logger.error(f"❌ Groq fallback LLM failed: {fb_err}")
+
+            if not ai_response:
+                ai_response = "እሺ፣ ምን መግዛት ወይም ማዘዝ ይፈልጋሉ?"
 
             # Clean DeepSeek thinking blocks
             if "<think>" in ai_response:
@@ -2094,10 +2092,7 @@ async def repair_amharic_transcription(text: str) -> str:
         return text
     try:
         is_groq = hasattr(repair_client, "base_url") is False or "groq" in str(getattr(repair_client, "base_url", "")).lower()
-        repair_model = "llama-3.1-8b-instant" if is_groq else "gemini-2.5-flash"
-        extra_kwargs = {}
-        if not is_groq:
-            extra_kwargs["extra_body"] = {"thinking": {"thinking_budget": 0}}
+        repair_model = "llama-3.1-8b-instant" if is_groq else "gemini-2.0-flash"
 
         response = await asyncio.to_thread(
             repair_client.chat.completions.create,

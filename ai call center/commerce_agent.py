@@ -399,12 +399,9 @@ class CommerceAgent:
             return fallback
 
         try:
-            # Groq fast model vs Gemini 2.5 Flash
+            # Groq fast model vs Gemini 2.0 Flash
             is_groq = hasattr(client, "base_url") is False or "groq" in str(getattr(client, "base_url", "")).lower()
-            model_name = "llama-3.1-8b-instant" if is_groq else "gemini-2.5-flash"
-            extra_kwargs = {}
-            if not is_groq:
-                extra_kwargs["extra_body"] = {"thinking": {"thinking_budget": 0}}
+            model_name = "llama-3.1-8b-instant" if is_groq else "gemini-2.0-flash"
 
             response = await asyncio.to_thread(
                 client.chat.completions.create,
@@ -421,7 +418,6 @@ class CommerceAgent:
                 ],
                 temperature=0,
                 max_tokens=220,
-                **extra_kwargs,
             )
             parsed = json.loads(response.choices[0].message.content)
             merged = {
