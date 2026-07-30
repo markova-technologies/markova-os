@@ -133,10 +133,10 @@
   justify-content: center;
 }
 
-.ac-stat-icon.primary { background: rgba(16, 185, 129, 0.1); color: #10b981; }
-.ac-stat-icon.blue { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
-.ac-stat-icon.purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
-.ac-stat-icon.amber { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.ac-stat-icon.primary { background: transparent;  color: var(--icon-success-color); }
+.ac-stat-icon.blue    { background: transparent;   color: var(--icon-accent-color);  }
+.ac-stat-icon.purple  { background: transparent;   color: var(--icon-accent-color);  }
+.ac-stat-icon.amber   { background: transparent;  color: var(--icon-primary-color); }
 
 .ac-stat-value {
   font-size: 1.75rem;
@@ -152,8 +152,8 @@
   gap: 0.25rem;
 }
 
-.ac-stat-trend.positive { color: #10b981; }
-.ac-stat-trend.negative { color: #ef4444; }
+.ac-stat-trend.positive { color: var(--icon-success-color); }
+.ac-stat-trend.negative { color: var(--icon-danger-color);  }
 
 /* Charts Area */
 .ac-charts-grid {

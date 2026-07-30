@@ -530,4 +530,4 @@
 .kc-doc-item-main { display: flex; align-items: center; gap: 0.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .kc-doc-item-actions { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
 .kc-doc-delete { background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0.25rem; border-radius: 4px; display: flex; align-items: center; justify-content: center; transition: all 0.2s; }
-.kc-doc-delete:hover { background: rgba(232, 92, 74, 0.15); color: #e85c4a; }
+.kc-doc-delete:hover { background: var(--icon-danger-bg); color: var(--icon-danger-color); }

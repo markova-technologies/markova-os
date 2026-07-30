@@ -1,159 +1,170 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import axios from 'axios';
-import './Signup.css'; // Reusing signup styles
-import { IoLockClosed, IoCheckmarkCircle } from 'react-icons/io5';
+import React, { useState, useEffect } from 'react'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
+import axios from 'axios'
+import PublicHeader from '../components/PublicHeader'
+import './Signup.css'
+import { IoLockClosed, IoCheckmarkCircle, IoArrowBack } from 'react-icons/io5'
 
 const ResetPassword = () => {
-    const [searchParams] = useSearchParams();
-    const token = searchParams.get('token');
-    const navigate = useNavigate();
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token')
+  const navigate = useNavigate()
 
-    const [password, setPassword] = useState('');
-    const [confirmPassword, setConfirmPassword] = useState('');
-    const [message, setMessage] = useState('');
-    const [status, setStatus] = useState('idle'); // idle, submitting, success, error
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [message, setMessage] = useState('')
+  const [status, setStatus] = useState('idle') // idle, submitting, success, error
+  const [isValidating, setIsValidating] = useState(true)
 
-    const [isValidating, setIsValidating] = useState(true);
+  useEffect(() => {
+    const validateToken = async () => {
+      if (!token) {
+        setStatus('error')
+        setMessage('Invalid or missing reset token.')
+        setIsValidating(false)
+        return
+      }
+      setIsValidating(false)
+    }
 
-    useEffect(() => {
-        const validateToken = async () => {
-            if (!token) {
-                setStatus('error');
-                setMessage('Invalid or missing reset token.');
-                setIsValidating(false);
-                return;
-            }
+    validateToken()
+  }, [token])
 
-            // Optional: Verify token validity with backend immediately
-            // For now, we'll just check existence to avoid extra round trip delay
-            setIsValidating(false);
-        };
+  const handleSubmit = async (e) => {
+    e.preventDefault()
 
-        validateToken();
-    }, [token]);
+    if (password !== confirmPassword) {
+      setMessage('Passwords do not match')
+      setStatus('error')
+      return
+    }
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    if (password.length < 6) {
+      setMessage('Password must be at least 6 characters')
+      setStatus('error')
+      return
+    }
 
-        if (password !== confirmPassword) {
-            setMessage('Passwords do not match');
-            setStatus('error');
-            return;
-        }
+    setStatus('submitting')
+    setMessage('')
 
-        if (password.length < 6) {
-            setMessage('Password must be at least 6 characters');
-            setStatus('error');
-            return;
-        }
+    try {
+      await axios.post(`${import.meta.env.VITE_SYSTEM_DASHBOARD_URL}/api/clients/reset-password`, {
+        token,
+        password
+      })
+      setStatus('success')
+      setTimeout(() => {
+        navigate('/login')
+      }, 3000)
+    } catch (err) {
+      setStatus('error')
+      setMessage(err.response?.data?.error || 'Failed to reset password. Token may be expired.')
+    }
+  }
 
-        setStatus('submitting');
-        setMessage('');
-
-        try {
-            await axios.post(`${import.meta.env.VITE_SYSTEM_DASHBOARD_URL}/api/clients/reset-password`, {
-                token,
-                password
-            });
-            setStatus('success');
-            setTimeout(() => {
-                navigate('/login');
-            }, 3000);
-        } catch (err) {
-            setStatus('error');
-            setMessage(err.response?.data?.error || 'Failed to reset password. Token may be expired.');
-        }
-    };
-
+  const renderContent = () => {
     if (isValidating) {
-        return (
-            <div className="signup-container">
-                <div className="signup-content text-center">
-                    <div className="animate-spin w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-                    <p className="text-slate-300">Verifying link...</p>
-                </div>
-            </div>
-        );
+      return (
+        <div className="success-container glass-card" style={{ maxWidth: '440px', margin: '0 auto' }}>
+          <div className="spinner" style={{ margin: '0 auto 1rem' }}></div>
+          <p>Verifying security token...</p>
+        </div>
+      )
     }
 
     if (!token) {
-        return (
-            <div className="signup-container">
-                <div className="signup-content text-center">
-                    <h2 className="text-xl text-red-500 mb-4">Invalid Link</h2>
-                    <p className="text-slate-300">This password reset link is invalid or has expired.</p>
-                </div>
-            </div>
-        );
+      return (
+        <div className="success-container glass-card" style={{ maxWidth: '440px', margin: '0 auto' }}>
+          <h2 style={{ color: '#ef4444' }}>Invalid Token</h2>
+          <p style={{ marginBottom: '1.5rem' }}>This password reset link is invalid or has expired.</p>
+          <Link to="/login" className="signup-button" style={{ display: 'flex', textDecoration: 'none', justifyContent: 'center' }}>
+            Back to Sign In
+          </Link>
+        </div>
+      )
     }
 
     return (
-        <div className="signup-container">
-            <div className="signup-content">
-                <div className="signup-header">
-                    <h1>Set New Password</h1>
-                    <p>Enter your new secure password below</p>
-                </div>
-
-                <div className="signup-form-container">
-                    {status === 'success' ? (
-                        <div className="text-center space-y-4">
-                            <div className="w-16 h-16 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto">
-                                <IoCheckmarkCircle className="w-10 h-10" />
-                            </div>
-                            <h3 className="text-xl font-bold text-white">Password Reset!</h3>
-                            <p className="text-slate-300">Redirecting to login...</p>
-                        </div>
-                    ) : (
-                        <form onSubmit={handleSubmit} className="signup-form">
-                            <div className="input-group">
-                                <div className="input-wrapper">
-                                    <IoLockClosed className="input-icon" />
-                                    <input
-                                        type="password"
-                                        placeholder="New Password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
-                                        disabled={status === 'submitting'}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="input-group">
-                                <div className="input-wrapper">
-                                    <IoLockClosed className="input-icon" />
-                                    <input
-                                        type="password"
-                                        placeholder="Confirm New Password"
-                                        value={confirmPassword}
-                                        onChange={(e) => setConfirmPassword(e.target.value)}
-                                        required
-                                        disabled={status === 'submitting'}
-                                    />
-                                </div>
-                            </div>
-
-                            {status === 'error' && (
-                                <div className="error-message">
-                                    {message}
-                                </div>
-                            )}
-
-                            <button
-                                type="submit"
-                                className="signup-button"
-                                disabled={status === 'submitting'}
-                            >
-                                {status === 'submitting' ? 'Reseting...' : 'Reset Password'}
-                            </button>
-                        </form>
-                    )}
-                </div>
+      <div className="signup-container glass-card" style={{ gridTemplateColumns: '1fr', maxWidth: '480px', margin: '0 auto' }}>
+        <div className="signup-right" style={{ width: '100%', background: 'transparent' }}>
+          <div className="signup-form-container">
+            <div className="signup-header">
+              <h2>Set New Password</h2>
+              <p>Enter your new secure account password</p>
             </div>
-        </div>
-    );
-};
 
-export default ResetPassword;
+            {status === 'success' ? (
+              <div className="success-container" style={{ padding: '1rem 0' }}>
+                <div className="success-icon" style={{ background: 'var(--icon-success-bg)', color: 'var(--icon-success-color)' }}>
+                  <IoCheckmarkCircle size={48} />
+                </div>
+                <h2>Password Reset Successful!</h2>
+                <p>Redirecting you to sign in...</p>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="signup-form">
+                <div className="form-group">
+                  <label htmlFor="password">New Password</label>
+                  <div className="input-wrapper">
+                    <IoLockClosed className="input-icon" size={18} />
+                    <input
+                      type="password"
+                      id="password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      disabled={status === 'submitting'}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="confirmPassword">Confirm New Password</label>
+                  <div className="input-wrapper">
+                    <IoLockClosed className="input-icon" size={18} />
+                    <input
+                      type="password"
+                      id="confirmPassword"
+                      placeholder="••••••••"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      disabled={status === 'submitting'}
+                    />
+                  </div>
+                </div>
+
+                {status === 'error' && (
+                  <div className="error-message">
+                    <span>{message}</span>
+                  </div>
+                )}
+
+                <button type="submit" className="signup-button" disabled={status === 'submitting'}>
+                  {status === 'submitting' ? 'Updating Password...' : 'Reset Password'}
+                </button>
+
+                <div className="signup-footer" style={{ marginTop: '1.5rem' }}>
+                  <Link to="/login" className="link-button" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <IoArrowBack /> Back to Sign In
+                  </Link>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="signup-page-wrapper">
+      <PublicHeader />
+      <main className="signup-page-main">{renderContent()}</main>
+    </div>
+  )
+}
+
+export default ResetPassword

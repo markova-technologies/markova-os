@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail, Lock, Eye, EyeOff, ArrowRight, BarChart3, Brain, Shield } from 'lucide-react'
+import { Mail, Lock, Eye, EyeOff, ArrowRight, BarChart3, Brain, Shield, Bot, Sparkles } from 'lucide-react'
 import {
   login as loginRequest,
   tokenStore,
@@ -10,6 +10,7 @@ import {
   enterDemoMode,
   DEMO_MODE_KEY,
 } from '../api/client'
+import PublicHeader from '../components/PublicHeader'
 import './Login.css'
 
 const Login = ({ onLogin }) => {
@@ -74,178 +75,186 @@ const Login = ({ onLogin }) => {
   }
 
   return (
-    <div className="login-page">
-      <motion.div
-        className="login-container"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="login-left">
-          <motion.div
-            className="login-brand"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-          >
-            <h1>MARKOVA</h1>
-            <p>Advanced analytics for your customer interactions</p>
-          </motion.div>
+    <div className="login-page-wrapper">
+      <PublicHeader />
 
-          <motion.div
-            className="features"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.6 }}
-          >
-            <div className="feature">
-              <div className="feature-icon">
-                <BarChart3 size={24} />
-              </div>
-              <div>
-                <h3>Real-time Analytics</h3>
-                <p>Monitor performance metrics in real-time</p>
-              </div>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">
-                <Brain size={24} />
-              </div>
-              <div>
-                <h3>AI-Powered Insights</h3>
-                <p>Get intelligent recommendations</p>
-              </div>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">
-                <Shield size={24} />
-              </div>
-              <div>
-                <h3>Secure & Reliable</h3>
-                <p>Enterprise-grade security</p>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
+      <main className="login-page-main">
         <motion.div
-          className="login-right"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3, duration: 0.6 }}
+          className="login-container glass-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
         >
-          <div className="login-form-container">
-            <div className="login-header">
-              <h2>Welcome Back</h2>
-              <p>Sign in to your account to continue</p>
-            </div>
-
-            {error && (
-              <motion.div
-                className="error-message p-3 mb-8 text-sm text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg flex gap-2 items-center"
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <span>{error}</span>
-              </motion.div>
-            )}
-
-            <form onSubmit={handleSubmit} className="login-form">
-              <div className="form-group">
-                <label htmlFor="email">Email Address</label>
-                <div className="input-wrapper">
-                  <Mail className="input-icon" size={18} />
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="Enter your email"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="password">Password</label>
-                <div className="input-wrapper">
-                  <Lock className="input-icon" size={18} />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    id="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="Enter your password"
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </div>
-
-              <div className="form-options">
-                <label className="checkbox">
-                  <input type="checkbox" />
-                  <span className="checkmark"></span>
-                  Remember me
-                </label>
-                <Link to="/forgot-password" className="forgot-password">
-                  Forgot password?
-                </Link>
-              </div>
-
-              <motion.button
-                type="submit"
-                className="login-button"
-                disabled={isLoading || demoLoading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {isLoading ? (
-                  <div className="spinner"></div>
-                ) : (
-                  <>
-                    Sign In
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </motion.button>
-            </form>
-
-            <div className="login-demo-divider" aria-hidden="true">
-              <span>or</span>
-            </div>
-
-            <button
-              type="button"
-              className="login-demo-button"
-              onClick={handleDemoLogin}
-              disabled={isLoading || demoLoading}
+          <div className="login-left">
+            <motion.div
+              className="login-brand"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2, duration: 0.6 }}
             >
-              {demoLoading ? 'Opening demo…' : 'Developer demo login'}
-            </button>
-            <p className="login-demo-hint">
-              Uses the demo account when the API is up; otherwise opens a local demo dashboard.
-            </p>
+              <div className="brand-hero-badge">
+                <Sparkles size={14} />
+                <span>MARKOVA AI OPERATING SYSTEM</span>
+              </div>
+              <h1>Welcome to Markova</h1>
+              <p>Autonomous AI agents powering real business workflows across your organization</p>
+            </motion.div>
 
-            <div className="login-footer">
-              <p>
-                Don&apos;t have an account?{' '}
-                <Link to="/signup" className="link-button">
-                  Create Account
-                </Link>
-              </p>
-            </div>
+            <motion.div
+              className="features"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.6 }}
+            >
+              <div className="feature">
+                <div className="feature-icon">
+                  <BarChart3 size={22} />
+                </div>
+                <div>
+                  <h3>Real-time Analytics</h3>
+                  <p>Monitor performance & conversation metrics live</p>
+                </div>
+              </div>
+              <div className="feature">
+                <div className="feature-icon">
+                  <Brain size={22} />
+                </div>
+                <div>
+                  <h3>Autonomous Agents</h3>
+                  <p>Multi-lingual AI agents trained for complex tasks</p>
+                </div>
+              </div>
+              <div className="feature">
+                <div className="feature-icon">
+                  <Shield size={22} />
+                </div>
+                <div>
+                  <h3>Enterprise Security</h3>
+                  <p>Encrypted telemetry, RBAC & strict privacy standards</p>
+                </div>
+              </div>
+            </motion.div>
           </div>
+
+          <motion.div
+            className="login-right"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3, duration: 0.6 }}
+          >
+            <div className="login-form-container">
+              <div className="login-header">
+                <h2>Sign In</h2>
+                <p>Access your AI workforce dashboard</p>
+              </div>
+
+              {error && (
+                <motion.div
+                  className="error-message"
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <span>{error}</span>
+                </motion.div>
+              )}
+
+              <form onSubmit={handleSubmit} className="login-form">
+                <div className="form-group">
+                  <label htmlFor="email">Email Address</label>
+                  <div className="input-wrapper">
+                    <Mail className="input-icon" size={18} />
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="name@company.com"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="password">Password</label>
+                  <div className="input-wrapper">
+                    <Lock className="input-icon" size={18} />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      id="password"
+                      name="password"
+                      value={formData.password}
+                      onChange={handleChange}
+                      placeholder="••••••••"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowPassword(!showPassword)}
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="form-options">
+                  <label className="checkbox">
+                    <input type="checkbox" />
+                    <span className="checkmark"></span>
+                    Remember me
+                  </label>
+                  <Link to="/forgot-password" className="forgot-password">
+                    Forgot password?
+                  </Link>
+                </div>
+
+                <motion.button
+                  type="submit"
+                  className="login-button"
+                  disabled={isLoading || demoLoading}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                >
+                  {isLoading ? (
+                    <div className="spinner"></div>
+                  ) : (
+                    <>
+                      <span>Sign In</span>
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </motion.button>
+              </form>
+
+              <div className="login-demo-divider" aria-hidden="true">
+                <span>OR</span>
+              </div>
+
+              <button
+                type="button"
+                className="login-demo-button"
+                onClick={handleDemoLogin}
+                disabled={isLoading || demoLoading}
+              >
+                {demoLoading ? 'Opening demo…' : 'Developer Demo Login'}
+              </button>
+              <p className="login-demo-hint">
+                Instantly explore the system dashboard in demo mode.
+              </p>
+
+              <div className="login-footer">
+                <p>
+                  Don&apos;t have an account?{' '}
+                  <Link to="/signup" className="link-button">
+                    Create Account
+                  </Link>
+                </p>
+              </div>
+            </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </main>
     </div>
   )
 }

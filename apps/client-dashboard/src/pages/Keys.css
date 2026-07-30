@@ -37,10 +37,10 @@
   display: inline-flex; align-items: center; gap: .35rem; padding: .7rem .9rem;
   background: transparent; color: var(--text-muted); border: none; cursor: pointer; font-size: .85rem; transition: all 0.2s;
 }
-.env-toggle button.active { background: #3b82f6; color: #ffffff; font-weight: 600; }
-.env-toggle button.live.active { background: #E85C4A; color: #ffffff; font-weight: 600; }
+.env-toggle button.active      { background: var(--icon-accent-color);  color: #ffffff; font-weight: 600; }
+.env-toggle button.live.active { background: var(--icon-danger-color); color: #ffffff; font-weight: 600; }
 .key-create-btn {
-  display: inline-flex; align-items: center; gap: .4rem; background: #3b82f6; color: #ffffff;
+  display: inline-flex; align-items: center; gap: .4rem; background: var(--icon-primary-color); color: #ffffff;
   border: none; padding: .7rem 1.1rem; border-radius: 10px; cursor: pointer; font-weight: 600; font-size: .88rem;
 }
 .key-create-btn:disabled { opacity: .6; cursor: default; }
@@ -55,18 +55,18 @@
   padding: 1.25rem;
 }
 .keys-section.sandbox {
-  border-color: rgba(59, 130, 246, 0.35);
-  background: rgba(59, 130, 246, 0.04);
+  border-color: rgba(99, 102, 241, 0.35);
+  background: var(--icon-accent-bg);
 }
-.keys-section.sandbox .keys-section-head > svg { color: #60a5fa; }
+.keys-section.sandbox .keys-section-head > svg { color: var(--icon-accent-color); }
 .keys-section.live {
-  border-color: rgba(232, 92, 74, 0.35);
-  background: rgba(232, 92, 74, 0.04);
+  border-color: rgba(239, 68, 68, 0.35);
+  background: var(--icon-danger-bg);
 }
 .keys-section-head { display: flex; align-items: center; gap: .55rem; margin-bottom: 1rem; }
 .keys-section-head h2 { font-size: 1.05rem; color: var(--text-main); margin: 0; }
 .keys-section-head span { margin-left: auto; font-family: ui-monospace, monospace; font-size: .78rem; color: var(--text-muted); }
-.keys-section.live .keys-section-head > svg { color: #E85C4A; }
+.keys-section.live .keys-section-head > svg { color: var(--icon-danger-color); }
 
 .key-row { display: flex; align-items: center; justify-content: space-between; padding: .75rem 0; border-top: 1px solid var(--border); }
 .key-row:first-of-type { border-top: none; }

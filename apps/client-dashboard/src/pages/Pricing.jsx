@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { Sparkles, Check, ArrowRight, ShieldCheck, Zap } from 'lucide-react'
 import { ROUTES } from '../config/site'
+import PublicHeader from '../components/PublicHeader'
 import './Pricing.css'
 
-/** Fallback when /v1/pricing is unreachable (e.g. static Vercel without API). */
 const FALLBACK_PRICING = {
   currency: 'ETB',
   unit: 'per_month',
   sandbox: {
     name: 'Sandbox',
-    notes: 'mk_test_ keys — no real telephony spend, no card required.',
+    notes: 'mk_test_ API keys — no real telephony spend, no credit card required.',
   },
   tiers: [
     {
@@ -19,7 +20,7 @@ const FALLBACK_PRICING = {
       minutes_included: 900,
       ai_workforce: false,
       contact_sales: false,
-      summary: '900 included minutes per month for inbound voice agents that answer and transcribe.',
+      summary: '900 included minutes per month for inbound voice agents that answer, route, and transcribe.',
     },
     {
       id: 'plus',
@@ -28,7 +29,7 @@ const FALLBACK_PRICING = {
       minutes_included: 2500,
       ai_workforce: true,
       contact_sales: false,
-      summary: '2,500 included minutes per month with AI workforce — agents that act on your systems.',
+      summary: '2,500 included minutes per month with AI workforce — agents that execute actions in your systems.',
     },
     {
       id: 'enterprise',
@@ -37,7 +38,7 @@ const FALLBACK_PRICING = {
       minutes_included: null,
       ai_workforce: true,
       contact_sales: true,
-      summary: 'Custom volume, SLAs, dedicated support, and workforce at scale. Contact us.',
+      summary: 'Custom call volume, guaranteed SLAs, dedicated engineering support, and workforce at scale.',
     },
   ],
 }
@@ -45,10 +46,6 @@ const FALLBACK_PRICING = {
 const formatEtb = (n) =>
   Number(n).toLocaleString(undefined, { maximumFractionDigits: 0 })
 
-/**
- * Public pricing — lives on the client product before /app.
- * Rates come from GET /v1/pricing (same source as docs + billing).
- */
 const Pricing = () => {
   const [pricing, setPricing] = useState(FALLBACK_PRICING)
   const [fromApi, setFromApi] = useState(false)
@@ -69,117 +66,134 @@ const Pricing = () => {
   const tiers = pricing.tiers || FALLBACK_PRICING.tiers
 
   return (
-    <div className="mk-pricing">
-      <nav className="mk-pricing-nav" aria-label="Primary">
-        <Link to={ROUTES.home} className="mk-pricing-brand">
-          Markova
-        </Link>
-        <div className="mk-pricing-nav-links">
-          <Link to={ROUTES.home}>Home</Link>
-          <Link to={ROUTES.pricing} aria-current="page">
-            Pricing
-          </Link>
-          <Link to={ROUTES.docs}>Docs</Link>
-          <Link to={ROUTES.login}>Sign in</Link>
-          <Link className="mk-pricing-nav-cta" to={ROUTES.signup}>
-            Get started
-          </Link>
-        </div>
-      </nav>
+    <div className="pricing-page-wrapper">
+      <PublicHeader />
 
-      <main className="mk-pricing-main">
-        <header className="mk-pricing-header">
-          <h1>Pricing</h1>
+      <main className="pricing-page-main">
+        <header className="pricing-header-section">
+          <div className="pricing-badge">
+            <Sparkles size={14} />
+            <span>TRANSPARENT VALUE PRICING</span>
+          </div>
+          <h1>Deploy AI Employees at Scale</h1>
           <p>
-            Monthly plans in birr, with included minutes. Sandbox is free — pick a plan, then enter
-            the dashboard.
+            Monthly plans with included telephony minutes. Start free in sandbox, pick a plan when you are ready to go live.
           </p>
         </header>
 
-        {!fromApi && (
-          <p className="mk-pricing-note">
-            Showing published rates. Live API pricing will sync when the gateway is reachable.
-          </p>
-        )}
-
-        <div className="mk-pricing-tiers">
-          <article className="mk-pricing-tier">
-            <h2>{pricing.sandbox?.name || 'Sandbox'}</h2>
-            <p className="mk-pricing-rate">
-              Free <span>no card</span>
-            </p>
-            <p className="mk-pricing-summary">{pricing.sandbox?.notes}</p>
-            <Link className="mk-pricing-tier-cta" to={ROUTES.signup}>
-              Start free
+        <div className="pricing-grid">
+          <article className="pricing-card glass-card">
+            <div className="pricing-card-header">
+              <h3>{pricing.sandbox?.name || 'Sandbox'}</h3>
+              <div className="pricing-rate">
+                <span className="rate-amount">Free</span>
+                <span className="rate-period">No card required</span>
+              </div>
+            </div>
+            <p className="pricing-summary">{pricing.sandbox?.notes}</p>
+            <ul className="pricing-features">
+              <li><Check size={16} className="feature-check" /> <span>Unlimited test call simulations</span></li>
+              <li><Check size={16} className="feature-check" /> <span>Full Agent Studio access</span></li>
+              <li><Check size={16} className="feature-check" /> <span>Knowledge base uploading</span></li>
+            </ul>
+            <Link className="pricing-cta-btn secondary" to={ROUTES.signup}>
+              Start Free in Sandbox
             </Link>
           </article>
 
-          {tiers.map((tier) => (
-            <article
-              key={tier.id}
-              className={`mk-pricing-tier ${tier.id === 'plus' ? 'is-featured' : ''}`}
-            >
-              <h2>{tier.name}</h2>
-              {tier.contact_sales ? (
-                <p className="mk-pricing-rate">
-                  Contact <span>custom pricing</span>
-                </p>
-              ) : (
-                <p className="mk-pricing-rate">
-                  {formatEtb(tier.price_etb_monthly)}
-                  <span>
-                    {pricing.currency || 'ETB'} / month
-                  </span>
-                </p>
-              )}
-              <p className="mk-pricing-summary">{tier.summary}</p>
-              <ul>
-                {tier.minutes_included != null && (
-                  <li>
-                    Included minutes: <strong>{tier.minutes_included.toLocaleString()}</strong>
-                  </li>
+          {tiers.map((tier) => {
+            const isFeatured = tier.id === 'plus'
+            return (
+              <article
+                key={tier.id}
+                className={`pricing-card glass-card ${isFeatured ? 'is-featured' : ''}`}
+              >
+                {isFeatured && <div className="featured-ribbon">MOST POPULAR</div>}
+                <div className="pricing-card-header">
+                  <h3>{tier.name}</h3>
+                  {tier.contact_sales ? (
+                    <div className="pricing-rate">
+                      <span className="rate-amount">Custom</span>
+                      <span className="rate-period">Contact Sales</span>
+                    </div>
+                  ) : (
+                    <div className="pricing-rate">
+                      <span className="rate-currency">{pricing.currency || 'ETB'}</span>
+                      <span className="rate-amount">{formatEtb(tier.price_etb_monthly)}</span>
+                      <span className="rate-period">/ month</span>
+                    </div>
+                  )}
+                </div>
+                <p className="pricing-summary">{tier.summary}</p>
+                <ul className="pricing-features">
+                  {tier.minutes_included != null && (
+                    <li>
+                      <Check size={16} className="feature-check" />
+                      <span><strong>{tier.minutes_included.toLocaleString()}</strong> included minutes/mo</span>
+                    </li>
+                  )}
+                  {tier.ai_workforce && (
+                    <li>
+                      <Check size={16} className="feature-check" />
+                      <span><strong>Full AI Workforce</strong> tools included</span>
+                    </li>
+                  )}
+                  {tier.contact_sales && (
+                    <li>
+                      <Check size={16} className="feature-check" />
+                      <span>Custom volume, 99.9% uptime SLA & dedicated SLA</span>
+                    </li>
+                  )}
+                  <li><Check size={16} className="feature-check" /> <span>Live Telephony phone numbers</span></li>
+                  <li><Check size={16} className="feature-check" /> <span>Real-time webhook events</span></li>
+                </ul>
+
+                {tier.contact_sales ? (
+                  <a className="pricing-cta-btn primary" href="mailto:hello@markova.et">
+                    Contact Sales
+                  </a>
+                ) : (
+                  <Link className={`pricing-cta-btn ${isFeatured ? 'featured' : 'secondary'}`} to={ROUTES.signup}>
+                    <span>Select {tier.name} Plan</span>
+                    <ArrowRight size={16} />
+                  </Link>
                 )}
-                {tier.ai_workforce && (
-                  <li>
-                    <strong>AI workforce</strong> included
-                  </li>
-                )}
-                {tier.contact_sales && (
-                  <li>
-                    Custom volume, SLAs, and dedicated support
-                  </li>
-                )}
-              </ul>
-              {tier.contact_sales ? (
-                <a className="mk-pricing-tier-cta" href="mailto:hello@markova.et">
-                  Contact sales
-                </a>
-              ) : (
-                <Link className="mk-pricing-tier-cta" to={ROUTES.signup}>
-                  Choose {tier.name}
-                </Link>
-              )}
-            </article>
-          ))}
+              </article>
+            )
+          })}
         </div>
 
-        <section className="mk-pricing-how">
-          <h2>How billing works</h2>
-          <ul>
-            <li>Basic includes 900 minutes/month · Plus includes 2,500 minutes/month with AI workforce.</li>
-            <li>Going over included minutes bills automatically — calls are not cut mid-conversation.</li>
-            <li>Sandbox usage is never billed, on any plan.</li>
-            <li>Enterprise is custom — contact us for volume and SLAs.</li>
-          </ul>
+        <section className="pricing-faq-section glass-panel">
+          <h2>Transparent Telephony & Operations</h2>
+          <div className="faq-grid">
+            <div className="faq-item">
+              <Zap size={20} className="faq-icon" />
+              <div>
+                <h4>Included Minutes & Overages</h4>
+                <p>Basic includes 900 minutes/month; Plus includes 2,500 minutes/month. Calls never drop if you reach your quota; overages are billed transparently.</p>
+              </div>
+            </div>
+            <div className="faq-item">
+              <ShieldCheck size={20} className="faq-icon" />
+              <div>
+                <h4>Sandbox vs Live Mode</h4>
+                <p>Sandbox testing mode is always free and never charges your balance. Live phone lines only consume minutes when active.</p>
+              </div>
+            </div>
+          </div>
         </section>
 
-        <div className="mk-pricing-footer-cta">
-          <Link className="mk-pricing-btn-primary" to={ROUTES.signup}>
-            Get started
-          </Link>
-          <Link className="mk-pricing-btn-secondary" to={ROUTES.login}>
-            Sign in to dashboard
-          </Link>
+        <div className="pricing-bottom-cta">
+          <h2>Ready to transform your business operations?</h2>
+          <div className="cta-actions">
+            <Link className="public-btn-primary" to={ROUTES.signup}>
+              <span>Get Started Now</span>
+              <ArrowRight size={16} />
+            </Link>
+            <Link className="public-btn-ghost" to={ROUTES.login}>
+              Sign In to Dashboard
+            </Link>
+          </div>
         </div>
       </main>
     </div>

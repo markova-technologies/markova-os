@@ -19,6 +19,18 @@
   --font-display: 'Poppins', -apple-system, sans-serif;
   --font-body: 'Poppins', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* ── Consistent Icon Color Tokens (4-token system) ─────────────────────── */
+  /* Use these in EVERY page — never add new raw hex icon colors */
+  --icon-primary-color:  #f59e0b;                  /* amber  — brand primary     */
+  --icon-primary-dark:   #d97706;                  /* amber dark — hover state   */
+  --icon-primary-bg:     rgba(245, 158, 11, 0.12); /* amber alpha bg              */
+  --icon-accent-color:   #6366f1;                  /* indigo — secondary actions  */
+  --icon-accent-bg:      rgba(99, 102, 241, 0.12); /* indigo alpha bg             */
+  --icon-success-color:  #10b981;                  /* emerald — healthy/connected */
+  --icon-success-bg:     rgba(16, 185, 129, 0.12); /* emerald alpha bg            */
+  --icon-danger-color:   #ef4444;                  /* coral  — error/danger       */
+  --icon-danger-bg:      rgba(239, 68, 68, 0.12);  /* coral alpha bg              */
 }
 
 :root {
@@ -194,19 +206,19 @@ code, .mono, kbd {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
+  background: linear-gradient(135deg, var(--icon-primary-color), #d97706);
   color: #ffffff !important;
   border: none;
   font-weight: 600;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 14px var(--icon-primary-bg);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
+  background: linear-gradient(135deg, #d97706, #b45309) !important;
   color: #ffffff !important;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
 }
 
 @media (max-width: 1024px) {

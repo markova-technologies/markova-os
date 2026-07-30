@@ -25,12 +25,12 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.45rem 0.9rem;
-  background: rgba(34, 197, 94, 0.1);
-  border: 1px solid rgba(34, 197, 94, 0.25);
+  background: var(--icon-success-bg);
+  border: 1px solid rgba(16, 185, 129, 0.25);
   border-radius: 20px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: #4ade80;
+  color: var(--icon-success-color);
 }
 
 /* Metrics Row */
@@ -68,10 +68,10 @@
   flex-shrink: 0;
 }
 
-.gov-metric-card.amber .metric-icon-wrap { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
-.gov-metric-card.blue .metric-icon-wrap { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
-.gov-metric-card.green .metric-icon-wrap { background: rgba(34, 197, 94, 0.15); color: #4ade80; }
-.gov-metric-card.purple .metric-icon-wrap { background: rgba(192, 132, 252, 0.15); color: #c084fc; }
+.gov-metric-card.amber  .metric-icon-wrap { background: transparent;  color: var(--icon-primary-color); }
+.gov-metric-card.blue   .metric-icon-wrap { background: transparent;   color: var(--icon-accent-color);  }
+.gov-metric-card.green  .metric-icon-wrap { background: transparent;  color: var(--icon-success-color); }
+.gov-metric-card.purple .metric-icon-wrap { background: transparent;   color: var(--icon-accent-color);  }
 
 .metric-info {
   display: flex;
@@ -122,12 +122,12 @@
 }
 
 .gov-tab.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
+  color: var(--icon-accent-color);
+  border-bottom-color: var(--icon-accent-color);
 }
 
 .gov-badge-count {
-  background: #f59e0b;
+  background: var(--icon-primary-color);
   color: #000000;
   font-size: 0.7rem;
   font-weight: 700;
@@ -169,7 +169,7 @@
 }
 
 .approval-card {
-  border-left: 4px solid #3b82f6;
+  border-left: 4px solid var(--icon-accent-color);
 }
 
 .approval-card.resolved {
@@ -192,7 +192,7 @@
 }
 
 .agent-icon {
-  color: #3b82f6;
+  color: var(--icon-accent-color);
 }
 
 .risk-pill {
@@ -205,9 +205,9 @@
   font-weight: 700;
 }
 
-.risk-pill.high { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
-.risk-pill.critical { background: rgba(239, 68, 68, 0.15); color: #f87171; }
-.risk-pill.medium { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+.risk-pill.high     { background: var(--icon-primary-bg); color: var(--icon-primary-color); }
+.risk-pill.critical { background: var(--icon-danger-bg);  color: var(--icon-danger-color);  }
+.risk-pill.medium   { background: var(--icon-accent-bg);  color: var(--icon-accent-color);  }
 
 .card-body h3 {
   font-size: 1.05rem;
@@ -253,25 +253,25 @@
 }
 
 .gov-btn.approve {
-  background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
-  border-color: rgba(34, 197, 94, 0.3);
+  background: var(--icon-success-bg);
+  color: var(--icon-success-color);
+  border-color: rgba(16, 185, 129, 0.3);
 }
 
 .gov-btn.approve:hover {
-  background: rgba(34, 197, 94, 0.25);
-  color: #86efac;
+  background: rgba(16, 185, 129, 0.25);
+  color: var(--icon-success-color);
 }
 
 .gov-btn.reject {
-  background: rgba(239, 68, 68, 0.1);
-  color: #fca5a5;
+  background: var(--icon-danger-bg);
+  color: var(--icon-danger-color);
   border-color: rgba(239, 68, 68, 0.25);
 }
 
 .gov-btn.reject:hover {
   background: rgba(239, 68, 68, 0.2);
-  color: #f87171;
+  color: var(--icon-danger-color);
 }
 
 .status-banner {
@@ -285,8 +285,8 @@
   font-weight: 600;
 }
 
-.status-banner.approved { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
-.status-banner.rejected { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
+.status-banner.approved { background: var(--icon-success-bg);  color: var(--icon-success-color); }
+.status-banner.rejected { background: var(--icon-danger-bg);   color: var(--icon-danger-color);  }
 
 /* Policies Grid */
 .policies-grid {
@@ -308,8 +308,8 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.12);
+  color: var(--icon-accent-color);
+  background: var(--icon-accent-bg);
   padding: 0.15rem 0.5rem;
   border-radius: 6px;
   margin-bottom: 0.4rem;
@@ -373,7 +373,7 @@
 }
 
 input:checked + .toggle-slider {
-  background-color: #3b82f6;
+  background-color: var(--icon-accent-color);
 }
 
 input:checked + .toggle-slider:before {
@@ -385,7 +385,7 @@ input:checked + .toggle-slider:before {
   font-weight: 600;
 }
 
-.status-label.active { color: #60a5fa; }
+.status-label.active   { color: var(--icon-accent-color); }
 .status-label.disabled { color: #64748b; }
 
 /* Audits Section */
@@ -453,8 +453,8 @@ input:checked + .toggle-slider:before {
 }
 
 .confidence-pill {
-  background: rgba(59, 130, 246, 0.15);
-  color: #60a5fa;
+  background: var(--icon-accent-bg);
+  color: var(--icon-accent-color);
   font-weight: 600;
   font-size: 0.78rem;
   padding: 0.2rem 0.5rem;
@@ -472,8 +472,8 @@ input:checked + .toggle-slider:before {
 }
 
 .status-pill.passed, .status-pill.active {
-  background: rgba(34, 197, 94, 0.15);
-  color: #4ade80;
+  background: var(--icon-success-bg);
+  color: var(--icon-success-color);
 }
 
 /* SLAs Section */
@@ -515,7 +515,7 @@ input:checked + .toggle-slider:before {
 
 .progress-fill.green {
   height: 100%;
-  background: #34d399;
+  background: var(--icon-success-color);
   border-radius: 6px;
 }
 
@@ -532,7 +532,7 @@ input:checked + .toggle-slider:before {
   justify-content: center;
   padding: 0.65rem;
   margin-top: 1rem;
-  background: #ef4444;
+  background: var(--icon-danger-color);
   color: #ffffff;
   font-size: 0.85rem;
   font-weight: 600;
@@ -544,5 +544,5 @@ input:checked + .toggle-slider:before {
 
 .emergency-btn:hover {
   background: #dc2626;
-  box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+  box-shadow: 0 0 15px var(--icon-danger-bg);
 }

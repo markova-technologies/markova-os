@@ -1,33 +1,28 @@
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-/* Same five named values as the dashboard (docs/ui/MARKOVA_UI_FULL_BRIEF.md §1).
-   The docs site shares the identity; only the waveform's role changes — here it
-   is a static nav accent, not a live element. */
 :root {
-  --signal-ink: #12172b;
-  --wire-white: #f5f6f3;
-  --live-amber: #e8a33d;
-  --coral-pulse: #e85c4a;
-  --slate-wire: #5b6478;
+  --signal-ink: #0a0a0a;
+  --wire-white: #ffffff;
+  --live-amber: #f59e0b;
+  --coral-pulse: #ef4444;
+  --slate-wire: #a1a1aa;
 
-  --font-display: 'Space Grotesk', 'Inter', sans-serif;
-  --font-body: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-display: 'Poppins', -apple-system, sans-serif;
+  --font-body: 'Poppins', -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
 
-  --bg-main: var(--signal-ink);
-  --bg-raised: #1b2140;
-  --bg-code: #0e1224;
-  --text-main: var(--wire-white);
-  --text-muted: #98a0b3;
-  --border-main: rgba(245, 246, 243, 0.1);
+  --bg-main: #0a0a0a;
+  --bg-raised: #1a1a1a;
+  --bg-code: #141414;
+  --text-main: #ffffff;
+  --text-muted: #a1a1aa;
+  --border-main: rgba(255, 255, 255, 0.1);
 
-  /* The waveform's env tone: docs are read outside any session, so it stays
-     in the calm sandbox register. */
-  --env-accent: var(--slate-wire);
+  --env-accent: var(--live-amber);
 
   --nav-width: 260px;
   --toc-width: 200px;
-  --topbar-height: 60px;
+  --topbar-height: 64px;
 }
 
 * {

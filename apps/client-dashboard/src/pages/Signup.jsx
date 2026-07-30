@@ -1,7 +1,9 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Mail, Lock, User, Building, Phone, CheckCircle, AlertCircle } from 'lucide-react'
+import { Mail, Lock, User, Building, Phone, CheckCircle, AlertCircle, ArrowRight, Sparkles } from 'lucide-react'
 import { register as registerRequest, login as loginRequest, tokenStore } from '../api/client'
+import PublicHeader from '../components/PublicHeader'
 import './Signup.css'
 
 const Signup = ({ onBackToLogin, onLogin }) => {
@@ -79,7 +81,6 @@ const Signup = ({ onBackToLogin, onLogin }) => {
       [name]: value
     }))
 
-    // Clear error when user starts typing
     if (errors[name]) {
       setErrors(prev => ({
         ...prev,
@@ -90,231 +91,247 @@ const Signup = ({ onBackToLogin, onLogin }) => {
 
   if (success) {
     return (
-      <div className="signup-page">
-        <motion.div
-          className="success-container"
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="success-icon">
-            <CheckCircle size={64} />
-          </div>
-          <h2>Registration Successful!</h2>
-          <p>Your account is pending approval. You'll receive an email once approved.</p>
-          <button className="signup-button" style={{ maxWidth: '200px', margin: '0 auto' }} onClick={onBackToLogin}>
-            Back to Login
-          </button>
-        </motion.div>
+      <div className="signup-page-wrapper">
+        <PublicHeader />
+        <main className="signup-page-main">
+          <motion.div
+            className="success-container glass-card"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="success-icon">
+              <CheckCircle size={54} />
+            </div>
+            <h2>Account Registered Successfully!</h2>
+            <p>Your account is ready. Continue to access your dashboard.</p>
+            <button className="signup-button" style={{ maxWidth: '220px', margin: '1.5rem auto 0' }} onClick={onBackToLogin}>
+              Proceed to Sign In
+            </button>
+          </motion.div>
+        </main>
       </div>
     )
   }
 
   return (
-    <div className="signup-page">
-      <motion.div
-        className="signup-container"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6 }}
-      >
-        <div className="signup-left">
-          <motion.div
-            className="signup-brand"
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-          >
-            <div className="brand-icon">
-              <Phone size={32} />
-            </div>
-            <h1>MARKOVA</h1>
-            <p>Join our advanced AI call center platform</p>
-          </motion.div>
+    <div className="signup-page-wrapper">
+      <PublicHeader />
 
-          <motion.div
-            className="features"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.6 }}
-          >
-            <div className="feature">
-              <div className="feature-icon">
-                <CheckCircle size={24} />
-              </div>
-              <div>
-                <h3>Start in sandbox</h3>
-                <p>Build and test with a free sandbox key — no real calls, no charges</p>
-              </div>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">
-                <Lock size={24} />
-              </div>
-              <div>
-                <h3>Your data stays yours</h3>
-                <p>Knowledge you upload trains only your agent, never shared</p>
-              </div>
-            </div>
-            <div className="feature">
-              <div className="feature-icon">
-                <User size={24} />
-              </div>
-              <div>
-                <h3>Go live when you're ready</h3>
-                <p>Switch to a live key any time — never automatic</p>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-
+      <main className="signup-page-main">
         <motion.div
-          className="signup-right"
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3, duration: 0.6 }}
+          className="signup-container glass-card"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
         >
-          <div className="signup-form-container">
-            <div className="signup-header">
-              <h2>Create Account</h2>
-              <p>Sign up to access our AI call center platform</p>
-            </div>
+          <div className="signup-left">
+            <motion.div
+              className="signup-brand"
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2, duration: 0.6 }}
+            >
+              <div className="brand-hero-badge">
+                <Sparkles size={14} />
+                <span>BUILD YOUR AI WORKFORCE</span>
+              </div>
+              <h1>Get Started with Markova</h1>
+              <p>Deploy specialized AI voice & chat agents tailored to your business operations</p>
+            </motion.div>
 
-            <form onSubmit={handleSubmit} className="signup-form">
-              {error && (
-                <div className="error-message">
-                  <AlertCircle size={16} />
-                  {error}
+            <motion.div
+              className="features"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.6 }}
+            >
+              <div className="feature">
+                <div className="feature-icon">
+                  <CheckCircle size={22} />
                 </div>
-              )}
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="name">Full Name</label>
-                  <div className="input-wrapper">
-                    <User className="input-icon" size={18} />
-                    <input
-                      type="text"
-                      id="name"
-                      name="name"
-                      value={formData.name}
-                      onChange={handleChange}
-                      placeholder="Enter your full name"
-                      className={errors.name ? 'error' : ''}
-                    />
-                  </div>
-                  {errors.name && <span className="error-text">{errors.name}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="company">Company</label>
-                  <div className="input-wrapper">
-                    <Building className="input-icon" size={18} />
-                    <input
-                      type="text"
-                      id="company"
-                      name="company"
-                      value={formData.company}
-                      onChange={handleChange}
-                      placeholder="Enter your company name"
-                      className={errors.company ? 'error' : ''}
-                    />
-                  </div>
-                  {errors.company && <span className="error-text">{errors.company}</span>}
+                <div>
+                  <h3>Free Sandbox API Keys</h3>
+                  <p>Build and test with free sandbox keys — zero charges or setup friction</p>
                 </div>
               </div>
-
-              <div className="form-group">
-                <label htmlFor="email">Email Address</label>
-                <div className="input-wrapper">
-                  <Mail className="input-icon" size={18} />
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="Enter your email"
-                    className={errors.email ? 'error' : ''}
-                  />
+              <div className="feature">
+                <div className="feature-icon">
+                  <Lock size={22} />
                 </div>
-                {errors.email && <span className="error-text">{errors.email}</span>}
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="phone">Phone Number</label>
-                <div className="input-wrapper">
-                  <Phone className="input-icon" size={18} />
-                  <input
-                    type="tel"
-                    id="phone"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    placeholder="Enter your phone number"
-                    className={errors.phone ? 'error' : ''}
-                  />
-                </div>
-                {errors.phone && <span className="error-text">{errors.phone}</span>}
-              </div>
-
-              <div className="form-row">
-                <div className="form-group">
-                  <label htmlFor="password">Password</label>
-                  <div className="input-wrapper">
-                    <Lock className="input-icon" size={18} />
-                    <input
-                      type="password"
-                      id="password"
-                      name="password"
-                      value={formData.password}
-                      onChange={handleChange}
-                      placeholder="Create a password"
-                      className={errors.password ? 'error' : ''}
-                    />
-                  </div>
-                  {errors.password && <span className="error-text">{errors.password}</span>}
-                </div>
-
-                <div className="form-group">
-                  <label htmlFor="confirmPassword">Confirm Password</label>
-                  <div className="input-wrapper">
-                    <Lock className="input-icon" size={18} />
-                    <input
-                      type="password"
-                      id="confirmPassword"
-                      name="confirmPassword"
-                      value={formData.confirmPassword}
-                      onChange={handleChange}
-                      placeholder="Confirm your password"
-                      className={errors.confirmPassword ? 'error' : ''}
-                    />
-                  </div>
-                  {errors.confirmPassword && <span className="error-text">{errors.confirmPassword}</span>}
+                <div>
+                  <h3>Isolated Knowledge Base</h3>
+                  <p>Your business documents train only your agents with absolute privacy</p>
                 </div>
               </div>
-
-              <motion.button
-                type="submit"
-                className="signup-button"
-                disabled={isLoading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-              >
-                {isLoading ? (
-                  <div className="spinner"></div>
-                ) : (
-                  'Create Account'
-                )}
-              </motion.button>
-            </form>
-
-            <div className="signup-footer">
-              <p>Already have an account? <button onClick={onBackToLogin} className="link-button">Sign In</button></p>
-            </div>
+              <div className="feature">
+                <div className="feature-icon">
+                  <User size={22} />
+                </div>
+                <div>
+                  <h3>Instant Telephony Integration</h3>
+                  <p>Provision phone channels and connect your agents in minutes</p>
+                </div>
+              </div>
+            </motion.div>
           </div>
+
+          <motion.div
+            className="signup-right"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3, duration: 0.6 }}
+          >
+            <div className="signup-form-container">
+              <div className="signup-header">
+                <h2>Create Account</h2>
+                <p>Enter your details to create your Markova account</p>
+              </div>
+
+              <form onSubmit={handleSubmit} className="signup-form">
+                {error && (
+                  <div className="error-message">
+                    <AlertCircle size={16} />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="name">Full Name</label>
+                    <div className="input-wrapper">
+                      <User className="input-icon" size={18} />
+                      <input
+                        type="text"
+                        id="name"
+                        name="name"
+                        value={formData.name}
+                        onChange={handleChange}
+                        placeholder="John Doe"
+                        className={errors.name ? 'error' : ''}
+                      />
+                    </div>
+                    {errors.name && <span className="error-text">{errors.name}</span>}
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="company">Company</label>
+                    <div className="input-wrapper">
+                      <Building className="input-icon" size={18} />
+                      <input
+                        type="text"
+                        id="company"
+                        name="company"
+                        value={formData.company}
+                        onChange={handleChange}
+                        placeholder="Acme Corp"
+                        className={errors.company ? 'error' : ''}
+                      />
+                    </div>
+                    {errors.company && <span className="error-text">{errors.company}</span>}
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="email">Work Email</label>
+                  <div className="input-wrapper">
+                    <Mail className="input-icon" size={18} />
+                    <input
+                      type="email"
+                      id="email"
+                      name="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="name@company.com"
+                      className={errors.email ? 'error' : ''}
+                    />
+                  </div>
+                  {errors.email && <span className="error-text">{errors.email}</span>}
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="phone">Phone Number</label>
+                  <div className="input-wrapper">
+                    <Phone className="input-icon" size={18} />
+                    <input
+                      type="tel"
+                      id="phone"
+                      name="phone"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      placeholder="+251 91 123 4567"
+                      className={errors.phone ? 'error' : ''}
+                    />
+                  </div>
+                  {errors.phone && <span className="error-text">{errors.phone}</span>}
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label htmlFor="password">Password</label>
+                    <div className="input-wrapper">
+                      <Lock className="input-icon" size={18} />
+                      <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        value={formData.password}
+                        onChange={handleChange}
+                        placeholder="••••••••"
+                        className={errors.password ? 'error' : ''}
+                      />
+                    </div>
+                    {errors.password && <span className="error-text">{errors.password}</span>}
+                  </div>
+
+                  <div className="form-group">
+                    <label htmlFor="confirmPassword">Confirm Password</label>
+                    <div className="input-wrapper">
+                      <Lock className="input-icon" size={18} />
+                      <input
+                        type="password"
+                        id="confirmPassword"
+                        name="confirmPassword"
+                        value={formData.confirmPassword}
+                        onChange={handleChange}
+                        placeholder="••••••••"
+                        className={errors.confirmPassword ? 'error' : ''}
+                      />
+                    </div>
+                    {errors.confirmPassword && <span className="error-text">{errors.confirmPassword}</span>}
+                  </div>
+                </div>
+
+                <motion.button
+                  type="submit"
+                  className="signup-button"
+                  disabled={isLoading}
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.99 }}
+                >
+                  {isLoading ? (
+                    <div className="spinner"></div>
+                  ) : (
+                    <>
+                      <span>Create Account</span>
+                      <ArrowRight size={18} />
+                    </>
+                  )}
+                </motion.button>
+              </form>
+
+              <div className="signup-footer">
+                <p>
+                  Already have an account?{' '}
+                  <Link to="/login" className="link-button">
+                    Sign In
+                  </Link>
+                </p>
+              </div>
+            </div>
+          </motion.div>
         </motion.div>
-      </motion.div>
+      </main>
     </div>
   )
 }
