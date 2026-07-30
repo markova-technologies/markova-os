@@ -941,15 +941,15 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
     # Map friendly language name to ISO code
     lang_code = LANG_TTS_MAP.get(lang_name.lower(), "am")
     
-    # Method 1: Edge TTS (Primary — FREE native neural voices, fastest latency)
-    if method in ["auto", "edge"]:
-        audio_url = await generate_edge_tts(text, lang_code, call_id)
+    # Method 1: Addis AI TTS (Primary for Amharic - paid native Ethiopian voice)
+    if method in ["auto", "addisai"]:
+        audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
         if audio_url:
             return audio_url
 
-    # Method 2: Addis AI TTS (Fallback)
-    if method in ["auto", "addisai"]:
-        audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
+    # Method 2: Edge TTS (Fallback - FREE native neural voices)
+    if method in ["auto", "edge"]:
+        audio_url = await generate_edge_tts(text, lang_code, call_id)
         if audio_url:
             return audio_url
     
@@ -1290,19 +1290,24 @@ class AmharicAIAssistant:
         # Markova Shop system prompt — transactional actions are executed by
         # commerce_agent; this prompt handles catalog questions and small talk.
         self.amharic_system_prompt = (
-            'You are "Almaz", a friendly Ethiopian e-commerce representative for Markova Shop.\n\n'
-            "CRITICAL: Customer input comes from a NOISY PHONE LINE and may be garbled, unclear, or contain random characters.\n"
-            "When input is unclear, DO NOT generate random or meaningless text.\n"
-            "Ask one short clarification question instead.\n\n"
-            "LANGUAGE: Always respond in natural Amharic (Ge'ez script). Keep responses SHORT (1-2 sentences max).\n"
-            "Start responses with: እሺ, አዎ, or እንግዲኛ.\n\n"
+            "You are 'Almaz' (አልማዝ), a warm, charming Ethiopian woman who works as a customer service representative at Markova Shop. "
+            "You speak naturally like a real Ethiopian person on the phone.\n\n"
+            "PERSONALITY:\n"
+            "- You are genuinely happy to help customers. Your warmth comes through in your voice.\n"
+            "- Use varied, natural Ethiopian phone greetings — don't always start with the same word.\n"
+            "- Show empathy: 'ጥሩ ምርጫ ነው!' (Great choice!), 'በጣም ጥሩ!' (Very good!)\n"
+            "- Use natural Ethiopian expressions: 'እንኳን ደህና መጡ' (welcome), 'ደስ ይላል' (I'm happy to help)\n"
+            "- Occasionally use gentle humor or warmth appropriate for Ethiopian culture\n"
+            "- Sound like a real person chatting, not a robot reading a script.\n\n"
+            "SPEECH STYLE:\n"
+            "- Vary your sentence starters. DON'T always begin with 'እሺ'. Mix in: 'ጥሩ!', 'በጣም ጥሩ!', 'እንግዲያ...', 'ደህና!', 'ዋው!', 'አዎ ግድ የለም!'\n"
+            "- Keep responses conversational and SHORT (1-2 sentences). This is a phone call, not an essay.\n\n"
             "CRITICAL INSTRUCTION FOR ACCURACY:\n"
             "- Rely exactly on the LIVE PRODUCT CATALOG provided in the system message.\n"
             "- Never invent a product, price, stock amount, order number, or order status.\n"
-            "- Ordering and status actions are performed by trusted tools before you are called; never claim an action happened yourself.\n"
-            "- Customers may browse products, place cash-on-delivery orders, or check an existing order.\n\n"
-            "NEVER generate random Amharic text. Every response must be meaningful and helpful.\n"
-            "Tone: warm, concise Ethiopian online-shop representative on the phone."
+            "- Ordering and status actions are performed by trusted tools before you are called; never claim an action happened yourself.\n\n"
+            "CRITICAL: Customer input comes from a NOISY PHONE LINE and may be garbled. "
+            "When input is unclear, DO NOT generate random text. Ask one short, warm clarification question."
         )
         
         # Language-specific prompts for multilingual support
@@ -1642,10 +1647,15 @@ class AmharicAIAssistant:
             try:
                 matched_product = commerce_repository.find_product(user_input)
                 if matched_product:
+                    try:
+                        from commerce_agent import price_to_amharic_words
+                    except ImportError:
+                        price_to_amharic_words = lambda x: f"{x:,}"
+                        
                     rag_context = (
                         f"SKU: {matched_product['sku']}\n"
                         f"Product: {matched_product['name_am']} / {matched_product['name_en']}\n"
-                        f"Price: {matched_product['price']:,} ETB\n"
+                        f"Price: {price_to_amharic_words(matched_product['price'])} ብር\n"
                         f"Stock: {matched_product['stock']}"
                     )
                 elif any(
@@ -1655,9 +1665,14 @@ class AmharicAIAssistant:
                         "ምርት", "እቃ", "ምን አላችሁ", "ምን ትሸጣላችሁ",
                     )
                 ):
+                    try:
+                        from commerce_agent import price_to_amharic_words
+                    except ImportError:
+                        price_to_amharic_words = lambda x: f"{x:,}"
+                        
                     catalog = commerce_repository.list_products()[:10]
                     rag_context = "\n".join(
-                        f"- {product['name_am']}: {product['price']:,} ETB "
+                        f"- {product['name_am']}: {price_to_amharic_words(product['price'])} ብር "
                         f"(stock {product['stock']})"
                         for product in catalog
                     )
@@ -1701,7 +1716,7 @@ class AmharicAIAssistant:
             # 6. Call LLM — OpenAI GPT-4o (primary) or Groq (fallback)
             ai_response = None
             llm_provider = os.getenv("LLM_PROVIDER", "groq")
-            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "120"))
+            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "80"))
 
             if llm_provider == "openai" and openai_async_client:
                 try:
