@@ -770,7 +770,10 @@ async def get_provider_http_client() -> httpx.AsyncClient:
     global provider_http_client
     if provider_http_client is None or provider_http_client.is_closed:
         provider_http_client = httpx.AsyncClient(
-            timeout=httpx.Timeout(30.0, connect=10.0),
+            # CRITICAL: 5 second timeout for STT providers. 
+            # In a live phone call, we must fail-fast to the fallback provider 
+            # rather than causing a 30-second silence gap for the caller.
+            timeout=httpx.Timeout(5.0, connect=2.0),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
         )
     return provider_http_client
