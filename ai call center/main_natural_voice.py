@@ -822,14 +822,17 @@ commerce_agent.set_groq_client(groq_client)
 # STT and fast slot extraction have tight 10s budgets — these are fine.
 stt_client = None
 fast_llm_client = None
+fallback_llm_client = None
 try:
     groq_api_key = os.getenv('GROQ_API_KEY')
     if groq_api_key:
         stt_client = Groq(api_key=groq_api_key, timeout=10.0, max_retries=1)
         fast_llm_client = stt_client
-        logger.info("✅ Groq STT & Fast LLM client ready")
+        # Dedicated fallback client for main chat completion when Gemini fails (needs 60s timeout for 70B model)
+        fallback_llm_client = Groq(api_key=groq_api_key, timeout=60.0, max_retries=0)
+        logger.info("✅ Groq STT & Fallback LLM clients ready")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize STT/Fast LLM client: {e}")
+    logger.error(f"❌ Failed to initialize STT/Fallback LLM clients: {e}")
 
 commerce_agent.set_fast_client(fast_llm_client)
 
@@ -1603,9 +1606,9 @@ class AmharicAIAssistant:
                     pass
 
         # 2. Choose Model Routing
-        # Default Gemini model is gemini-2.5-flash
+        # Default Gemini model is gemini-2.0-flash (gemini-2.5-flash was discontinued)
         # Default Groq model is llama-3.3-70b-versatile
-        default_model = "gemini-2.5-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
+        default_model = "gemini-2.0-flash" if os.getenv("LLM_PROVIDER", "").lower() == "gemini" else "llama-3.3-70b-versatile"
         model = os.getenv("LLM_MODEL", default_model)
 
         # 3. EN-Specific Fallback (Groq only)
@@ -1733,9 +1736,9 @@ class AmharicAIAssistant:
                     logger.info(f"🤖 LLM: Using primary [{llm_provider}] model '{model}'")
                 except Exception as primary_err:
                     logger.warning(f"⚠️ Primary LLM ({llm_provider}/{model}) failed: {primary_err}")
-                    if fast_llm_client and llm_provider != "groq":
+                    if fallback_llm_client and llm_provider != "groq":
                         try:
-                            fb_resp = fast_llm_client.chat.completions.create(
+                            fb_resp = fallback_llm_client.chat.completions.create(
                                 model="llama-3.3-70b-versatile",
                                 messages=messages_with_rag,
                                 temperature=0.7,
