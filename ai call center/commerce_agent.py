@@ -63,11 +63,11 @@ def price_to_amharic_words(n: int) -> str:
 # startup: an exact string match is what turns a 2.5 s speech synthesis into a
 # cache hit, so these must never be re-typed inline.
 ASK_PRODUCT_TEMPLATE = "እሺ፣ ምን ማዘዝ ይፈልጋሉ? ለምሳሌ {examples} አሉን።"
-ASK_CUSTOMER_NAME = "ጥሩ! ትዕዛዙን በማን ስም ልመዝግበው?"
-ASK_DELIVERY_ADDRESS = "ጥሩ! አሁን ትዕዛዙ የሚደርስበትን አድራሻ ይንገሩኝ — ከተማ፣ ክፍለ ከተማና አካባቢ።"
+ASK_CUSTOMER_NAME = "ጥሩ፣ ትዕዛዙን በማን ስም ልመዝግበው?"
+ASK_DELIVERY_ADDRESS = "ጥሩ፣ አሁን ትዕዛዙ የሚደርስበትን አድራሻ ይንገሩኝ። ከተማ፣ ክፍለ ከተማና አካባቢ።"
 ASK_ORDER_NUMBER = "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
 ORDER_NOT_FOUND = "በዚህ ትዕዛዝ ቁጥርና ስልክ የተመዘገበ ትዕዛዝ አላገኘሁም። እንደገና ያረጋግጡ።"
-ORDER_CANCELLED = "እሺ ግድ የለም፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ካለ እዚህ ነኝ!"
+ORDER_CANCELLED = "እሺ ግድ የለም፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ካለ እዚህ ነኝ።"
 PRODUCT_NOT_FOUND_REPLY = (
     "ይቅርታ፣ ያዘዙትን ምርት ካታሎጋችን ውስጥ ማግኘት አልቻልኩም። "
     "እናቀርባቸዋለን። "
@@ -618,7 +618,7 @@ class CommerceAgent:
                     return f"ይቅርታ፣ በቂ እቃ የለም። {exc}"
                 await asyncio.to_thread(self.repository.clear_draft, call_id)
                 return (
-                    f"ዋው በጣም ጥሩ! ትዕዛዝዎ ተመዝግቧል! ቁጥሩ {order['order_number']} ነው፣ "
+                    f"በጣም ጥሩ፣ ትዕዛዝዎ ተመዝግቧል። ቁጥሩ {order['order_number']} ነው፣ "
                     f"ክፍያው {price_to_amharic_words(order['total'])} ብር በዕቃ መረከቢያ ጊዜ ነው።"
                 )
             elif extracted.get("reject"):
