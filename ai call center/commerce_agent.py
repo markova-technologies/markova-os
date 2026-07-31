@@ -515,11 +515,13 @@ class CommerceAgent:
     def _cart_summary(data: Dict[str, Any], repository: CommerceRepository) -> str:
         parts = []
         total = 0
+        amharic_numbers = {1: "አንድ", 2: "ሁለት", 3: "ሶስት", 4: "አራት", 5: "አምስት", 6: "ስድስት", 7: "ሰባት", 8: "ስምንት", 9: "ዘጠኝ", 10: "አስር"}
         for item in data.get("items", []):
             product = repository.get_product(int(item["product_id"]))
             quantity = int(item["quantity"])
             total += product["price"] * quantity
-            parts.append(f"{product['name_am']} {quantity}")
+            qty_word = amharic_numbers.get(quantity, str(quantity))
+            parts.append(f"{qty_word} {product['name_am']}")
         return f"{'፣ '.join(parts)}፣ ጠቅላላ {price_to_amharic_words(total)} ብር"
 
     @staticmethod

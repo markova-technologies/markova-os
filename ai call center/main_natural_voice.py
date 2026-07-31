@@ -917,7 +917,7 @@ async def startup_event():
         logger.warning(f"⚠️ Could not collect commerce prompts to pre-warm: {prompt_error}")
 
     results = await asyncio.gather(
-        *(generate_multilingual_voice(text, lang) for text, lang in prewarm_phrases),
+        *(generate_multilingual_voice(text, lang, method="addisai") for text, lang in prewarm_phrases),
         return_exceptions=True,
     )
     hits = sum(1 for r in results if isinstance(r, str))
@@ -941,13 +941,25 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
     # Map friendly language name to ISO code
     lang_code = LANG_TTS_MAP.get(lang_name.lower(), "am")
     
-    # Method 1: Addis AI TTS (Primary for Amharic - paid native Ethiopian voice)
+    # Method 1: Check Addis AI TTS Cache (Primary for fixed greetings)
+    # We always check if a pre-warmed Addis AI file exists first.
     if method in ["auto", "addisai"]:
-        audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
-        if audio_url:
-            return audio_url
+        # Only check cache if method is auto (meaning we want fast response).
+        # If explicitly requested 'addisai' (e.g. during prewarm), it will generate it.
+        if method == "auto":
+            sample_rate = int(os.getenv("TTS_SAMPLE_RATE", "8000"))
+            import hashlib
+            text_hash = hashlib.md5(f"addisai_{lang_code}_{sample_rate}_{text}".encode('utf-8')).hexdigest()[:8]
+            wav_filename = f"addisai_{lang_code}_{text_hash}.wav"
+            from pathlib import Path
+            if (Path("audio_cache") / wav_filename).exists():
+                return f"/audio/{wav_filename}"
+        else:
+            audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
+            if audio_url:
+                return audio_url
 
-    # Method 2: Edge TTS (Fallback - FREE native neural voices)
+    # Method 2: Edge TTS (Primary for dynamic text - 2s latency)
     if method in ["auto", "edge"]:
         audio_url = await generate_edge_tts(text, lang_code, call_id)
         if audio_url:
@@ -1290,18 +1302,18 @@ class AmharicAIAssistant:
         # Markova Shop system prompt — transactional actions are executed by
         # commerce_agent; this prompt handles catalog questions and small talk.
         self.amharic_system_prompt = (
-            "You are 'Almaz' (አልማዝ), a warm, charming Ethiopian woman who works as a customer service representative at Markova Shop. "
-            "You speak naturally like a real Ethiopian person on the phone.\n\n"
-            "PERSONALITY:\n"
-            "- You are genuinely happy to help customers. Your warmth comes through in your voice.\n"
-            "- Use varied, natural Ethiopian phone greetings.\n"
-            "- Show empathy: 'ጥሩ ምርጫ ነው' (Great choice), 'በጣም ጥሩ' (Very good)\n"
-            "- Use natural Ethiopian expressions: 'እንኳን ደህና መጡ' (welcome), 'ደስ ይላል' (I'm happy to help)\n"
-            "- Occasionally use gentle humor or warmth appropriate for Ethiopian culture\n"
-            "- Sound like a real person chatting, not a robot reading a script.\n\n"
-            "SPEECH STYLE:\n"
-            "- Vary your sentence starters. DON'T always begin with 'እሺ'. Mix in: 'ጥሩ', 'በጣም ጥሩ', 'እንግዲያ...', 'ደህና', 'ዋው', 'አዎ ግድ የለም'\n"
-            "- Keep responses conversational and SHORT (1-2 sentences). This is a phone call, not an essay.\n\n"
+            "You are 'Almaz' (አልማዝ), an extremely charming, warm, and polite Ethiopian customer service representative at Markova Shop. "
+            "You speak naturally, warmly, and gracefully like a real Ethiopian person on the phone.\n\n"
+            "PERSONALITY & CHARM:\n"
+            "- You are genuinely delighted to help customers. Show extreme hospitality and warmth.\n"
+            "- Use charming phrases gracefully: 'እጅግ በጣም አመሰግናለሁ' (thank you very much), 'በደስታ' (with pleasure), 'ውድ ደንበኛችን' (our dear customer).\n"
+            "- Be very polite and reassuring. If a user says something, affirm them warmly: 'በጣም ጥሩ' (Very good), 'እሺ፣ ምንም ችግር የለውም' (Ok, no problem).\n"
+            "- Sound like a real person chatting, not a robot reading a script. Bring out the rich Ethiopian culture of respect.\n\n"
+            "SPEECH STYLE & NUMBERS:\n"
+            "- Vary your sentence starters. Mix in: 'እሺ', 'በጣም ጥሩ', 'እንግዲያ...', 'ደህና', 'አዎ ግድ የለም'.\n"
+            "- CRITICAL NUMBERS: NEVER write prices as digit strings like '18000' or '2500'. You MUST spell them out entirely in Amharic words. "
+            "For example, write 'አስራ ስምንት ሺህ ብር' (instead of 18000), 'ሁለት ሺህ አምስት መቶ ብር' (instead of 2500). If you write digits, the TTS reads them digit-by-digit like a robot, which ruins the charm.\n"
+            "- Keep responses conversational and SHORT (1-2 sentences). This is a phone call.\n\n"
             "CRITICAL INSTRUCTION FOR ACCURACY:\n"
             "- Rely exactly on the LIVE PRODUCT CATALOG provided in the system message.\n"
             "- Never invent a product, price, stock amount, order number, or order status.\n"
@@ -2660,6 +2672,19 @@ async def commerce_update_product(product_id: int, payload: ProductUpdatePayload
         )
     except CommerceError as exc:
         raise commerce_http_error(exc)
+
+@app.post("/api/commerce/orders/sync")
+async def commerce_sync_order(request: Request):
+    """Internal webhook for syncing orders from local to production"""
+    try:
+        payload = await request.json()
+        order = await asyncio.to_thread(
+            commerce_repository.sync_order, payload
+        )
+        return {"status": "success", "order": order}
+    except Exception as exc:
+        logger.error(f"Sync order failed: {exc}")
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 @app.get("/api/commerce/orders", dependencies=[Depends(require_commerce_admin)])
