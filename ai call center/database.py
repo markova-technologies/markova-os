@@ -1,52 +1,37 @@
-import aiosqlite
+import asyncpg
 import asyncio
 import logging
 import json
-import sqlite3
+import os
 import random
 from datetime import datetime
 from typing import List, Dict, Optional, Any
 
 logger = logging.getLogger(__name__)
 
-DB_PATH = "system.db"
-
-async def retry_db_op(func, *args, **kwargs):
-    """Retry DB operation on locking error"""
-    retries = 15 # Increased for high concurrency
-    for i in range(retries):
-        try:
-            return await func(*args, **kwargs)
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e):
-                wait = (i + 1) * 0.1 + random.uniform(0, 0.1)
-                await asyncio.sleep(wait)
-                continue
-            raise
-        except Exception:
-            raise
-    raise Exception("DB Operation failed after retries")
-
 class ConversationDB:
     """
-    Async Database Manager for National Scale AI Call Center.
-    Handles persistence of sessions, messages, and analytics.
+    Async Database Manager for National Scale AI Call Center using PostgreSQL.
     """
     
-    def __init__(self, db_path: str = DB_PATH):
-        self.db_path = db_path
+    def __init__(self):
+        self.db_url = os.environ.get("DATABASE_URL")
+        self.pool: Optional[asyncpg.Pool] = None
+
+    async def get_pool(self) -> asyncpg.Pool:
+        if not self.pool:
+            if not self.db_url:
+                raise ValueError("DATABASE_URL environment variable is not set. Make sure it is in your .env or Render dashboard.")
+            self.pool = await asyncpg.create_pool(self.db_url, min_size=1, max_size=10)
+        return self.pool
 
     async def init_schema(self):
         """Initialize database schema asynchronously"""
-        async def _op():
-            async with aiosqlite.connect(self.db_path) as db:
-                # Enable WAL mode for concurrency
-                await db.execute("PRAGMA journal_mode=WAL;")
-                # Set busy timeout
-                await db.execute("PRAGMA busy_timeout=5000;")
-                
+        try:
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
                 # 1. Conversation Sessions
-                await db.execute('''
+                await conn.execute('''
                 CREATE TABLE IF NOT EXISTS conversation_sessions (
                     call_id TEXT PRIMARY KEY,
                     caller_number TEXT,
@@ -59,9 +44,9 @@ class ConversationDB:
                 ''')
 
                 # 2. Message History
-                await db.execute('''
+                await conn.execute('''
                 CREATE TABLE IF NOT EXISTS conversation_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     call_id TEXT NOT NULL,
                     role TEXT NOT NULL,
                     content TEXT NOT NULL,
@@ -72,9 +57,9 @@ class ConversationDB:
                 ''')
 
                 # 3. Call Analytics
-                await db.execute('''
+                await conn.execute('''
                 CREATE TABLE IF NOT EXISTS call_analytics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     call_id TEXT NOT NULL,
                     metric_name TEXT NOT NULL,
                     metric_value REAL,
@@ -83,70 +68,61 @@ class ConversationDB:
                 )
                 ''')
                 
-                await db.commit()
-                logger.info("✅ Async Database Schema Initialized")
-
-        try:
-             await retry_db_op(_op)
+                logger.info("✅ Async Database Schema Initialized (PostgreSQL)")
         except Exception as e:
             logger.error(f"❌ Failed to init DB schema: {e}")
 
     async def create_session(self, call_id: str, caller_number: str = "unknown"):
         """Create a new conversation session"""
-        async def _op():
-             async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    '''INSERT OR IGNORE INTO conversation_sessions 
-                       (call_id, caller_number, start_time, status) 
-                       VALUES (?, ?, ?, 'active')''',
-                    (call_id, caller_number, datetime.now())
-                )
-                await db.commit()
-        
         try:
-             await retry_db_op(_op)
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    '''INSERT INTO conversation_sessions 
+                       (call_id, caller_number, start_time, status) 
+                       VALUES ($1, $2, CURRENT_TIMESTAMP, 'active')
+                       ON CONFLICT (call_id) DO NOTHING''',
+                    call_id, caller_number
+                )
         except Exception as e:
             logger.error(f"Failed to create session {call_id}: {e}")
 
     async def save_message(self, call_id: str, role: str, content: str, language: str = "amharic"):
         """Save a single message to history"""
-        async def _op():
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    '''INSERT INTO conversation_messages 
-                       (call_id, role, content, language) 
-                       VALUES (?, ?, ?, ?)''',
-                    (call_id, role, content, language)
-                )
-                
-                # Update turn count
-                await db.execute(
-                    '''UPDATE conversation_sessions 
-                       SET turn_count = turn_count + 1 
-                       WHERE call_id = ?''',
-                    (call_id,)
-                )
-                await db.commit()
-                
         try:
-            await retry_db_op(_op)
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                async with conn.transaction():
+                    await conn.execute(
+                        '''INSERT INTO conversation_messages 
+                           (call_id, role, content, language) 
+                           VALUES ($1, $2, $3, $4)''',
+                        call_id, role, content, language
+                    )
+                    
+                    # Update turn count
+                    await conn.execute(
+                        '''UPDATE conversation_sessions 
+                           SET turn_count = turn_count + 1 
+                           WHERE call_id = $1''',
+                        call_id
+                    )
         except Exception as e:
             logger.error(f"Failed to save message for {call_id}: {e}")
 
     async def load_conversation(self, call_id: str) -> List[Dict[str, str]]:
         """Load full conversation history"""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                rows = await conn.fetch(
                     '''SELECT role, content 
                        FROM conversation_messages 
-                       WHERE call_id = ? 
+                       WHERE call_id = $1 
                        ORDER BY id ASC''',
-                    (call_id,)
-                ) as cursor:
-                    rows = await cursor.fetchall()
-                    return [{"role": row["role"], "content": row["content"]} for row in rows]
+                    call_id
+                )
+                return [{"role": dict(row)["role"], "content": dict(row)["content"]} for row in rows]
         except Exception as e:
             logger.error(f"Failed to load conversation {call_id}: {e}")
             return []
@@ -154,13 +130,12 @@ class ConversationDB:
     async def get_session_info(self, call_id: str) -> Optional[Dict[str, Any]]:
         """Get session metadata"""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                db.row_factory = aiosqlite.Row
-                async with db.execute(
-                    "SELECT * FROM conversation_sessions WHERE call_id = ?", (call_id,)
-                ) as cursor:
-                    row = await cursor.fetchone()
-                    return dict(row) if row else None
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT * FROM conversation_sessions WHERE call_id = $1", call_id
+                )
+                return dict(row) if row else None
         except Exception as e:
             logger.error(f"Failed to get session info {call_id}: {e}")
             return None
@@ -168,43 +143,40 @@ class ConversationDB:
     async def update_session_language(self, call_id: str, language: str):
         """Update the detected language for the session"""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
-                    "UPDATE conversation_sessions SET detected_language = ? WHERE call_id = ?",
-                    (language, call_id)
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE conversation_sessions SET detected_language = $1 WHERE call_id = $2",
+                    language, call_id
                 )
-                await db.commit()
         except Exception as e:
             logger.error(f"Failed to update session language {call_id}: {e}")
 
     async def end_session(self, call_id: str):
         """Mark session as completed"""
         try:
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
                     '''UPDATE conversation_sessions 
-                       SET end_time = ?, status = 'completed' 
-                       WHERE call_id = ?''',
-                    (datetime.now(), call_id)
+                       SET end_time = CURRENT_TIMESTAMP, status = 'completed' 
+                       WHERE call_id = $1''',
+                    call_id
                 )
-                await db.commit()
         except Exception as e:
             logger.error(f"Failed to end session {call_id}: {e}")
 
     async def save_metric(self, call_id: str, metric_name: str, value: float):
         """Save a performance metric"""
-        async def _op():
-            async with aiosqlite.connect(self.db_path) as db:
-                await db.execute(
+        try:
+            pool = await self.get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
                     '''INSERT INTO call_analytics 
                        (call_id, metric_name, metric_value) 
-                       VALUES (?, ?, ?)''',
-                    (call_id, metric_name, value)
+                       VALUES ($1, $2, $3)''',
+                    call_id, metric_name, value
                 )
-                await db.commit()
-        
-        try:
-            await retry_db_op(_op)
         except Exception as e:
             logger.error(f"Failed to save metric for {call_id}: {e}")
 

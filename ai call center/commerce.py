@@ -6,7 +6,8 @@ import json
 import os
 import re
 import secrets
-import sqlite3
+import psycopg2
+import psycopg2.extras
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from difflib import SequenceMatcher
@@ -185,12 +186,26 @@ class CommerceRepository:
         self._match_index_signature: Optional[tuple] = None
 
     @contextmanager
-    def _connect(self) -> Iterator[sqlite3.Connection]:
+    def _connect(self) -> Iterator[Any]:
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        connection = sqlite3.connect(self.db_path, timeout=15)
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute("PRAGMA busy_timeout=10000")
+        import os
+        db_url = os.environ.get("DATABASE_URL")
+        connection = psycopg2.connect(db_url)
+        # We need a wrapper to allow db.execute() and db.commit() like sqlite3
+        class DBWrapper:
+            def __init__(self, conn):
+                self.conn = conn
+            def execute(self, query, args=None):
+                cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                cursor.execute(query, args)
+                return cursor
+            def commit(self):
+                self.conn.commit()
+            def rollback(self):
+                self.conn.rollback()
+            def close(self):
+                self.conn.close()
+        connection = DBWrapper(connection)
         try:
             yield connection
             connection.commit()
@@ -205,7 +220,7 @@ class CommerceRepository:
             db.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS commerce_products (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     sku TEXT NOT NULL UNIQUE,
                     name_en TEXT NOT NULL,
                     name_am TEXT NOT NULL,
@@ -226,7 +241,7 @@ class CommerceRepository:
                 );
 
                 CREATE TABLE IF NOT EXISTS commerce_orders (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     order_number TEXT NOT NULL UNIQUE,
                     call_id TEXT,
                     confirmation_key TEXT NOT NULL UNIQUE,
@@ -244,7 +259,7 @@ class CommerceRepository:
                 );
 
                 CREATE TABLE IF NOT EXISTS commerce_order_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     order_id INTEGER NOT NULL,
                     product_id INTEGER NOT NULL,
                     sku TEXT NOT NULL,
@@ -258,7 +273,7 @@ class CommerceRepository:
                 );
 
                 CREATE TABLE IF NOT EXISTS commerce_order_status_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id SERIAL PRIMARY KEY,
                     order_id INTEGER NOT NULL,
                     old_status TEXT,
                     new_status TEXT NOT NULL,
@@ -281,7 +296,7 @@ class CommerceRepository:
                     """
                     INSERT INTO commerce_products
                     (sku, name_en, name_am, category, price, stock, aliases_json, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, 1, %s, %s)
                     """,
                     [
                         (
@@ -300,7 +315,7 @@ class CommerceRepository:
                 )
 
     @staticmethod
-    def _product(row: sqlite3.Row) -> Dict[str, Any]:
+    def _product(row: Any) -> Dict[str, Any]:
         item = dict(row)
         item["aliases"] = json.loads(item.pop("aliases_json", "[]"))
         item["active"] = bool(item["active"])
@@ -318,8 +333,8 @@ class CommerceRepository:
         if search:
             token = f"%{search.strip().lower()}%"
             query += (
-                " AND (LOWER(sku) LIKE ? OR LOWER(name_en) LIKE ? "
-                "OR name_am LIKE ? OR LOWER(aliases_json) LIKE ?)"
+                " AND (LOWER(sku) LIKE %s OR LOWER(name_en) LIKE %s "
+                "OR name_am LIKE %s OR LOWER(aliases_json) LIKE %s)"
             )
             params.extend([token, token, token, token])
         query += " ORDER BY category, name_en"
@@ -453,7 +468,7 @@ class CommerceRepository:
                     """
                     INSERT INTO commerce_products
                     (sku, name_en, name_am, category, price, stock, aliases_json, active, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         data["sku"],
@@ -468,16 +483,16 @@ class CommerceRepository:
                         now,
                     ),
                 )
-                product_id = cursor.lastrowid
+                product_id = cursor.fetchone()[0]
             else:
                 existing = self.get_product(product_id)
                 merged = {**existing, **data}
                 db.execute(
                     """
                     UPDATE commerce_products SET
-                        sku=?, name_en=?, name_am=?, category=?, price=?, stock=?,
-                        aliases_json=?, active=?, updated_at=?
-                    WHERE id=?
+                        sku=%s, name_en=%s, name_am=%s, category=%s, price=%s, stock=%s,
+                        aliases_json=%s, active=%s, updated_at=%s
+                    WHERE id=%s
                     """,
                     (
                         merged["sku"],
@@ -515,7 +530,7 @@ class CommerceRepository:
             db.execute(
                 """
                 INSERT INTO commerce_order_drafts(call_id, intent, data_json, updated_at)
-                VALUES (?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s)
                 ON CONFLICT(call_id) DO UPDATE SET
                     intent=excluded.intent,
                     data_json=excluded.data_json,
@@ -576,7 +591,7 @@ class CommerceRepository:
             total = 0
             for requested in item_list:
                 product = db.execute(
-                    "SELECT * FROM commerce_products WHERE id=? AND active=1",
+                    "SELECT * FROM commerce_products WHERE id=%s AND active=1",
                     (int(requested["product_id"]),),
                 ).fetchone()
                 if not product:
@@ -599,7 +614,7 @@ class CommerceRepository:
                 INSERT INTO commerce_orders
                 (order_number, call_id, confirmation_key, customer_name, customer_phone,
                  delivery_address, note, subtotal, total, status, source, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s, %s)
                 """,
                 (
                     temporary_number,
@@ -616,10 +631,10 @@ class CommerceRepository:
                     now,
                 ),
             )
-            order_id = int(cursor.lastrowid)
+            order_id = int(cursor.fetchone()[0])
             order_number = self._order_number(order_id)
             db.execute(
-                "UPDATE commerce_orders SET order_number=? WHERE id=?",
+                "UPDATE commerce_orders SET order_number=%s WHERE id=?",
                 (order_number, order_id),
             )
             for product, quantity, line_total in prepared:
@@ -628,7 +643,7 @@ class CommerceRepository:
                     INSERT INTO commerce_order_items
                     (order_id, product_id, sku, product_name_en, product_name_am,
                      unit_price, quantity, line_total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         order_id,
@@ -642,14 +657,14 @@ class CommerceRepository:
                     ),
                 )
                 db.execute(
-                    "UPDATE commerce_products SET stock=stock-?, updated_at=? WHERE id=?",
+                    "UPDATE commerce_products SET stock=stock-?, updated_at=%s WHERE id=?",
                     (quantity, now, product["id"]),
                 )
             db.execute(
                 """
                 INSERT INTO commerce_order_status_events
                 (order_id, old_status, new_status, note, changed_by, created_at)
-                VALUES (?, NULL, 'pending', ?, 'voice-agent', ?)
+                VALUES (%s, NULL, 'pending', %s, 'voice-agent', %s)
                 """,
                 (order_id, "Cash-on-delivery order created", now),
             )
@@ -673,13 +688,13 @@ class CommerceRepository:
             
         return final_order
 
-    def _hydrate_order(self, db: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, Any]:
+    def _hydrate_order(self, db: Any, row: Any) -> Dict[str, Any]:
         order = dict(row)
         order["status_am"] = STATUS_AMHARIC[order["status"]]
         order["items"] = [
             dict(item)
             for item in db.execute(
-                "SELECT * FROM commerce_order_items WHERE order_id=? ORDER BY id",
+                "SELECT * FROM commerce_order_items WHERE order_id=%s ORDER BY id",
                 (order["id"],),
             ).fetchall()
         ]
@@ -688,7 +703,7 @@ class CommerceRepository:
             for event in db.execute(
                 """
                 SELECT old_status, new_status, note, changed_by, created_at
-                FROM commerce_order_status_events WHERE order_id=? ORDER BY id
+                FROM commerce_order_status_events WHERE order_id=%s ORDER BY id
                 """,
                 (order["id"],),
             ).fetchall()
@@ -713,7 +728,7 @@ class CommerceRepository:
                 INSERT INTO commerce_orders
                 (order_number, call_id, confirmation_key, customer_name, customer_phone,
                  delivery_address, note, subtotal, total, status, source, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     order_data.get("order_number"),
@@ -731,7 +746,7 @@ class CommerceRepository:
                     order_data.get("updated_at", _now()),
                 ),
             )
-            order_id = cursor.lastrowid
+            order_id = cursor.fetchone()[0]
             
             # Create items
             for item in order_data.get("items", []):
@@ -739,7 +754,7 @@ class CommerceRepository:
                     """
                     INSERT INTO commerce_order_items
                     (order_id, product_id, sku, product_name_en, product_name_am, quantity, unit_price, line_total)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         order_id,
@@ -760,7 +775,7 @@ class CommerceRepository:
         order_number: str,
         customer_phone: Optional[str] = None,
     ) -> Dict[str, Any]:
-        query = "SELECT * FROM commerce_orders WHERE UPPER(order_number)=UPPER(?)"
+        query = "SELECT * FROM commerce_orders WHERE UPPER(order_number)=UPPER(%s)"
         params: List[Any] = [order_number.strip()]
         if customer_phone:
             query += " AND customer_phone=?"
@@ -787,8 +802,8 @@ class CommerceRepository:
         if search:
             token = f"%{search.strip()}%"
             query += (
-                " AND (order_number LIKE ? OR customer_name LIKE ? "
-                "OR customer_phone LIKE ? OR delivery_address LIKE ?)"
+                " AND (order_number LIKE %s OR customer_name LIKE %s "
+                "OR customer_phone LIKE %s OR delivery_address LIKE %s)"
             )
             params.extend([token, token, token, token])
         query += " ORDER BY id DESC LIMIT ?"
@@ -810,7 +825,7 @@ class CommerceRepository:
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
-                "SELECT id, status FROM commerce_orders WHERE UPPER(order_number)=UPPER(?)",
+                "SELECT id, status FROM commerce_orders WHERE UPPER(order_number)=UPPER(%s)",
                 (order_number,),
             ).fetchone()
             if not row:
@@ -823,14 +838,14 @@ class CommerceRepository:
                 raise ConflictError(f"Cannot move order from {old_status} to {new_status}")
             now = _now()
             db.execute(
-                "UPDATE commerce_orders SET status=?, updated_at=? WHERE id=?",
+                "UPDATE commerce_orders SET status=%s, updated_at=%s WHERE id=?",
                 (new_status, now, row["id"]),
             )
             db.execute(
                 """
                 INSERT INTO commerce_order_status_events
                 (order_id, old_status, new_status, note, changed_by, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (row["id"], old_status, new_status, note, changed_by, now),
             )
@@ -845,8 +860,8 @@ class CommerceRepository:
                 SELECT
                     COUNT(*) AS total_orders,
                     COALESCE(SUM(total), 0) AS gross_sales,
-                    SUM(CASE WHEN substr(created_at, 1, 10)=? THEN 1 ELSE 0 END) AS orders_today,
-                    COALESCE(SUM(CASE WHEN substr(created_at, 1, 10)=? THEN total ELSE 0 END), 0) AS sales_today
+                    SUM(CASE WHEN substr(created_at, 1, 10)=%s THEN 1 ELSE 0 END) AS orders_today,
+                    COALESCE(SUM(CASE WHEN substr(created_at, 1, 10)=%s THEN total ELSE 0 END), 0) AS sales_today
                 FROM commerce_orders
                 """,
                 (today, today),
