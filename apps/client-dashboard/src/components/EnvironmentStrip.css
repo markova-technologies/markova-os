@@ -48,5 +48,23 @@
 .env-badge:hover { filter: brightness(1.15); }
 
 @media (max-width: 1024px) {
-  .env-strip { left: 0; }
+  .env-strip {
+    left: 0;
+    padding: 0 1rem;
+  }
+
+  .env-badge {
+    margin-right: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .env-strip {
+    padding: 0 0.75rem;
+  }
+
+  .env-badge {
+    font-size: 0.68rem;
+    padding: 0.2rem 0.5rem;
+  }
 }

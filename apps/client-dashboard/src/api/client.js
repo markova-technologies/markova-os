@@ -1,5 +1,7 @@
 import axios from 'axios';
 
+import { supabase } from '../config/supabase'
+
 // Single gateway. Dev: '' -> Vite proxies /v1 to :8000. Prod: set VITE_API_URL to the gateway.
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -42,6 +44,7 @@ export const tokenStore = {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     localStorage.removeItem(DEMO_MODE_KEY);
+    supabase.auth.signOut().catch(() => {});
   },
 };
 
@@ -52,8 +55,16 @@ export const currentEnvironment = () =>
   localStorage.getItem(ENVIRONMENT_STORAGE_KEY) === 'live' ? 'live' : 'test';
 
 // Attach bearer JWT and the active environment on every request.
-api.interceptors.request.use((config) => {
-  const token = tokenStore.get();
+api.interceptors.request.use(async (config) => {
+  let token = tokenStore.get();
+  // Check if Supabase session is active
+  if (!token || token === 'demo-token') {
+    const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+    if (session?.access_token) {
+      token = session.access_token;
+      tokenStore.set(session.access_token, session.refresh_token);
+    }
+  }
   if (token) config.headers.Authorization = `Bearer ${token}`;
   config.headers['x-markova-env'] = currentEnvironment();
   return config;
@@ -101,12 +112,88 @@ api.interceptors.response.use(
   }
 );
 
-// ---------- Auth ----------
-export const register = (data) => api.post('/auth/register', data); // {name, companyName, email, password}
-export const login = (email, password) => api.post('/auth/login', { email, password });
+// ---------- Auth (Supabase + Gateway Hybrid) ----------
+export const register = async (data) => {
+  if (import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder')) {
+    const { data: sbData, error } = await supabase.auth.signUp({
+      email: data.email,
+      password: data.password,
+      options: {
+        data: {
+          name: data.name,
+          companyName: data.companyName,
+        },
+      },
+    })
+    if (error) throw error
+    const user = {
+      id: sbData.user.id,
+      email: sbData.user.email,
+      name: data.name || sbData.user.user_metadata?.name,
+      companyName: data.companyName || sbData.user.user_metadata?.companyName,
+    }
+    const token = sbData.session?.access_token || 'sb-token'
+    const refreshToken = sbData.session?.refresh_token || 'sb-refresh'
+    return { data: { token, refreshToken, user } }
+  }
+  return api.post('/auth/register', data);
+};
+
+export const login = async (email, password) => {
+  if (import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder')) {
+    const { data: sbData, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+    if (error) throw error
+    const user = {
+      id: sbData.user.id,
+      email: sbData.user.email,
+      name: sbData.user.user_metadata?.name || email.split('@')[0],
+      companyName: sbData.user.user_metadata?.companyName || 'Markova Enterprise',
+    }
+    const token = sbData.session?.access_token
+    const refreshToken = sbData.session?.refresh_token
+    return { data: { token, refreshToken, user } }
+  }
+  return api.post('/auth/login', { email, password });
+};
+
+export const loginWithGoogle = async () => {
+  if (import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('placeholder')) {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/app`,
+      },
+    })
+    if (error) throw error
+    return data
+  }
+  enterDemoMode()
+  window.location.href = '/app'
+};
+
 export const refresh = (refreshToken) => api.post('/auth/refresh', { refreshToken });
-export const logout = () => api.post('/auth/logout');
-export const getMe = () => api.get('/auth/me');
+export const logout = async () => {
+  await supabase.auth.signOut().catch(() => {});
+  return api.post('/auth/logout').catch(() => ({}));
+};
+export const getMe = async () => {
+  const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }))
+  if (user) {
+    return {
+      data: {
+        id: user.id,
+        email: user.email,
+        name: user.user_metadata?.name || user.email.split('@')[0],
+        companyName: user.user_metadata?.companyName || 'Markova Enterprise',
+      }
+    }
+  }
+  return api.get('/auth/me');
+};
+
 
 // ---------- API Keys ----------
 export const listKeys = () => api.get('/keys');

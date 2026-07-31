@@ -548,14 +548,125 @@ input:checked + .toggle-slider:before {
 }
 
 /* ── Mobile Responsive Overrides ───────────────────────────────────────── */
-@media (max-width: 1024px) {
-  .governance-container {
-    padding: 1.25rem;
+@media (max-width: 1100px) {
+  /* 4-col KPI → 2-col */
+  .gov-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 
-  .policies-grid,
-  .sla-grid {
-    grid-template-columns: 1fr !important;
+  /* 3-col SLAs → 2-col */
+  .sla-cards-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  /* 2-col policies → already fine, keep */
+}
+
+@media (max-width: 768px) {
+  .governance-page {
+    padding: 1rem;
+  }
+
+  /* Header: title + badge stacked */
+  .governance-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  /* KPI grid → 2-col */
+  .gov-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.85rem;
+  }
+
+  /* Tabs: horizontally scrollable */
+  .gov-tabs-container {
+    overflow-x: auto;
+    scrollbar-width: none;
+    padding-bottom: 0;
+    gap: 0;
+    -webkit-overflow-scrolling: touch;
+  }
+  .gov-tabs-container::-webkit-scrollbar { display: none; }
+
+  .gov-tab {
+    padding: 0.6rem 0.85rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* Policies → single column */
+  .policies-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Audit summary row → 2-col */
+  .audits-summary-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.85rem;
+  }
+
+  /* SLA cards → single column */
+  .sla-cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Audit logs table: horizontal scroll */
+  .logs-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .logs-table {
+    min-width: 560px;
+  }
+
+  /* Card action bar: buttons fill full width */
+  .card-action-bar {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .gov-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Policy cards: stack toggle below text */
+  .policy-card {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .policy-toggle-wrap {
+    flex-direction: row;
+    align-items: center;
+    gap: 0.6rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .governance-page {
+    padding: 0.65rem;
+  }
+
+  /* KPI → single column */
+  .gov-metrics-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Audit summary → single column */
+  .audits-summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .gov-metric-card {
+    padding: 1rem;
+  }
+
+  .governance-header h1 {
+    font-size: 1.4rem;
   }
 }
 

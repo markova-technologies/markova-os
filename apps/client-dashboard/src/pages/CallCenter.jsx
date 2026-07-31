@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Phone, 
@@ -9,6 +9,7 @@ import {
   Play, 
   Download, 
   ArrowRight,
+  ArrowLeft,
   Headphones,
   Search,
   Filter,
@@ -67,7 +68,11 @@ const CallCenter = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCallId, setSelectedCallId] = useState(null)
   const [isListening, setIsListening] = useState(false)
+  const [isMobileDetailView, setIsMobileDetailView] = useState(false)
   const transcriptEndRef = useRef(null)
+
+  // Detect mobile viewport
+  const isMobile = () => window.innerWidth <= 768
 
   useEffect(() => {
     fetchCalls()
@@ -152,6 +157,17 @@ const CallCenter = () => {
     alert("Barging into the call... The AI agent has been muted, and your microphone is now live.")
   }
 
+  const handleSelectCall = (callId) => {
+    setSelectedCallId(callId)
+    if (isMobile()) {
+      setIsMobileDetailView(true)
+    }
+  }
+
+  const handleBackToList = () => {
+    setIsMobileDetailView(false)
+  }
+
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--primary)' }}><Loader2 className="spinner" size={48} /></div>;
   }
@@ -159,7 +175,7 @@ const CallCenter = () => {
   return (
     <div className="call-center">
       {/* Sidebar List */}
-      <div className="cc-sidebar">
+      <div className={`cc-sidebar${isMobileDetailView ? ' mobile-hidden' : ''}`}>
         <div className="cc-sidebar-header">
           <h2>Operations Center</h2>
           <p>Monitor live calls and history</p>
@@ -190,7 +206,7 @@ const CallCenter = () => {
               <div 
                 key={call.id} 
                 className={`call-item ${selectedCallId === call.id ? 'active' : ''}`}
-                onClick={() => setSelectedCallId(call.id)}
+                onClick={() => handleSelectCall(call.id)}
               >
                 <div className="ci-header">
                   <span className="ci-number">{call.number}</span>
@@ -214,7 +230,13 @@ const CallCenter = () => {
       </div>
 
       {/* Main Details */}
-      <div className="cc-details">
+      <div className={`cc-details${!isMobileDetailView ? ' mobile-hidden' : ''}`}>
+        {isMobileDetailView && (
+          <button className="cc-mobile-back" onClick={handleBackToList}>
+            <ArrowLeft size={15} />
+            Back to Calls
+          </button>
+        )}
         {selectedCall ? (
           <AnimatePresence mode="wait">
             <motion.div 

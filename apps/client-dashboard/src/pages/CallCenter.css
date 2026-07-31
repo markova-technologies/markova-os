@@ -3,6 +3,7 @@
   height: 100%;
   background: var(--bg-main);
   overflow: hidden;
+  min-height: 0;
 }
 
 /* Sidebar Call List */
@@ -188,6 +189,7 @@
   display: grid;
   grid-template-columns: 1fr 350px;
   gap: 2rem;
+  min-height: 0;
 }
 
 /* Transcript Area */
@@ -323,20 +325,104 @@
   justify-content: center;
 }
 
+/* Mobile back button — hidden on desktop */
+.cc-mobile-back {
+  display: none;
+}
+
 /* ── Mobile Responsive Overrides ───────────────────────────────────────── */
 @media (max-width: 1024px) {
-  .call-center {
-    padding: 1.25rem;
-  }
-
   .detail-layout {
     grid-template-columns: 1fr !important;
   }
+
+  .details-content {
+    grid-template-columns: 1fr !important;
+    padding: 1.25rem;
+  }
 }
 
+/* ── Mobile: Two-pane → Single-pane with back navigation ── */
 @media (max-width: 768px) {
   .call-center {
-    padding: 0.85rem 0.5rem;
+    flex-direction: column;
+    height: auto;
+    min-height: calc(100vh - var(--header-height, 70px));
+    overflow: visible;
+  }
+
+  /* When the sidebar is hidden (detail view active) */
+  .cc-sidebar.mobile-hidden {
+    display: none;
+  }
+
+  /* When the detail panel is hidden (list view active) */
+  .cc-details.mobile-hidden {
+    display: none;
+  }
+
+  .cc-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border-main);
+    flex-shrink: 0;
+    max-height: 100%;
+  }
+
+  .cc-details {
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Collapse the transcript + insights side-by-side grid */
+  .details-content {
+    grid-template-columns: 1fr !important;
+    padding: 1rem;
+    gap: 1rem;
+    overflow-y: auto;
+  }
+
+  /* Header layout */
+  .details-header {
+    padding: 1rem;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .dh-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .dh-actions .btn {
+    flex: 1;
+    justify-content: center;
+    font-size: 0.82rem;
+    padding: 0.6rem 0.75rem;
+  }
+
+  /* Mobile back button */
+  .cc-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid var(--border-main);
+    color: var(--text-main);
+    padding: 0.45rem 0.9rem;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+    align-self: flex-start;
+    transition: background 0.2s ease;
+  }
+
+  .cc-mobile-back:hover {
+    background: rgba(255, 255, 255, 0.1);
   }
 
   .filter-controls {
@@ -359,7 +445,22 @@
   }
 
   .msg-bubble {
-    max-width: 90%;
+    max-width: 92%;
+  }
+}
+
+@media (max-width: 480px) {
+  .cc-mobile-back {
+    font-size: 0.82rem;
+    padding: 0.4rem 0.75rem;
+  }
+
+  .dh-info h1 {
+    font-size: 1.15rem;
+  }
+
+  .insight-card {
+    padding: 1rem;
   }
 }
 
