@@ -250,22 +250,7 @@ const Login = ({ onLogin }) => {
                   className="google-login-button"
                   onClick={handleGoogleLogin}
                   disabled={isLoading || demoLoading}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justify-content: 'center',
-                    width: '100%',
-                    padding: '0.75rem',
-                    marginTop: '0.75rem',
-                    borderRadius: '0.5rem',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    color: '#ffffff',
-                    fontWeight: '600',
-                    fontSize: '0.9rem',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
+                  style={{ justifyContent: 'center' }}
                 >
                   <GoogleIcon />
                   <span>Sign in with Google</span>
