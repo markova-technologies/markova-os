@@ -21,15 +21,53 @@ from commerce import (
 
 logger = logging.getLogger(__name__)
 
+def price_to_amharic_words(n: int) -> str:
+    """Convert integer price to spoken Amharic words."""
+    if n == 0:
+        return "ዜሮ"
+    
+    ones = ["", "አንድ", "ሁለት", "ሶስት", "አራት", "አምስት", 
+            "ስድስት", "ሰባት", "ስምንት", "ዘጠኝ"]
+    tens = ["", "አስር", "ሀያ", "ሰላሳ", "አርባ", "ሃምሳ",
+            "ስልሳ", "ሰባ", "ሰማንያ", "ዘጠና"]
+    
+    def _under_hundred(x: int) -> str:
+        if x < 10:
+            return ones[x]
+        elif x < 20:
+            return ["አስር", "አስራ አንድ", "አስራ ሁለት", "አስራ ሶስት", "አስራ አራት", 
+                    "አስራ አምስት", "አስራ ስድስት", "አስራ ሰባት", "አስራ ስምንት", "አስራ ዘጠኝ"][x - 10]
+        else:
+            t, o = divmod(x, 10)
+            return tens[t] if o == 0 else f"{tens[t]} {ones[o]}"
+            
+    parts = []
+    if n >= 1000:
+        thousands = n // 1000
+        if thousands > 1:
+            parts.append(_under_hundred(thousands))
+        parts.append("ሺ")
+        n %= 1000
+    if n >= 100:
+        hundreds = n // 100
+        if hundreds > 1:
+            parts.append(ones[hundreds])
+        parts.append("መቶ")
+        n %= 100
+    if n > 0:
+        parts.append(_under_hundred(n))
+    
+    return " ".join(parts)
+
 # Deterministic replies. They are named so the TTS layer can pre-render them at
 # startup: an exact string match is what turns a 2.5 s speech synthesis into a
 # cache hit, so these must never be re-typed inline.
 ASK_PRODUCT_TEMPLATE = "እሺ፣ ምን ማዘዝ ይፈልጋሉ? ለምሳሌ {examples} አሉን።"
-ASK_CUSTOMER_NAME = "ትዕዛዙን በማን ስም ልመዝግብ?"
-ASK_DELIVERY_ADDRESS = "ትዕዛዙ የሚደርስበትን ከተማ፣ ክፍለ ከተማና አካባቢ ይንገሩኝ።"
+ASK_CUSTOMER_NAME = "ጥሩ፣ ትዕዛዙን በማን ስም ልመዝግበው?"
+ASK_DELIVERY_ADDRESS = "ጥሩ፣ አሁን ትዕዛዙ የሚደርስበትን አድራሻ ይንገሩኝ። ከተማ፣ ክፍለ ከተማና አካባቢ።"
 ASK_ORDER_NUMBER = "እሺ፣ የትዕዛዝ ቁጥርዎን ይንገሩኝ።"
 ORDER_NOT_FOUND = "በዚህ ትዕዛዝ ቁጥርና ስልክ የተመዘገበ ትዕዛዝ አላገኘሁም። እንደገና ያረጋግጡ።"
-ORDER_CANCELLED = "እሺ፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ልርዳዎ?"
+ORDER_CANCELLED = "እሺ ግድ የለም፣ ትዕዛዙን ሰርዤዋለሁ። ሌላ ነገር ካለ እዚህ ነኝ።"
 PRODUCT_NOT_FOUND_REPLY = (
     "ይቅርታ፣ ያዘዙትን ምርት ካታሎጋችን ውስጥ ማግኘት አልቻልኩም። "
     "እናቀርባቸዋለን። "
@@ -279,7 +317,12 @@ class CommerceAgent:
         draft: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         data = (draft or {}).get("data", {})
-        product = self.repository.find_product(text)
+        
+        if data.get("awaiting_confirmation"):
+            product = None
+        else:
+            product = self.repository.find_product(text)
+            
         intent = "other"
         if (draft or {}).get("intent") == "status" or _contains(text, STATUS_WORDS):
             intent = "status"
@@ -472,12 +515,14 @@ class CommerceAgent:
     def _cart_summary(data: Dict[str, Any], repository: CommerceRepository) -> str:
         parts = []
         total = 0
+        amharic_numbers = {1: "አንድ", 2: "ሁለት", 3: "ሶስት", 4: "አራት", 5: "አምስት", 6: "ስድስት", 7: "ሰባት", 8: "ስምንት", 9: "ዘጠኝ", 10: "አስር"}
         for item in data.get("items", []):
             product = repository.get_product(int(item["product_id"]))
             quantity = int(item["quantity"])
             total += product["price"] * quantity
-            parts.append(f"{product['name_am']} {quantity}")
-        return f"{'፣ '.join(parts)}፣ ጠቅላላ {total:,} ብር"
+            qty_word = amharic_numbers.get(quantity, str(quantity))
+            parts.append(f"{qty_word} {product['name_am']}")
+        return f"{'፣ '.join(parts)}፣ ጠቅላላ {price_to_amharic_words(total)} ብር"
 
     @staticmethod
     def _confirmation_key(call_id: str, data: Dict[str, Any]) -> str:
@@ -538,7 +583,7 @@ class CommerceAgent:
         await asyncio.to_thread(self.repository.clear_draft, call_id)
         return (
             f"ትዕዛዝ {order['order_number']} {order['status_am']}። "
-            f"ጠቅላላ ዋጋው {order['total']:,} ብር ነው።"
+            f"ጠቅላላ ዋጋው {price_to_amharic_words(order['total'])} ብር ነው።"
         )
 
     async def _process_order(
@@ -558,25 +603,34 @@ class CommerceAgent:
         # The caller is answering a direct yes/no question. Confirmation must
         # win over noisy product extraction; otherwise a distorted "እሺ" can
         # accidentally add another catalog item instead of saving the order.
-        if data.get("awaiting_confirmation") and extracted.get("confirm"):
-            try:
-                order = await asyncio.to_thread(
-                    self.repository.create_order,
-                    call_id=call_id,
-                    confirmation_key=self._confirmation_key(call_id, data),
-                    customer_name=data["customer_name"],
-                    customer_phone=data["phone"],
-                    delivery_address=data["address"],
-                    items=data["items"],
-                    note=data.get("note"),
+        if data.get("awaiting_confirmation"):
+            if extracted.get("confirm"):
+                try:
+                    order = await asyncio.to_thread(
+                        self.repository.create_order,
+                        call_id=call_id,
+                        confirmation_key=self._confirmation_key(call_id, data),
+                        customer_name=data["customer_name"],
+                        customer_phone=data["phone"],
+                        delivery_address=data["address"],
+                        items=data["items"],
+                        note=data.get("note"),
+                    )
+                except StockError as exc:
+                    return f"ይቅርታ፣ በቂ እቃ የለም። {exc}"
+                await asyncio.to_thread(self.repository.clear_draft, call_id)
+                return (
+                    f"በጣም ጥሩ፣ ትዕዛዝዎ ተመዝግቧል። ቁጥሩ {order['order_number']} ነው፣ "
+                    f"ክፍያው {price_to_amharic_words(order['total'])} ብር በዕቃ መረከቢያ ጊዜ ነው።"
                 )
-            except StockError as exc:
-                return f"ይቅርታ፣ በቂ እቃ የለም። {exc}"
-            await asyncio.to_thread(self.repository.clear_draft, call_id)
-            return (
-                f"ትዕዛዝዎ ተመዝግቧል። ቁጥሩ {order['order_number']}፣ "
-                f"ክፍያው {order['total']:,} ብር በዕቃ መረከቢያ ጊዜ ነው።"
-            )
+            elif extracted.get("reject"):
+                pass  # Handled above
+            else:
+                summary = await asyncio.to_thread(self._cart_summary, data, self.repository)
+                return (
+                    f"እሺ ልረጋግጥልዎ — {summary}፣ ወደ {data['address']} ይላካል። "
+                    "ልዘዝልዎ?"
+                )
 
         product_id = extracted.get("product_id")
         
@@ -642,8 +696,8 @@ class CommerceAgent:
         await asyncio.to_thread(self.repository.save_draft, call_id, "order", data)
         summary = await asyncio.to_thread(self._cart_summary, data, self.repository)
         return (
-            f"ማጠቃለያ፣ {summary}፣ ወደ {data['address']} ይላካል። "
-            "በዕቃ መረከቢያ ጊዜ ለመክፈል ትዕዛዙን ላረጋግጥ?"
+            f"እሺ ልረጋግጥልዎ — {summary}፣ ወደ {data['address']} ይላካል። "
+            "ልዘዝልዎ?"
         )
 
     async def process_turn(

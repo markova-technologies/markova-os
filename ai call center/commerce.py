@@ -655,7 +655,23 @@ class CommerceRepository:
             )
             db.commit()
         self.clear_draft(call_id)
-        return self.get_order(order_number)
+        
+        # Fire background sync if running locally
+        final_order = self.get_order(order_number)
+        sync_url = os.getenv("MARKOVA_PRODUCTION_SYNC_URL")
+        if sync_url:
+            import threading
+            import httpx
+            def _sync_order():
+                try:
+                    sync_endpoint = sync_url.rstrip("/") + "/api/commerce/orders/sync"
+                    httpx.post(sync_endpoint, json=final_order, timeout=5.0)
+                except Exception as e:
+                    import logging
+                    logging.warning(f"Failed to sync order to production: {e}")
+            threading.Thread(target=_sync_order, daemon=True).start()
+            
+        return final_order
 
     def _hydrate_order(self, db: sqlite3.Connection, row: sqlite3.Row) -> Dict[str, Any]:
         order = dict(row)
@@ -678,6 +694,66 @@ class CommerceRepository:
             ).fetchall()
         ]
         return order
+
+    def sync_order(self, order_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Mirrors an order from a local environment to the production DB."""
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            existing = db.execute(
+                "SELECT id FROM commerce_orders WHERE order_number=?",
+                (order_data["order_number"],),
+            ).fetchone()
+            if existing:
+                db.commit()
+                return self.get_order(order_data["order_number"])
+                
+            # Create order record
+            cursor = db.execute(
+                """
+                INSERT INTO commerce_orders
+                (order_number, call_id, confirmation_key, customer_name, customer_phone,
+                 delivery_address, note, subtotal, total, status, source, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_data.get("order_number"),
+                    order_data.get("call_id"),
+                    order_data.get("confirmation_key", ""),
+                    order_data.get("customer_name"),
+                    order_data.get("customer_phone"),
+                    order_data.get("delivery_address"),
+                    order_data.get("note"),
+                    order_data.get("subtotal"),
+                    order_data.get("total"),
+                    order_data.get("status", "pending"),
+                    order_data.get("source", "sync"),
+                    order_data.get("created_at", _now()),
+                    order_data.get("updated_at", _now()),
+                ),
+            )
+            order_id = cursor.lastrowid
+            
+            # Create items
+            for item in order_data.get("items", []):
+                db.execute(
+                    """
+                    INSERT INTO commerce_order_items
+                    (order_id, product_id, sku, product_name_en, product_name_am, quantity, unit_price, line_total)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        order_id,
+                        item.get("product_id"),
+                        item.get("sku"),
+                        item.get("product_name_en"),
+                        item.get("product_name_am"),
+                        item.get("quantity"),
+                        item.get("unit_price"),
+                        item.get("line_total"),
+                    ),
+                )
+            db.commit()
+        return self.get_order(order_data["order_number"])
 
     def get_order(
         self,

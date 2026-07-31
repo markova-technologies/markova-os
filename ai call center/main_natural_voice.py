@@ -775,6 +775,7 @@ async def get_provider_http_client() -> httpx.AsyncClient:
             # rather than causing a 30-second silence gap for the caller.
             timeout=httpx.Timeout(5.0, connect=2.0),
             limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         )
     return provider_http_client
 
@@ -916,7 +917,7 @@ async def startup_event():
         logger.warning(f"⚠️ Could not collect commerce prompts to pre-warm: {prompt_error}")
 
     results = await asyncio.gather(
-        *(generate_multilingual_voice(text, lang) for text, lang in prewarm_phrases),
+        *(generate_multilingual_voice(text, lang, method="addisai") for text, lang in prewarm_phrases),
         return_exceptions=True,
     )
     hits = sum(1 for r in results if isinstance(r, str))
@@ -940,15 +941,27 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
     # Map friendly language name to ISO code
     lang_code = LANG_TTS_MAP.get(lang_name.lower(), "am")
     
-    # Method 1: Edge TTS (Primary — FREE native neural voices, fastest latency)
+    # Method 1: Check Addis AI TTS Cache (Primary for fixed greetings)
+    # We always check if a pre-warmed Addis AI file exists first.
+    if method in ["auto", "addisai"]:
+        # Only check cache if method is auto (meaning we want fast response).
+        # If explicitly requested 'addisai' (e.g. during prewarm), it will generate it.
+        if method == "auto":
+            sample_rate = int(os.getenv("TTS_SAMPLE_RATE", "8000"))
+            import hashlib
+            text_hash = hashlib.md5(f"addisai_{lang_code}_{sample_rate}_{text}".encode('utf-8')).hexdigest()[:8]
+            wav_filename = f"addisai_{lang_code}_{text_hash}.wav"
+            from pathlib import Path
+            if (Path("audio_cache") / wav_filename).exists():
+                return f"/audio/{wav_filename}"
+        else:
+            audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
+            if audio_url:
+                return audio_url
+
+    # Method 2: Edge TTS (Primary for dynamic text - 2s latency)
     if method in ["auto", "edge"]:
         audio_url = await generate_edge_tts(text, lang_code, call_id)
-        if audio_url:
-            return audio_url
-
-    # Method 2: Addis AI TTS (Fallback)
-    if method in ["auto", "addisai"]:
-        audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
         if audio_url:
             return audio_url
     
@@ -1289,19 +1302,24 @@ class AmharicAIAssistant:
         # Markova Shop system prompt — transactional actions are executed by
         # commerce_agent; this prompt handles catalog questions and small talk.
         self.amharic_system_prompt = (
-            'You are "Almaz", a friendly Ethiopian e-commerce representative for Markova Shop.\n\n'
-            "CRITICAL: Customer input comes from a NOISY PHONE LINE and may be garbled, unclear, or contain random characters.\n"
-            "When input is unclear, DO NOT generate random or meaningless text.\n"
-            "Ask one short clarification question instead.\n\n"
-            "LANGUAGE: Always respond in natural Amharic (Ge'ez script). Keep responses SHORT (1-2 sentences max).\n"
-            "Start responses with: እሺ, አዎ, or እንግዲኛ.\n\n"
+            "You are 'Almaz' (አልማዝ), an extremely charming, warm, and polite Ethiopian customer service representative at Markova Shop. "
+            "You speak naturally, warmly, and gracefully like a real Ethiopian person on the phone.\n\n"
+            "PERSONALITY & CHARM:\n"
+            "- You are genuinely delighted to help customers. Show extreme hospitality and warmth.\n"
+            "- Use charming phrases gracefully: 'እጅግ በጣም አመሰግናለሁ' (thank you very much), 'በደስታ' (with pleasure), 'ውድ ደንበኛችን' (our dear customer).\n"
+            "- Be very polite and reassuring. If a user says something, affirm them warmly: 'በጣም ጥሩ' (Very good), 'እሺ፣ ምንም ችግር የለውም' (Ok, no problem).\n"
+            "- Sound like a real person chatting, not a robot reading a script. Bring out the rich Ethiopian culture of respect.\n\n"
+            "SPEECH STYLE & NUMBERS:\n"
+            "- Vary your sentence starters. Mix in: 'እሺ', 'በጣም ጥሩ', 'እንግዲያ...', 'ደህና', 'አዎ ግድ የለም'.\n"
+            "- CRITICAL NUMBERS: NEVER write prices as digit strings like '18000' or '2500'. You MUST spell them out entirely in Amharic words. "
+            "For example, write 'አስራ ስምንት ሺህ ብር' (instead of 18000), 'ሁለት ሺህ አምስት መቶ ብር' (instead of 2500). If you write digits, the TTS reads them digit-by-digit like a robot, which ruins the charm.\n"
+            "- Keep responses conversational and SHORT (1-2 sentences). This is a phone call.\n\n"
             "CRITICAL INSTRUCTION FOR ACCURACY:\n"
             "- Rely exactly on the LIVE PRODUCT CATALOG provided in the system message.\n"
             "- Never invent a product, price, stock amount, order number, or order status.\n"
-            "- Ordering and status actions are performed by trusted tools before you are called; never claim an action happened yourself.\n"
-            "- Customers may browse products, place cash-on-delivery orders, or check an existing order.\n\n"
-            "NEVER generate random Amharic text. Every response must be meaningful and helpful.\n"
-            "Tone: warm, concise Ethiopian online-shop representative on the phone."
+            "- Ordering and status actions are performed by trusted tools before you are called; never claim an action happened yourself.\n\n"
+            "CRITICAL: Customer input comes from a NOISY PHONE LINE and may be garbled. "
+            "When input is unclear, DO NOT generate random text. Ask one short, warm clarification question."
         )
         
         # Language-specific prompts for multilingual support
@@ -1641,10 +1659,15 @@ class AmharicAIAssistant:
             try:
                 matched_product = commerce_repository.find_product(user_input)
                 if matched_product:
+                    try:
+                        from commerce_agent import price_to_amharic_words
+                    except ImportError:
+                        price_to_amharic_words = lambda x: f"{x:,}"
+                        
                     rag_context = (
                         f"SKU: {matched_product['sku']}\n"
                         f"Product: {matched_product['name_am']} / {matched_product['name_en']}\n"
-                        f"Price: {matched_product['price']:,} ETB\n"
+                        f"Price: {price_to_amharic_words(matched_product['price'])} ብር\n"
                         f"Stock: {matched_product['stock']}"
                     )
                 elif any(
@@ -1654,9 +1677,14 @@ class AmharicAIAssistant:
                         "ምርት", "እቃ", "ምን አላችሁ", "ምን ትሸጣላችሁ",
                     )
                 ):
+                    try:
+                        from commerce_agent import price_to_amharic_words
+                    except ImportError:
+                        price_to_amharic_words = lambda x: f"{x:,}"
+                        
                     catalog = commerce_repository.list_products()[:10]
                     rag_context = "\n".join(
-                        f"- {product['name_am']}: {product['price']:,} ETB "
+                        f"- {product['name_am']}: {price_to_amharic_words(product['price'])} ብር "
                         f"(stock {product['stock']})"
                         for product in catalog
                     )
@@ -1700,7 +1728,7 @@ class AmharicAIAssistant:
             # 6. Call LLM — OpenAI GPT-4o (primary) or Groq (fallback)
             ai_response = None
             llm_provider = os.getenv("LLM_PROVIDER", "groq")
-            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "120"))
+            max_tokens = int(os.getenv("LLM_MAX_TOKENS", "200"))
 
             if llm_provider == "openai" and openai_async_client:
                 try:
@@ -2644,6 +2672,19 @@ async def commerce_update_product(product_id: int, payload: ProductUpdatePayload
         )
     except CommerceError as exc:
         raise commerce_http_error(exc)
+
+@app.post("/api/commerce/orders/sync")
+async def commerce_sync_order(request: Request):
+    """Internal webhook for syncing orders from local to production"""
+    try:
+        payload = await request.json()
+        order = await asyncio.to_thread(
+            commerce_repository.sync_order, payload
+        )
+        return {"status": "success", "order": order}
+    except Exception as exc:
+        logger.error(f"Sync order failed: {exc}")
+        return JSONResponse({"error": str(exc)}, status_code=400)
 
 
 @app.get("/api/commerce/orders", dependencies=[Depends(require_commerce_admin)])
