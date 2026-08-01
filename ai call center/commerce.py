@@ -195,9 +195,23 @@ class CommerceRepository:
         class DBWrapper:
             def __init__(self, conn):
                 self.conn = conn
+            def _prep(self, query):
+                if query.strip().upper() == "BEGIN IMMEDIATE":
+                    return None
+                return query.replace("?", "%s")
             def execute(self, query, args=None):
+                q = self._prep(query)
+                if not q:
+                    return None
                 cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-                cursor.execute(query, args)
+                cursor.execute(q, args)
+                return cursor
+            def executemany(self, query, args_list=None):
+                q = self._prep(query)
+                if not q:
+                    return None
+                cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                cursor.executemany(q, args_list)
                 return cursor
             def executescript(self, query):
                 cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
