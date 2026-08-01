@@ -3,6 +3,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as jwt from 'jsonwebtoken';
 import { createClient } from 'redis';
 import axios from 'axios';
+import { Pool } from 'pg';
 import { v4 as uuidv4 } from 'uuid';
 import { RateLimiterService } from './rate-limiter.service';
 import { generateServiceAuthHeader } from './service-auth.util';
@@ -10,21 +11,8 @@ import { generateServiceAuthHeader } from './service-auth.util';
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   private redisClient;
-  private AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://auth-service:5001';
   private TENANT_SERVICE_URL = process.env.TENANT_SERVICE_URL || 'http://tenant-service:5002';
-  private cachedPublicKey: string | null = null;
-  
-  private async getPublicKey(): Promise<string> {
-    if (this.cachedPublicKey) return this.cachedPublicKey;
-    try {
-      const response = await axios.get(`${this.AUTH_SERVICE_URL}/api/auth/public-key`);
-      this.cachedPublicKey = response.data.publicKey;
-      return this.cachedPublicKey;
-    } catch (err) {
-      console.error('Failed to fetch public key from Auth Service:', err.message);
-      throw new Error('Authentication unavailable');
-    }
-  }
+  private pool: Pool;
 
   constructor(private readonly rateLimiter: RateLimiterService) {
     this.redisClient = createClient({
@@ -32,6 +20,9 @@ export class AuthMiddleware implements NestMiddleware {
     });
     this.redisClient.on('error', (err) => console.error('Redis Gateway Error', err));
     this.redisClient.connect().catch((err) => console.error('Failed to connect to Redis from Gateway:', err));
+    this.pool = new Pool({
+      connectionString: process.env.DATABASE_URL
+    });
   }
 
   async use(req: Request, res: Response, next: NextFunction) {
@@ -81,25 +72,34 @@ export class AuthMiddleware implements NestMiddleware {
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       try {
-        const publicKey = await this.getPublicKey();
-        const decoded = jwt.verify(token, publicKey, { algorithms: ['RS256'] }) as any;
+        const secret = process.env.SUPABASE_JWT_SECRET;
+        if (!secret) throw new Error("SUPABASE_JWT_SECRET is missing");
+        const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as any;
         
-        // Check session revocation in Redis
-        if (decoded.sessionId) {
-          const isRevoked = await this.redisClient.get(`session_revoked:${decoded.sessionId}`);
-          if (isRevoked) {
-            return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Session has been revoked' });
+        const userId = decoded.sub;
+        let dbUser = null;
+        
+        const cachedUser = await this.redisClient.get(`user_cache:${userId}`);
+        if (cachedUser) {
+          dbUser = JSON.parse(cachedUser);
+        } else {
+          const result = await this.pool.query('SELECT company_id, role FROM public.users WHERE id = $1', [userId]);
+          dbUser = result.rows[0];
+          if (dbUser) {
+            await this.redisClient.setEx(`user_cache:${userId}`, 3600, JSON.stringify(dbUser));
           }
+        }
+        
+        if (!dbUser) {
+          return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'User record not found in database' });
         }
 
         tenantContext = {
-          tenantId: decoded.companyId,
-          userId: decoded.userId,
-          sessionId: decoded.sessionId,
-          role: decoded.role,
-          permissions: decoded.permissions || [],
-          subscriptionPlan: decoded.subscriptionPlan,
-          // JWT sessions can operate against either env; default test for safety
+          tenantId: dbUser.company_id,
+          userId: userId,
+          role: dbUser.role,
+          permissions: [],
+          subscriptionPlan: 'starter',
           environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
         };
       } catch (err) {
