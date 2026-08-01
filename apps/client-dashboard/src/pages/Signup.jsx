@@ -69,14 +69,24 @@ const Signup = ({ onBackToLogin, onLogin }) => {
       if (err instanceof Error) {
         specificMsg = err.message || err.toString();
       } else if (typeof err === 'object' && err !== null) {
-        specificMsg = err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || err.error?.message || JSON.stringify(err, Object.getOwnPropertyNames(err));
+        specificMsg = err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || err.error?.message;
+        if (!specificMsg) {
+          try {
+            specificMsg = JSON.stringify(err, Object.getOwnPropertyNames(err));
+          } catch (e) {
+            specificMsg = String(err);
+          }
+        }
       } else {
         specificMsg = String(err);
+      }
+      if (specificMsg === '{}' || !specificMsg) {
+        specificMsg = `[Unrecognized Error Object]: ${String(err)} - Please check browser F12 Console for details.`;
       }
       if (err.response?.status === 409 || err.code === 'user_already_exists' || specificMsg?.toLowerCase().includes('already registered') || specificMsg?.toLowerCase().includes('already exists')) {
         setError('That email is already registered. Try signing in instead.');
       } else {
-        setError(`Supabase/Backend Error: ${specificMsg}`);
+        setError(`Error Details: ${specificMsg}`);
       }
     } finally {
       setIsLoading(false)

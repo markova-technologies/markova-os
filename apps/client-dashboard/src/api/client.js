@@ -125,21 +125,30 @@ export const register = async (data) => {
         },
       },
     })
-    if (error) throw error
+    if (error) {
+      const details = error.message || error.error_description || error.hint || error.statusText || (typeof error === 'object' ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : String(error));
+      throw new Error(`[Supabase SignUp Failure] ${details}`);
+    }
     if (sbData.user && sbData.user.identities && sbData.user.identities.length === 0) {
       throw new Error('That email is already registered. Try signing in instead.');
     }
+    if (!sbData.user) {
+      throw new Error('[Supabase SignUp Failure] No user returned from signup.');
+    }
     const user = {
       id: sbData.user?.id,
-      email: sbData.user.email,
-      name: data.name || sbData.user.user_metadata?.name,
-      companyName: data.companyName || sbData.user.user_metadata?.companyName,
+      email: sbData.user?.email,
+      name: data.name || sbData.user?.user_metadata?.name,
+      companyName: data.companyName || sbData.user?.user_metadata?.companyName,
     }
     const token = sbData.session?.access_token || 'sb-token'
     const refreshToken = sbData.session?.refresh_token || 'sb-refresh'
     return { data: { token, refreshToken, user } }
   }
-  return api.post('/auth/register', data);
+  return api.post('/auth/register', data).catch(err => {
+    const details = err.response?.data?.message || err.response?.data?.error || err.message || String(err);
+    throw new Error(`[Legacy API Register Failure] ${details}`);
+  });
 };
 
 export const login = async (email, password) => {
@@ -148,18 +157,27 @@ export const login = async (email, password) => {
       email,
       password,
     })
-    if (error) throw error
+    if (error) {
+      const details = error.message || error.error_description || error.hint || error.statusText || (typeof error === 'object' ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : String(error));
+      throw new Error(`[Supabase SignIn Failure] ${details}`);
+    }
+    if (!sbData.user) {
+      throw new Error('[Supabase SignIn Failure] No user returned from login.');
+    }
     const user = {
-      id: sbData.user.id,
-      email: sbData.user.email,
-      name: sbData.user.user_metadata?.name || email.split('@')[0],
-      companyName: sbData.user.user_metadata?.companyName || 'Markova Enterprise',
+      id: sbData.user?.id,
+      email: sbData.user?.email,
+      name: sbData.user?.user_metadata?.name || email.split('@')[0],
+      companyName: sbData.user?.user_metadata?.companyName || 'Markova Enterprise',
     }
     const token = sbData.session?.access_token
     const refreshToken = sbData.session?.refresh_token
     return { data: { token, refreshToken, user } }
   }
-  return api.post('/auth/login', { email, password });
+  return api.post('/auth/login', { email, password }).catch(err => {
+    const details = err.response?.data?.message || err.response?.data?.error || err.message || String(err);
+    throw new Error(`[Legacy API Login Failure] ${details}`);
+  });
 };
 
 export const loginWithGoogle = async () => {
