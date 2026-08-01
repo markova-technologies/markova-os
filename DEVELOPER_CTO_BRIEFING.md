@@ -1,4 +1,4 @@
-﻿# Markova AI Call Center — Full Builder Briefing
+# Markova AI Call Center — Full Builder Briefing
 
 > For a New Developer or CTO — Written As If You Built It
 
@@ -493,5 +493,12 @@ Earlier sessions (June 2026 -- pre-architecture):
 | ai call center/barge_in_manager.py | FreeSWITCH ESL barge-in |
 | ai call center/knowledge_base.json | GM Furniture RAG catalog |
 
-Last updated: July 24, 2026
-Generated from: full codebase walkthrough + conversation history analysis
+August 1, 2026 (Session 3 & 4 -- Supabase Auth Migration & Render Deployment):
+- Integrated native Supabase Auth across Frontend Dashboard and Backend API Gateway (HS256 secret verification).
+- Configured PostgreSQL database provisioning triggers (`handle_new_user()`) to automatically create records in `public.companies` and `public.users` upon registration.
+- Resolved Render deployment build failures around SQLite-to-PostgreSQL syntax translation in `ai call center/commerce.py` (`.executescript()` and `.executemany(...)`).
+- Fully verified database tables dynamically deployed and created in cloud Supabase without errors.
+- Added workspace automation rule `.agents/AGENTS.md` to permanently anchor conversation context to the IDE so history never gets lost.
+
+Last updated: August 1, 2026
+Generated from: full codebase walkthrough + conversation history analysis + Supabase migration logs

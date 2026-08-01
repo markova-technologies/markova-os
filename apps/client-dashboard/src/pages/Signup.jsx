@@ -64,10 +64,12 @@ const Signup = ({ onBackToLogin, onLogin }) => {
         setSuccess(true)
       }
     } catch (err) {
-      if (err.response?.status === 409) {
-        setError('That email is already registered. Try signing in instead.')
+      console.error('Registration/Login error:', err);
+      const specificMsg = err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      if (err.response?.status === 409 || err.code === 'user_already_exists' || specificMsg?.toLowerCase().includes('already registered') || specificMsg?.toLowerCase().includes('already exists')) {
+        setError('That email is already registered. Try signing in instead.');
       } else {
-        setError('We couldn’t create your account just now. Try again in a moment.')
+        setError(`Supabase/Backend Error: ${specificMsg}`);
       }
     } finally {
       setIsLoading(false)
