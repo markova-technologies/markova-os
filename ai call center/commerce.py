@@ -199,6 +199,10 @@ class CommerceRepository:
                 cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
                 cursor.execute(query, args)
                 return cursor
+            def executescript(self, query):
+                cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+                cursor.execute(query)
+                return cursor
             def commit(self):
                 self.conn.commit()
             def rollback(self):
