@@ -15,8 +15,9 @@ export class AuthMiddleware implements NestMiddleware {
   private pool: Pool;
 
   constructor(private readonly rateLimiter: RateLimiterService) {
+    const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'redis'}:${process.env.REDIS_PORT || 6379}`;
     this.redisClient = createClient({
-      url: `redis://${process.env.REDIS_HOST || 'redis'}:${process.env.REDIS_PORT || 6379}`
+      url: redisUrl
     });
     this.redisClient.on('error', (err) => console.error('Redis Gateway Error', err));
     this.redisClient.connect().catch((err) => console.error('Failed to connect to Redis from Gateway:', err));

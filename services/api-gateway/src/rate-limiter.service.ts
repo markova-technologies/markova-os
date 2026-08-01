@@ -17,8 +17,9 @@ export class RateLimiterService {
   };
 
   constructor() {
+    const redisUrl = process.env.REDIS_URL || `redis://${process.env.REDIS_HOST || 'redis'}:${process.env.REDIS_PORT || 6379}`;
     this.redisClient = createClient({
-      url: `redis://${process.env.REDIS_HOST || 'redis'}:${process.env.REDIS_PORT || 6379}`,
+      url: redisUrl,
     }) as RedisClientType;
     this.redisClient.on('error', (err) =>
       console.error('Redis RateLimiter Error', err),
