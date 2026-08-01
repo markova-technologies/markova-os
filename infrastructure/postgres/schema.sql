@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS users (
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
     name VARCHAR(255) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) DEFAULT 'supabase-auth-argon2-hash',
     role VARCHAR(50) DEFAULT 'member',
     status VARCHAR(50) DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
