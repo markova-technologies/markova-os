@@ -126,8 +126,11 @@ export const register = async (data) => {
       },
     })
     if (error) throw error
+    if (sbData.user && sbData.user.identities && sbData.user.identities.length === 0) {
+      throw new Error('That email is already registered. Try signing in instead.');
+    }
     const user = {
-      id: sbData.user.id,
+      id: sbData.user?.id,
       email: sbData.user.email,
       name: data.name || sbData.user.user_metadata?.name,
       companyName: data.companyName || sbData.user.user_metadata?.companyName,

@@ -65,7 +65,14 @@ const Signup = ({ onBackToLogin, onLogin }) => {
       }
     } catch (err) {
       console.error('Registration/Login error:', err);
-      const specificMsg = err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || (typeof err === 'string' ? err : JSON.stringify(err));
+      let specificMsg = '';
+      if (err instanceof Error) {
+        specificMsg = err.message || err.toString();
+      } else if (typeof err === 'object' && err !== null) {
+        specificMsg = err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || err.error?.message || JSON.stringify(err, Object.getOwnPropertyNames(err));
+      } else {
+        specificMsg = String(err);
+      }
       if (err.response?.status === 409 || err.code === 'user_already_exists' || specificMsg?.toLowerCase().includes('already registered') || specificMsg?.toLowerCase().includes('already exists')) {
         setError('That email is already registered. Try signing in instead.');
       } else {
