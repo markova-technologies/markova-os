@@ -126,7 +126,7 @@ export const register = async (data) => {
       },
     })
     if (error) {
-      const details = error.message || error.error_description || error.hint || error.statusText || (typeof error === 'object' ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : String(error));
+      const details = error.msg || error.message || error.error_description || error.hint || error.statusText || (typeof error === 'object' ? JSON.stringify(error, Object.getOwnPropertyNames(error)) : String(error));
       throw new Error(`[Supabase SignUp Failure] ${details}`);
     }
     if (sbData.user && sbData.user.identities && sbData.user.identities.length === 0) {

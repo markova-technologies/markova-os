@@ -69,7 +69,7 @@ const Signup = ({ onBackToLogin, onLogin }) => {
       if (err instanceof Error) {
         specificMsg = err.message || err.toString();
       } else if (typeof err === 'object' && err !== null) {
-        specificMsg = err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || err.error?.message;
+        specificMsg = err.msg || err.message || err.error_description || err.hint || err.details || err.response?.data?.error || err.response?.data?.message || err.error?.message;
         if (!specificMsg) {
           try {
             specificMsg = JSON.stringify(err, Object.getOwnPropertyNames(err));
