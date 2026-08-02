@@ -217,9 +217,46 @@ export const getMe = async () => {
 
 
 // ---------- API Keys ----------
-export const listKeys = () => api.get('/keys');
-export const createKey = (name, environment = 'test') => api.post('/keys', { name, environment });
-export const deleteKey = (id) => api.delete(`/keys/${id}`);
+export const listKeys = () => {
+  if (isDemoMode()) {
+    const saved = localStorage.getItem('demo_api_keys');
+    if (saved) return Promise.resolve({ data: JSON.parse(saved) });
+    const initial = [
+      { id: 'demo-key-1', name: 'Developer Testing', key_prefix: 'mk_test_a1b2', environment: 'test', status: 'active' },
+      { id: 'demo-key-2', name: 'Production Access', key_prefix: 'mk_live_c3d4', environment: 'live', status: 'active' }
+    ];
+    localStorage.setItem('demo_api_keys', JSON.stringify(initial));
+    return Promise.resolve({ data: initial });
+  }
+  return api.get('/keys');
+};
+
+export const createKey = (name, environment = 'test') => {
+  if (isDemoMode()) {
+    const rawToken = `mk_${environment}_` + Math.random().toString(36).substring(2, 15);
+    const newKey = {
+      id: Math.random().toString(),
+      name,
+      environment,
+      status: 'active',
+      key_prefix: rawToken.substring(0, 12),
+      api_key: rawToken
+    };
+    const saved = JSON.parse(localStorage.getItem('demo_api_keys') || '[]');
+    localStorage.setItem('demo_api_keys', JSON.stringify([newKey, ...saved]));
+    return Promise.resolve({ data: newKey });
+  }
+  return api.post('/keys', { name, environment });
+};
+
+export const deleteKey = (id) => {
+  if (isDemoMode()) {
+    const saved = JSON.parse(localStorage.getItem('demo_api_keys') || '[]');
+    localStorage.setItem('demo_api_keys', JSON.stringify(saved.filter(k => k.id !== id)));
+    return Promise.resolve({ data: { success: true } });
+  }
+  return api.delete(`/keys/${id}`);
+};
 
 // ---------- Agents ----------
 export const listAgents = () => api.get('/agents');

@@ -24,6 +24,7 @@ import CRM from './pages/CRM'
 import Governance from './pages/Governance'
 import Organization from './pages/Organization'
 import Notifications from './pages/Notifications'
+import LandingPage from './pages/LandingPage'
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
 import { ROUTES } from './config/site'
 
@@ -116,20 +117,20 @@ function App() {
     setIsAuthenticated(false)
     setUser(null)
     tokenStore.clear()
-    // Redirect to main marketing website after logout
-    window.location.href = 'https://markova.tech'
+    localStorage.removeItem('user')
+    navigate(ROUTES.home)
   }
 
   return (
     <ToastProvider>
       <Routes>
-        {/* Root: redirect authenticated users to /app, everyone else to main website */}
+        {/* Root: redirect authenticated users to /app, everyone else to LandingPage */}
         <Route
           path={ROUTES.home}
           element={
             isAuthenticated
               ? <Navigate to={ROUTES.app} replace />
-              : <Navigate to={ROUTES.login} replace />
+              : <LandingPage />
           }
         />
 

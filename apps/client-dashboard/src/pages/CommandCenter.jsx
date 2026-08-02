@@ -344,7 +344,7 @@ const CommandCenter = () => {
                 <li key={call.id} className="call-row-item">
                   <Link to={`${ROUTES.callCenter}/${call.id}`}>
                     <div className="call-icon-wrap">
-                      <PhoneCall size={16} className="text-blue-400" />
+                      <PhoneCall size={16} />
                     </div>
 
                     <div className="call-main-info">
