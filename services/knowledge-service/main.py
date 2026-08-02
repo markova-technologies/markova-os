@@ -32,7 +32,8 @@ def get_db_connection(retries=10, delay=3):
             conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
             return conn
         except Exception as e:
-            print(f"Database connection attempt {i+1} failed. Retrying in {delay}s...")
+            print(f"Database connection attempt {i+1} failed: {e}")
+            print(f"Retrying in {delay}s...")
             time.sleep(delay)
     raise Exception("Could not connect to PostgreSQL database")
 
