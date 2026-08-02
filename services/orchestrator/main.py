@@ -313,6 +313,46 @@ async def publish_event(event_type: str, payload: dict, source: str = "orchestra
         print(f"⚠️ Failed to publish event: {e}")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# RAG: Knowledge Base Query
+# ─────────────────────────────────────────────────────────────────────────────
+
+KNOWLEDGE_SERVICE_URL = os.getenv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:5006")
+
+async def query_knowledge_base(company_id: str, query: str, limit: int = 3) -> str:
+    """
+    Query the knowledge-service for relevant text chunks using vector similarity.
+    
+    Args:
+        company_id: Tenant identifier — NEVER search across company boundaries
+        query: The user's spoken text (already normalized + repaired)
+        limit: Max number of chunks to return (keep low for latency)
+    
+    Returns:
+        Formatted string of context chunks to inject into LLM prompt.
+        Returns empty string on any failure — NEVER blocks the call.
+    """
+    if not company_id or not query:
+        return ""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.post(
+                f"{KNOWLEDGE_SERVICE_URL}/api/knowledge/search",
+                json={"query": query, "limit": limit},
+                headers={"X-Company-ID": company_id}
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                results = data.get("results", [])
+                if results:
+                    parts = [r["content"] for r in results if r.get("content")]
+                    context = "\n\n---\n\n".join(parts)
+                    print(f"📚 RAG: {len(results)} chunks injected ({len(context)} chars)")
+                    return context
+    except Exception as e:
+        print(f"⚠️ Knowledge service unavailable (degrading gracefully): {e}")
+    return ""
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ADAPTERS: LLM
@@ -1352,12 +1392,27 @@ async def handle_speech_response(
     state["messages"].append({"role": "user", "content": user_text})
     state["turn_count"] += 1
 
+    # === RAG: Query knowledge base and inject context ===
+    rag_context = await query_knowledge_base(company_id, user_text)
+    messages_for_llm = list(state["messages"])  # Never mutate state directly
+    if rag_context:
+        # Insert knowledge BEFORE the user's message (second-to-last position)
+        # This keeps context closest to the question in the attention window
+        messages_for_llm.insert(len(messages_for_llm) - 1, {
+            "role": "system",
+            "content": (
+                "The following is relevant knowledge from this company's knowledge base. "
+                "Use it to answer the customer's question accurately:\n\n"
+                f"{rag_context}"
+            )
+        })
+
     # Generate AI response
     try:
         ai_text, tokens_used = await llm_complete(
             provider=state["model_provider"],
             model_id=state["model_id"],
-            messages=state["messages"],
+            messages=messages_for_llm,   # augmented, not raw state["messages"]
             api_key=llm_key
         )
     except Exception as e:

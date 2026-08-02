@@ -500,5 +500,20 @@ August 1, 2026 (Session 3 & 4 -- Supabase Auth Migration & Render Deployment):
 - Fully verified database tables dynamically deployed and created in cloud Supabase without errors.
 - Added workspace automation rule `.agents/AGENTS.md` to permanently anchor conversation context to the IDE so history never gets lost.
 
-Last updated: August 1, 2026
-Generated from: full codebase walkthrough + conversation history analysis + Supabase migration logs
+August 2, 2026 (Session 5 — Context Anchor & Permanent Memory Setup):
+- Developer requested permanent conversation history be tied to the "markova ai call center" workspace.
+- AI read full `DEVELOPER_CTO_BRIEFING.md` and `.agents/AGENTS.md` to load all context.
+- Created a persistent Knowledge Item (`markova_ai_call_center_context`) in the global KI store to auto-surface this briefing at every session start.
+- Updated this briefing log to include this session entry.
+- Active context: Supabase Auth integrated, Render deployment live, schema.sql dedup migration still pending, RAG not yet wired into orchestrator.
+
+August 2, 2026 (Session 6 — Conversation History Tag Investigation):
+- Developer noticed the conversation history panel did NOT show the "Markova Ai Call Center" folder tag next to the current conversation (unlike other conversations which correctly show their project folder).
+- Root cause investigated: The workspace folder tag in the IDE history panel is stored as a binary protobuf field (Field 1 of trajectory_metadata_blob in the conversation's SQLite .db file). This field is set automatically when a conversation is FIRST STARTED from within an open workspace.
+- The current conversation (b642e5d2) was started before the workspace was properly associated, so Field 1 has a complex nested structure with git repo data but the IDE cannot parse a clean label from it.
+- Fix: Close this conversation → reopen Markova Ai Call Center folder fresh in IDE → start a NEW conversation (which will correctly auto-tag to the folder) → load context from this briefing.
+- This session ends here. Next session (Session 7) should start fresh with the folder properly open.
+
+Last updated: August 2, 2026
+Generated from: full codebase walkthrough + conversation history analysis + Supabase migration logs + session 6 investigation
+
