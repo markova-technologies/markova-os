@@ -964,8 +964,14 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
         audio_url = await generate_edge_tts(text, lang_code, call_id)
         if audio_url:
             return audio_url
+
+    # Method 3: Addis AI TTS (Fallback if Edge TTS fails in auto mode, or if explicitly requested)
+    if method in ["auto", "addisai"]:
+        audio_url = await generate_addis_ai_tts(text, lang_code, call_id)
+        if audio_url:
+            return audio_url
     
-    # Method 3: Google Translate TTS (Fallback 2)
+    # Method 4: Google Translate TTS (Fallback 2)
     if method in ["auto", "google"]:
         audio_url = await generate_enhanced_google_tts(text, lang_code, call_id)
         if audio_url:
@@ -1429,12 +1435,63 @@ class AmharicAIAssistant:
 
             # === STT PROVIDER ROUTING ===
             # Change ONE LINE in .env to switch:
+            #   STT_PROVIDER=hasab      → Hasab AI (primary) + ElevenLabs (fallback)
             #   STT_PROVIDER=elevenlabs → ElevenLabs (primary) + Groq (fallback)
             #   STT_PROVIDER=groq       → Groq (primary) + ElevenLabs (fallback)
             #   STT_PROVIDER=openai     → OpenAI (primary) + Groq (fallback)
-            stt_provider = os.getenv("STT_PROVIDER", "elevenlabs").lower()
+            stt_provider = os.getenv("STT_PROVIDER", "hasab").lower()
             groq_model   = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
             elevenlabs_key = os.getenv("ELEVENLABS_API_KEY")
+            hasab_key = os.getenv("HASAB_API_KEY")
+            hasab_url = os.getenv("HASAB_API_URL", "https://api.hasab.ai/api/v1/upload-audio")
+
+            async def try_hasab_stt():
+                nonlocal transcription_text, stt_provider_used, detected_lang
+                if not hasab_key or hasab_key.startswith("your_") or hasab_key.startswith("HASAB_KEY_Here") or hasab_key == "HASAB_KEY_HERE":
+                    return False
+                try:
+                    await asyncio.to_thread(prepare_fallback_audio)
+                    client = await get_provider_http_client()
+                    headers = {"Authorization": f"Bearer {hasab_key}", "Accept": "application/json"}
+                    with open(transcribe_path, "rb") as audio_f:
+                        files = {"audio": (transcribe_filename, audio_f, "audio/wav")}
+                        data = {
+                            "transcribe": "true",
+                            "translate": "false",
+                            "summarize": "false",
+                            "language": "am"
+                        }
+                        resp = await client.post(hasab_url, headers=headers, files=files, data=data)
+                    
+                    if resp.status_code not in [200, 201]:
+                        with open(transcribe_path, "rb") as audio_f:
+                            files_alt = {"file": (transcribe_filename, audio_f, "audio/wav")}
+                            resp_alt = await client.post(hasab_url, headers=headers, files=files_alt, data=data)
+                        if resp_alt.status_code in [200, 201]:
+                            resp = resp_alt
+                        else:
+                            logger.warning(f"Hasab AI HTTP Error: {resp.status_code} {resp.text[:100]}")
+                            return False
+                    
+                    res_json = resp.json()
+                    text = res_json.get("transcription") or res_json.get("text")
+                    if not text and isinstance(res_json.get("result"), dict):
+                        text = res_json["result"].get("transcription") or res_json["result"].get("text")
+                    if not text and isinstance(res_json.get("data"), dict):
+                        text = res_json["data"].get("transcription") or res_json["data"].get("text")
+                    if not text and isinstance(res_json, str):
+                        text = res_json
+                    
+                    if text:
+                        transcription_text = str(text).strip()
+                        stt_provider_used = "hasab-ai"
+                        detected_lang = "amharic"
+                        logger.info("🎤 STT: Hasab AI")
+                        return True
+                    return False
+                except Exception as e:
+                    logger.warning(f"Hasab STT failed: {e}")
+                    return False
 
             async def try_elevenlabs_stt():
                 nonlocal transcription_text, stt_provider_used, detected_lang
@@ -1536,7 +1593,11 @@ class AmharicAIAssistant:
                     return False
 
             # Route execution based on provider
-            if stt_provider == "elevenlabs":
+            if stt_provider == "hasab":
+                if not await try_hasab_stt():
+                    if not await try_elevenlabs_stt():
+                        await asyncio.to_thread(try_groq_stt)
+            elif stt_provider == "elevenlabs":
                 if not await try_elevenlabs_stt():
                     await asyncio.to_thread(try_groq_stt)
             elif stt_provider == "openai":
