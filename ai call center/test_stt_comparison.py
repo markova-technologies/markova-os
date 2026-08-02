@@ -19,6 +19,8 @@ load_dotenv(dotenv_path=env_path)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+HASAB_API_KEY = os.getenv("HASAB_API_KEY")
+HASAB_API_URL = os.getenv("HASAB_API_URL", "https://api.hasab.ai/api/v1/upload-audio")
 GLADIA_API_KEY = os.getenv("GLADIA_API_KEY")
 GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3-turbo")
 
@@ -173,6 +175,49 @@ async def transcribe_elevenlabs(file_path: str) -> tuple[str, float, str]:
     except Exception as e:
         return "", round(time.time() - start_time, 3), str(e)
 
+
+async def transcribe_hasab(file_path: str) -> tuple[str, float, str]:
+    """Transcribe using Hasab AI Amharic Speech-to-Text API."""
+    if not HASAB_API_KEY or HASAB_API_KEY.startswith("your_"):
+        return "", 0.0, "Missing HASAB_API_KEY"
+    start_time = time.time()
+    try:
+        headers = {"Authorization": f"Bearer {HASAB_API_KEY}", "Accept": "application/json"}
+        async with httpx.AsyncClient(timeout=45) as client:
+            with open(file_path, "rb") as f:
+                files = {"audio": (os.path.basename(file_path), f, "audio/wav")}
+                data = {
+                    "transcribe": "true",
+                    "translate": "false",
+                    "summarize": "false",
+                    "language": "am"
+                }
+                resp = await client.post(HASAB_API_URL, headers=headers, files=files, data=data)
+            
+            if resp.status_code not in [200, 201]:
+                with open(file_path, "rb") as f:
+                    files_alt = {"file": (os.path.basename(file_path), f, "audio/wav")}
+                    resp_alt = await client.post(HASAB_API_URL, headers=headers, files=files_alt, data=data)
+                if resp_alt.status_code in [200, 201]:
+                    resp = resp_alt
+                else:
+                    latency = round(time.time() - start_time, 3)
+                    return "", latency, f"HTTP {resp.status_code}: {resp.text[:100]}"
+            
+            latency = round(time.time() - start_time, 3)
+            res_json = resp.json()
+            text = res_json.get("transcription") or res_json.get("text")
+            if not text and isinstance(res_json.get("result"), dict):
+                text = res_json["result"].get("transcription") or res_json["result"].get("text")
+            if not text and isinstance(res_json.get("data"), dict):
+                text = res_json["data"].get("transcription") or res_json["data"].get("text")
+            if not text and isinstance(res_json, str):
+                text = res_json
+            return (str(text).strip() if text else ""), latency, "OK"
+    except Exception as e:
+        return "", round(time.time() - start_time, 3), str(e)
+
+
 async def transcribe_gladia(file_path: str) -> tuple[str, float, str]:
     """Transcribe using Gladia Solaria-1 API (v2 REST API)."""
     if not GLADIA_API_KEY or GLADIA_API_KEY.startswith("your_"):
@@ -284,10 +329,9 @@ async def main():
     print("=" * 80)
 
     providers = [
-        ("Groq (Whisper-v3-Turbo)", transcribe_groq),
-        ("OpenAI (Whisper-1)", transcribe_openai),
         ("ElevenLabs (Scribe v2)", transcribe_elevenlabs),
-        ("Gladia (Solaria-1)", transcribe_gladia),
+        ("Hasab AI (Amharic STT)", transcribe_hasab),
+        ("Groq (Whisper-v3-Turbo)", transcribe_groq),
     ]
 
     all_results = []

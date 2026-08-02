@@ -1,0 +1,96 @@
+{
+  "summary": [
+    {
+      "provider": "Edge TTS (MekdesNeural)",
+      "avg_latency_sec": 3.077,
+      "success_rate": "3/3",
+      "avg_file_size_bytes": 29040
+    },
+    {
+      "provider": "Addis AI TTS",
+      "avg_latency_sec": 4.603,
+      "success_rate": "3/3",
+      "avg_file_size_bytes": 19152
+    },
+    {
+      "provider": "Hasab AI TTS",
+      "avg_latency_sec": 0.0,
+      "success_rate": "0/3",
+      "avg_file_size_bytes": 0
+    }
+  ],
+  "details": [
+    {
+      "sample_id": "greeting",
+      "text": "ሰላም የጂኤም ፈርኒቸር ደንበኛ ድጋፍ ነኝ። ምን ልረዳዎ እችላለሁ?",
+      "results": {
+        "Edge TTS (MekdesNeural)": {
+          "success": true,
+          "latency_sec": 3.905,
+          "status": "Saved (26496 bytes)",
+          "file_size_bytes": 26496
+        },
+        "Addis AI TTS": {
+          "success": true,
+          "latency_sec": 4.628,
+          "status": "Saved (17712 bytes)",
+          "file_size_bytes": 17712
+        },
+        "Hasab AI TTS": {
+          "success": false,
+          "latency_sec": 6.58,
+          "status": "HTTP 404 on https://api.hasab.ai/api/v1/text-to-speech: <!DOCTYPE html>\n<html lang=\"en\">\n    <head>\n        <meta charset=\"utf-8\">\n        <meta name=\"viewp",
+          "file_size_bytes": 0
+        }
+      }
+    },
+    {
+      "sample_id": "price_quote",
+      "text": "የኤል ቅርፅ ሶፋው ዋጋ አርባ ሰባት ሺህ ብር ነው። አምስት ፐርሰንት ቅናሽ አለው።",
+      "results": {
+        "Edge TTS (MekdesNeural)": {
+          "success": true,
+          "latency_sec": 2.296,
+          "status": "Saved (30528 bytes)",
+          "file_size_bytes": 30528
+        },
+        "Addis AI TTS": {
+          "success": true,
+          "latency_sec": 5.203,
+          "status": "Saved (20016 bytes)",
+          "file_size_bytes": 20016
+        },
+        "Hasab AI TTS": {
+          "success": false,
+          "latency_sec": 6.082,
+          "status": "HTTP 404 on https://api.hasab.ai/api/v1/text-to-speech: <!DOCTYPE html>\n<html lang=\"en\">\n    <head>\n        <meta charset=\"utf-8\">\n        <meta name=\"viewp",
+          "file_size_bytes": 0
+        }
+      }
+    },
+    {
+      "sample_id": "delivery_info",
+      "text": "አዲስ አበባ ውስጥ ሆነው ካዘዙ እናደርስልዎታለን። ትእዛዝ መመዝገብ ይፈልጋሉ?",
+      "results": {
+        "Edge TTS (MekdesNeural)": {
+          "success": true,
+          "latency_sec": 3.031,
+          "status": "Saved (30096 bytes)",
+          "file_size_bytes": 30096
+        },
+        "Addis AI TTS": {
+          "success": true,
+          "latency_sec": 3.977,
+          "status": "Saved (19728 bytes)",
+          "file_size_bytes": 19728
+        },
+        "Hasab AI TTS": {
+          "success": false,
+          "latency_sec": 5.156,
+          "status": "HTTP 404 on https://api.hasab.ai/api/v1/text-to-speech: <!DOCTYPE html>\n<html lang=\"en\">\n    <head>\n        <meta charset=\"utf-8\">\n        <meta name=\"viewp",
+          "file_size_bytes": 0
+        }
+      }
+    }
+  ]
+}

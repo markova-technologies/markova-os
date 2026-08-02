@@ -24,6 +24,7 @@ import tempfile
 import time
 import uuid
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
 
 import asyncpg
@@ -55,6 +56,22 @@ os.makedirs(AUDIO_DIR, exist_ok=True)
 # ─────────────────────────────────────────────────────────────────────────────
 db_pool: Optional[asyncpg.Pool] = None
 redis_client: Optional[aioredis.Redis] = None
+
+
+async def cleanup_old_audio():
+    """Delete TTS cache files older than 7 days to prevent disk exhaustion."""
+    while True:
+        try:
+            now = time.time()
+            if os.path.exists(AUDIO_DIR):
+                for fname in os.listdir(AUDIO_DIR):
+                    fpath = os.path.join(AUDIO_DIR, fname)
+                    if os.path.isfile(fpath) and os.path.getmtime(fpath) < (now - 7 * 86400):
+                        os.unlink(fpath)
+                        print(f"🧹 Cleaned old TTS cache file: {fname}")
+        except Exception as e:
+            print(f"⚠️ Audio cleanup error: {e}")
+        await asyncio.sleep(86400)
 
 
 @asynccontextmanager
@@ -90,12 +107,14 @@ async def lifespan(app: FastAPI):
 
     print(f"🚀 Orchestrator ready on port {PORT}")
     
-    # Start Redis Pub/Sub listener for WebSockets
+    # Start background tasks
     pubsub_task = asyncio.create_task(listen_for_logs())
+    cleanup_task = asyncio.create_task(cleanup_old_audio())
 
     yield
     
     pubsub_task.cancel()
+    cleanup_task.cancel()
     if db_pool:
         await db_pool.close()
     if redis_client:
@@ -166,8 +185,43 @@ async def get_routing_rules_for_phone(phone_number_id: str, company_id: str) -> 
     return out
 
 
+def decrypt_provider_config(config: dict) -> dict:
+    key = os.getenv("ENCRYPTION_KEY")
+    if not key or not config or not isinstance(config, dict):
+        return config
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(key)
+        for k, v in config.items():
+            if isinstance(v, str) and v.startswith("gAAAA"):
+                try:
+                    config[k] = f.decrypt(v.encode()).decode()
+                except Exception:
+                    pass
+    except Exception as e:
+        print(f"⚠️ Decryption warning: {e}")
+    return config
+
+
+def encrypt_provider_config(config: dict) -> dict:
+    key = os.getenv("ENCRYPTION_KEY")
+    if not key or not config or not isinstance(config, dict):
+        return config
+    try:
+        from cryptography.fernet import Fernet
+        f = Fernet(key)
+        out = dict(config)
+        for k, v in out.items():
+            if isinstance(v, str) and k in ("api_key", "secret", "token", "password") and not v.startswith("gAAAA"):
+                out[k] = f.encrypt(v.encode()).decode()
+        return out
+    except Exception as e:
+        print(f"⚠️ Encryption warning: {e}")
+        return config
+
+
 async def get_provider_config(company_id: str, provider_type: str, provider_name: str) -> Optional[dict]:
-    """Fetch provider credentials for a company."""
+    """Fetch provider credentials for a company, decrypting keys if encrypted."""
     row = await db_pool.fetchrow(
         """
         SELECT encrypted_config FROM provider_configs
@@ -177,7 +231,8 @@ async def get_provider_config(company_id: str, provider_type: str, provider_name
     )
     if row:
         config = row["encrypted_config"]
-        return json.loads(config) if isinstance(config, str) else config
+        cfg_dict = json.loads(config) if isinstance(config, str) else dict(config)
+        return decrypt_provider_config(cfg_dict)
     return None
 
 
@@ -432,7 +487,11 @@ async def stt_transcribe(provider: str, model_id: str, audio_bytes: bytes, filen
     Unified STT transcription adapter.
     Returns transcribed text.
     """
-    if provider == "openai":
+    if provider == "hasab":
+        return await _hasab_stt(audio_bytes, filename, api_key, lang)
+    elif provider == "elevenlabs":
+        return await _elevenlabs_stt(audio_bytes, filename, api_key, lang)
+    elif provider == "openai":
         return await _openai_stt(model_id, audio_bytes, filename, api_key, lang)
     elif provider == "groq":
         return await _groq_stt(model_id, audio_bytes, filename, api_key, lang)
@@ -440,6 +499,42 @@ async def stt_transcribe(provider: str, model_id: str, audio_bytes: bytes, filen
         return await _deepgram_stt(model_id, audio_bytes, api_key, lang)
     else:
         raise ValueError(f"Unsupported STT provider: {provider}")
+
+
+async def _hasab_stt(audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
+    url = os.getenv("HASAB_API_URL", "https://api.hasab.ai/api/v1/upload-audio")
+    headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        files = {"audio": (filename, audio_bytes, "audio/wav")}
+        data = {"transcribe": "true", "translate": "false", "summarize": "false", "language": lang}
+        resp = await client.post(url, headers=headers, files=files, data=data)
+        if resp.status_code not in [200, 201]:
+            files_alt = {"file": (filename, audio_bytes, "audio/wav")}
+            resp = await client.post(url, headers=headers, files=files_alt, data=data)
+        resp.raise_for_status()
+        res_json = resp.json()
+        text = res_json.get("transcription") or res_json.get("text")
+        if not text and isinstance(res_json.get("result"), dict):
+            text = res_json["result"].get("transcription") or res_json["result"].get("text")
+        if not text and isinstance(res_json.get("data"), dict):
+            text = res_json["data"].get("transcription") or res_json["data"].get("text")
+        if not text and isinstance(res_json, str):
+            text = res_json
+        return str(text or "").strip()
+
+
+async def _elevenlabs_stt(audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
+    async with httpx.AsyncClient(timeout=30) as client:
+        files = {"file": (filename, audio_bytes, "audio/wav")}
+        data = {"model_id": "scribe_v2", "language_code": lang}
+        resp = await client.post(
+            "https://api.elevenlabs.io/v1/speech-to-text",
+            headers={"xi-api-key": api_key},
+            files=files,
+            data=data
+        )
+        resp.raise_for_status()
+        return resp.json().get("text", "").strip()
 
 
 async def _openai_stt(model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
@@ -519,22 +614,33 @@ async def _deepgram_stt(model_id: str, audio_bytes: bytes, api_key: str, lang: s
 
 async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str) -> bytes:
     """
-    Unified TTS adapter.
+    Unified TTS adapter with Edge TTS primary & Addis AI TTS fallback for Amharic.
     Returns audio bytes (MP3/WAV).
     """
-    if provider == "elevenlabs":
+    if provider in ["edge", "addisai", "amharic", ""] or not provider:
+        try:
+            print(f"🎙️ Generating voice using primary Edge TTS ({voice_id or 'am-ET-MekdesNeural'})...")
+            return await _edge_tts(voice_id or "am-ET-MekdesNeural", text)
+        except Exception as err:
+            print(f"⚠️ Primary Edge TTS failed ({err}), falling back to Addis AI TTS...")
+            try:
+                return await _addisai_tts(text, api_key)
+            except Exception as f_err:
+                print(f"❌ Fallback Addis AI TTS also failed: {f_err}")
+                raise err
+    elif provider == "elevenlabs":
         return await _elevenlabs_tts(voice_id, text, api_key)
     elif provider == "openai":
         return await _openai_tts(voice_id, text, api_key)
     elif provider == "azure":
         return await _azure_tts(voice_id, text, api_key)
-    elif provider == "edge":
-        return await _edge_tts(voice_id, text)
     elif provider == "google":
         return await _google_tts(voice_id or "am", text)
     else:
-        # Fallback to edge
-        return await _edge_tts(voice_id or "am-ET-MekdesNeural", text)
+        try:
+            return await _edge_tts(voice_id or "am-ET-MekdesNeural", text)
+        except Exception:
+            return await _addisai_tts(text, api_key)
 
 
 async def _elevenlabs_tts(voice_id: str, text: str, api_key: str) -> bytes:
@@ -626,6 +732,24 @@ async def _google_tts(lang: str, text: str) -> bytes:
         resp = await client.get(url, headers=headers, timeout=15)
         resp.raise_for_status()
         return resp.content
+
+
+async def _addisai_tts(text: str, api_key: str) -> bytes:
+    key = api_key or os.getenv("ADDIS_AI_TTS_KEY", "")
+    if not key or key.startswith("your_"):
+        raise ValueError("Missing ADDIS_AI_TTS_KEY for fallback TTS")
+    url = os.getenv("ADDIS_AI_TTS_URL", "https://api.addisassistant.com/api/v1/audio")
+    headers = {"X-API-Key": key, "Content-Type": "application/json"}
+    payload = {"text": text, "language": "am"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        audio_str = data.get("audio", "")
+        if audio_str.startswith("data:"):
+            audio_str = audio_str.split(",")[1]
+        import base64
+        return base64.b64decode(audio_str)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -894,12 +1018,18 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
         return
     try:
         import base64
-        payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+        jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
+        if jwt_secret:
+            import jwt as pyjwt
+            payload = pyjwt.decode(token, jwt_secret, algorithms=["HS256"], options={"verify_aud": False, "verify_exp": False})
+        else:
+            payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
         claim_company = payload.get("companyId") or payload.get("company_id")
         if claim_company and str(claim_company) != str(company_id):
             await websocket.close(code=4403)
             return
-    except Exception:
+    except Exception as ex:
+        print(f"⚠️ WebSocket auth failure: {ex}")
         await websocket.close(code=4401)
         return
 
@@ -1296,32 +1426,21 @@ async def _build_transfer_context(call_id: str, target: str, reason: str = "api"
     }
 
 
-@app.post("/handle-input")
-@app.post("/twilio/respond")
-async def handle_speech_response(
-    request: Request,
-    CallSid: str = Form(...),
-    SpeechResult: str = Form(default=""),
-    Confidence: str = Form(default="0"),
-):
+async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mode: str = "gather") -> str:
     """
-    Twilio speech recognition result webhook.
-    Processes user speech → LLM → TTS → Twilio TwiML.
+    Shared conversation turn processor for both Gather (streaming STT) and Record (Whisper audio STT) modes.
+    Handles RAG, LLM completion, TTS, usage tracking, and TwiML generation.
     """
-    print(f"🗣️ SID={CallSid} Speech='{SpeechResult}' Confidence={Confidence}")
-
     state = await get_conversation_state(CallSid)
     call_id = state.get("call_id")
     company_id = state.get("company_id")
 
     if not company_id:
-        # Fallback if state has expired
-        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+        return """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Say>Call session expired. Goodbye.</Say>
     <Hangup/>
 </Response>"""
-        return PlainTextResponse(content=twiml, media_type="application/xml")
 
     # Detect agent language
     agent_lang = "amharic"
@@ -1335,13 +1454,11 @@ async def handle_speech_response(
     lang_code = voice_config["lang"]
     stt_code = voice_config["stt"]
 
-    user_text = SpeechResult.strip()
-
     # Normalize Amharic characters
     if agent_lang == "amharic":
         user_text = normalize_amharic(user_text)
 
-    # Validate Whisper output (garbage detection / silence)
+    # Validate Whisper / STT output (garbage detection / silence)
     if not user_text or (agent_lang == "amharic" and is_garbage_transcription(user_text)):
         retry_msg = get_polite_retry() if agent_lang == "amharic" else "I didn't catch that. Could you please repeat?"
         print(f"🔇 Garbage/Empty input. Prompting retry: {retry_msg}")
@@ -1351,28 +1468,40 @@ async def handle_speech_response(
         tts_key = tts_config.get("api_key") if tts_config else ""
         audio_url = await get_audio_url_for_text(state["voice_provider"], state["voice_id"], retry_msg, tts_key, request)
 
-        if audio_url:
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+        if mode == "record":
+            if audio_url:
+                return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{audio_url}</Play>
+    <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
+</Response>"""
+            else:
+                return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="{voice}" language="{lang_code}">{retry_msg}</Say>
+    <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
+</Response>"""
+        else:
+            if audio_url:
+                return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Play>{audio_url}</Play>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">...</Say>
     </Gather>
 </Response>"""
-        else:
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+            else:
+                return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">{retry_msg}</Say>
     </Gather>
 </Response>"""
-        return PlainTextResponse(content=twiml, media_type="application/xml")
 
     # Get LLM API credentials
     llm_config = await get_provider_config(company_id, "llm", state["model_provider"])
     llm_key = llm_config.get("api_key") if llm_config else ""
     if not llm_key:
-        # Fallback to system env keys
         if state["model_provider"] == "openai":
             llm_key = os.getenv("OPENAI_API_KEY", "")
         elif state["model_provider"] == "groq":
@@ -1394,10 +1523,8 @@ async def handle_speech_response(
 
     # === RAG: Query knowledge base and inject context ===
     rag_context = await query_knowledge_base(company_id, user_text)
-    messages_for_llm = list(state["messages"])  # Never mutate state directly
+    messages_for_llm = list(state["messages"])
     if rag_context:
-        # Insert knowledge BEFORE the user's message (second-to-last position)
-        # This keeps context closest to the question in the attention window
         messages_for_llm.insert(len(messages_for_llm) - 1, {
             "role": "system",
             "content": (
@@ -1412,7 +1539,7 @@ async def handle_speech_response(
         ai_text, tokens_used = await llm_complete(
             provider=state["model_provider"],
             model_id=state["model_id"],
-            messages=messages_for_llm,   # augmented, not raw state["messages"]
+            messages=messages_for_llm,
             api_key=llm_key
         )
     except Exception as e:
@@ -1434,7 +1561,7 @@ async def handle_speech_response(
             llm_tokens=tokens_used,
             stt_seconds=3,
             tts_characters=len(ai_text),
-            call_minutes=0  # Increment dynamically in stats or status callback
+            call_minutes=0
         )
 
     await save_conversation_state(CallSid, state)
@@ -1453,11 +1580,12 @@ async def handle_speech_response(
             tts_key = os.getenv("AZURE_API_KEY", "")
         elif state["voice_provider"] == "elevenlabs":
             tts_key = os.getenv("ELEVENLABS_API_KEY", "")
+        elif state["voice_provider"] in ["addisai", "edge"]:
+            tts_key = os.getenv("ADDIS_AI_TTS_KEY", "")
 
     audio_url = await get_audio_url_for_text(state["voice_provider"], state["voice_id"], ai_text, tts_key, request)
 
     if is_goodbye or state["turn_count"] >= 20:
-        # End call TwiML
         if audio_url:
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -1470,15 +1598,26 @@ async def handle_speech_response(
     <Say voice="{voice}" language="{lang_code}">{ai_text}</Say>
     <Hangup/>
 </Response>"""
-        
-        # Cleanup
         if call_id:
             await end_call_record(call_id)
         await delete_conversation_state(CallSid)
     else:
-        # Continue Gather TwiML
-        if audio_url:
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+        if mode == "record":
+            if audio_url:
+                twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{audio_url}</Play>
+    <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
+</Response>"""
+            else:
+                twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="{voice}" language="{lang_code}">{ai_text}</Say>
+    <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
+</Response>"""
+        else:
+            if audio_url:
+                twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Play>{audio_url}</Play>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
@@ -1486,8 +1625,8 @@ async def handle_speech_response(
     </Gather>
     <Redirect>/twilio/respond</Redirect>
 </Response>"""
-        else:
-            twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+            else:
+                twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">{ai_text}</Say>
@@ -1495,7 +1634,87 @@ async def handle_speech_response(
     <Redirect>/twilio/respond</Redirect>
 </Response>"""
 
-    return PlainTextResponse(content=twiml, media_type="application/xml")
+    return twiml
+
+
+@app.post("/handle-input")
+@app.post("/twilio/respond")
+async def handle_speech_response(
+    request: Request,
+    CallSid: str = Form(...),
+    SpeechResult: str = Form(default=""),
+    Confidence: str = Form(default="0"),
+):
+    """
+    Twilio speech recognition result webhook (Gather path).
+    """
+    print(f"🗣️ SID={CallSid} Speech='{SpeechResult}' Confidence={Confidence}")
+    twiml_content = await _process_voice_turn(request, CallSid, SpeechResult.strip(), mode="gather")
+    return PlainTextResponse(content=twiml_content, media_type="application/xml")
+
+
+@app.post("/twilio/respond-audio")
+async def handle_audio_response(
+    request: Request,
+    CallSid: str = Form(...),
+    RecordingUrl: str = Form(default=""),
+    RecordingDuration: str = Form(default="0"),
+):
+    """
+    New endpoint for direct Whisper STT path.
+    Replaces Twilio Gather speech recognition with Groq Whisper for maximum Amharic accuracy.
+    """
+    print(f"🎙️ SID={CallSid} Audio RecordingUrl='{RecordingUrl}' Duration={RecordingDuration}")
+    state = await get_conversation_state(CallSid)
+    company_id = state.get("company_id")
+    
+    user_text = ""
+    if RecordingUrl and company_id:
+        twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
+        twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+        auth = (twilio_account_sid, twilio_auth_token) if twilio_account_sid and twilio_auth_token else None
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(f"{RecordingUrl}.wav", auth=auth)
+                if resp.status_code == 200:
+                    audio_bytes = resp.content
+                    # 1. Primary: Hasab AI STT (Winner of 2026 Amharic benchmark)
+                    hasab_config = await get_provider_config(company_id, "stt", "hasab")
+                    hasab_key = (hasab_config or {}).get("api_key") or os.getenv("HASAB_API_KEY", "")
+                    if hasab_key:
+                        try:
+                            user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
+                            print("✅ Transcribed via Primary STT (Hasab AI)")
+                        except Exception as h_err:
+                            print(f"⚠️ Hasab AI STT failed ({h_err}), falling back to ElevenLabs...")
+                    
+                    # 2. Fallback: ElevenLabs Scribe v2
+                    if not user_text:
+                        el_config = await get_provider_config(company_id, "stt", "elevenlabs")
+                        el_key = (el_config or {}).get("api_key") or os.getenv("ELEVENLABS_API_KEY", "")
+                        if el_key:
+                            try:
+                                user_text = await _elevenlabs_stt(audio_bytes, "audio.wav", el_key, "am")
+                                print("✅ Transcribed via Fallback STT (ElevenLabs)")
+                            except Exception as e_err:
+                                print(f"⚠️ ElevenLabs STT failed ({e_err}), falling back to Groq Whisper...")
+
+                    # 3. Emergency Fallback: Groq Whisper / OpenAI
+                    if not user_text:
+                        stt_config = await get_provider_config(company_id, "stt", "groq")
+                        stt_key = (stt_config or {}).get("api_key") or os.getenv("GROQ_API_KEY", "")
+                        if stt_key:
+                            user_text = await _groq_stt("whisper-large-v3-turbo", audio_bytes, "audio.wav", stt_key, "am")
+                            print("✅ Transcribed via Emergency Fallback STT (Groq Whisper)")
+                        else:
+                            openai_key = os.getenv("OPENAI_API_KEY", "")
+                            if openai_key:
+                                user_text = await _openai_stt("whisper-1", audio_bytes, "audio.wav", openai_key, "am")
+        except Exception as ex:
+            print(f"❌ Audio download or STT cascade failed: {ex}")
+
+    twiml_content = await _process_voice_turn(request, CallSid, user_text.strip(), mode="record")
+    return PlainTextResponse(content=twiml_content, media_type="application/xml")
 
 
 @app.post("/twilio/status")
