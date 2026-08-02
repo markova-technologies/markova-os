@@ -951,8 +951,7 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
             import hashlib
             text_hash = hashlib.md5(f"addisai_{lang_code}_{sample_rate}_{text}".encode('utf-8')).hexdigest()[:8]
             wav_filename = f"addisai_{lang_code}_{text_hash}.wav"
-            from pathlib import Path
-            if (Path("audio_cache") / wav_filename).exists():
+            if (AUDIO_DIR / wav_filename).exists():
                 return f"/audio/{wav_filename}"
         else:
             audio_url = await generate_addis_ai_tts(text, lang_code, call_id)

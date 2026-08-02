@@ -4,7 +4,7 @@
 
 session:answer()
 
-local backend_url = "https://markova-ai-backend.onrender.com"
+local backend_url = "https://markova-ai-backend-us.onrender.com"
 local uuid = session:get_uuid()
 local caller_id = session:getVariable("caller_id_number") or "sip-user"
 
