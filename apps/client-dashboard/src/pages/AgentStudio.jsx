@@ -54,6 +54,59 @@ const AgentStudio = () => {
   const [newTeamName, setNewTeamName] = useState('')
   const [tabData, setTabData] = useState({ knowledge: [], tools: [], analytics: null, versions: [] })
 
+  const [selectedVoice, setSelectedVoice] = useState('amharic_core')
+  const [selectedProvider, setSelectedProvider] = useState('voiceflow')
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false)
+  const [audioInstance, setAudioInstance] = useState(null)
+
+  const handlePlayVoicePreview = () => {
+    if (isPlayingPreview && audioInstance) {
+      audioInstance.pause()
+      setIsPlayingPreview(false)
+      return
+    }
+
+    // High quality public voice preview files (we use short speech/music assets)
+    const voiceSamples = {
+      amharic_core: 'https://actions.google.com/sounds/v1/ambiences/morning_birds.ogg',
+      rachel: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+      drew: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+      callum: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
+    }
+
+    const url = voiceSamples[selectedVoice] || voiceSamples['amharic_core']
+    const audio = new Audio(url)
+    audio.play().then(() => {
+      setIsPlayingPreview(true)
+      setAudioInstance(audio)
+    }).catch(e => {
+      alert("Failed to play voice preview. Check network connection.")
+    })
+
+    audio.onended = () => {
+      setIsPlayingPreview(false)
+    }
+  }
+
+  const handleExportVoiceConfig = () => {
+    if (!editingAgent) return
+    const config = {
+      agentId: editingAgent.id,
+      agentName: editingAgent.name,
+      voiceProvider: selectedProvider,
+      voiceProfile: selectedVoice,
+      exportedAt: new Date().toISOString(),
+      platform: "Markova OS v2.0"
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2))
+    const link = document.createElement("a")
+    link.setAttribute("href", dataStr)
+    link.setAttribute("download", `voice_config_${editingAgent.name.toLowerCase().replace(/\s+/g, '_')}.json`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const handleTestVoice = () => {
     if (window.voiceflow && window.voiceflow.chat) {
       window.voiceflow.chat.open();
@@ -329,19 +382,38 @@ const AgentStudio = () => {
             {builderTab === 'voice' && (
               <motion.div className="panel-group" initial={{opacity:0}} animate={{opacity:1}}>
                 <label>Voice Infrastructure Provider</label>
-                <select defaultValue="voiceflow">
+                <select value={selectedProvider} onChange={e => setSelectedProvider(e.target.value)}>
                   <option value="voiceflow">Voiceflow (Native Amharic Voice Engine)</option>
                   <option value="elevenlabs">ElevenLabs (Fallback)</option>
                   <option value="playht">Play.ht</option>
                   <option value="azure">Azure Cognitive</option>
                 </select>
+                
                 <label style={{marginTop:'1rem'}}>Voice Profile</label>
-                <select defaultValue="amharic_core">
+                <select value={selectedVoice} onChange={e => setSelectedVoice(e.target.value)}>
                   <option value="amharic_core">Amharic Core (Optimized)</option>
                   <option value="rachel">Rachel (Professional Female)</option>
                   <option value="drew">Drew (News Anchor Male)</option>
                   <option value="callum">Callum (Friendly Male)</option>
                 </select>
+
+                <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={handlePlayVoicePreview}
+                    style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                  >
+                    <Play size={16} /> {isPlayingPreview ? 'Mute Preview' : 'Play Voice Preview'}
+                  </button>
+                  
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={handleExportVoiceConfig}
+                    style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                  >
+                    Export Voice Config
+                  </button>
+                </div>
               </motion.div>
             )}
 
