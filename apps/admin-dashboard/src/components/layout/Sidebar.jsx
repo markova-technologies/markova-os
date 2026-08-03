@@ -113,6 +113,23 @@ const Sidebar = ({ isOpen, onClose }) => {
                     </ul>
                 </nav>
 
+                {/* Sign Out Button */}
+                <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                    <button
+                        onClick={() => {
+                            localStorage.removeItem('admin_token');
+                            localStorage.removeItem('admin_user');
+                            window.location.href = '/';
+                        }}
+                        className="w-full flex items-center justify-between px-4 py-3 rounded-lg
+                         bg-red-50/50 dark:bg-red-950/10 hover:bg-red-100/50 dark:hover:bg-red-900/20
+                         text-red-600 dark:text-red-400 transition-colors duration-200"
+                    >
+                        <span className="text-sm font-semibold">Sign Out</span>
+                        <IoClose className="w-5 h-5" />
+                    </button>
+                </div>
+
                 {/* Theme Toggle */}
                 <div className="p-4 border-t border-gray-200 dark:border-gray-700">
                     <button

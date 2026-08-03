@@ -247,3 +247,126 @@ export interface CrmLead {
   source: string;
   status: string;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NEXT-GEN DOMAIN OBJECTS & ENUMS (Phase 1 Domain Expansion)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export enum AdminRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  PLATFORM_ADMIN = 'PLATFORM_ADMIN',
+  SUPPORT_ADMIN = 'SUPPORT_ADMIN',
+  BILLING_ADMIN = 'BILLING_ADMIN',
+  DEVELOPER = 'DEVELOPER'
+}
+
+export enum MemoryLayerType {
+  WORKING = 'working',
+  CONVERSATION = 'conversation',
+  LONG_TERM = 'long_term',
+  BUSINESS = 'business',
+  SEMANTIC = 'semantic',
+  SHARED_TEAM = 'shared_team'
+}
+
+export interface MemoryRecord {
+  id: string;
+  company_id: string;
+  layer: MemoryLayerType;
+  entity_id?: string;
+  key: string;
+  value: Record<string, any>;
+  embedding?: number[];
+  ttl?: number;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export enum CapabilityType {
+  TOOL = 'tool',
+  INTEGRATION = 'integration',
+  WORKFLOW = 'workflow',
+  API = 'api',
+  RPA = 'rpa'
+}
+
+export enum CapabilityStatus {
+  ACTIVE = 'active',
+  DEPRECATED = 'deprecated',
+  DISABLED = 'disabled'
+}
+
+export interface Capability {
+  id: string;
+  company_id: string;
+  name: string;
+  description: string;
+  type: CapabilityType;
+  version: string;
+  schema: Record<string, any>;
+  permissions: string[];
+  status: CapabilityStatus;
+  created_at: Date;
+}
+
+export enum ExecutionStatus {
+  PENDING = 'pending',
+  RUNNING = 'running',
+  COMPLETED = 'completed',
+  FAILED = 'failed',
+  AWAITING_APPROVAL = 'awaiting_approval'
+}
+
+export interface Execution {
+  id: string;
+  company_id: string;
+  workflow_id?: string;
+  agent_id?: string;
+  status: ExecutionStatus;
+  input: Record<string, any>;
+  output?: Record<string, any>;
+  error?: string;
+  started_at: Date;
+  completed_at?: Date;
+}
+
+export interface Approval {
+  id: string;
+  execution_id: string;
+  company_id: string;
+  action: string;
+  requested_by: string;
+  approved_by?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  reason?: string;
+  created_at: Date;
+}
+
+export interface Policy {
+  id: string;
+  company_id: string;
+  name: string;
+  rules: Record<string, any>[];
+  is_enabled: boolean;
+}
+
+export enum DomainEventType {
+  AGENT_CREATED = 'AgentCreated',
+  CONVERSATION_STARTED = 'ConversationStarted',
+  TOOL_EXECUTED = 'ToolExecuted',
+  MEMORY_STORED = 'MemoryStored',
+  KNOWLEDGE_INDEXED = 'KnowledgeIndexed',
+  WORKFLOW_COMPLETED = 'WorkflowCompleted',
+  PAYMENT_SUCCEEDED = 'PaymentSucceeded',
+  TENANT_CREATED = 'TenantCreated'
+}
+
+export interface DomainEvent<T = any> {
+  id: string;
+  type: DomainEventType;
+  tenant_id: string;
+  payload: T;
+  timestamp: Date;
+  version: string;
+}
+

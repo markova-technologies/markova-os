@@ -14,3 +14,6 @@ yarn-error.log*
 
 # Local project credentials and environment
 # (ai call center/ has its own local .gitignore)
+.venv/
+__pycache__/
+*.pyc

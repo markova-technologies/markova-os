@@ -19,6 +19,7 @@ import hashlib
 import hmac
 import json
 import os
+import random
 import re
 import tempfile
 import time
@@ -29,6 +30,9 @@ from typing import Optional, Tuple
 import asyncpg
 import httpx
 import redis.asyncio as aioredis
+from semantic_cache import SemanticCache
+
+semantic_cache = SemanticCache(similarity_threshold=0.92)
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -166,6 +170,8 @@ async def get_routing_rules_for_phone(phone_number_id: str, company_id: str) -> 
     return out
 
 
+import crypto # Added for decryption
+
 async def get_provider_config(company_id: str, provider_type: str, provider_name: str) -> Optional[dict]:
     """Fetch provider credentials for a company."""
     row = await db_pool.fetchrow(
@@ -177,7 +183,14 @@ async def get_provider_config(company_id: str, provider_type: str, provider_name
     )
     if row:
         config = row["encrypted_config"]
-        return json.loads(config) if isinstance(config, str) else config
+        # Decrypt config if it is encrypted
+        if isinstance(config, str):
+            decrypted = crypto.decrypt(config)
+            try:
+                return json.loads(decrypted)
+            except json.JSONDecodeError:
+                return decrypted
+        return config
     return None
 
 
@@ -315,8 +328,54 @@ async def publish_event(event_type: str, payload: dict, source: str = "orchestra
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# ADAPTERS: LLM
+# ADAPTERS: LLM & EMBEDDING
 # ─────────────────────────────────────────────────────────────────────────────
+
+async def get_embedding(provider: str, model_id: str, text: str, api_key: str) -> list[float]:
+    if provider == "openai":
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://api.openai.com/v1/embeddings",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"input": text, "model": model_id or "text-embedding-3-small"}
+            )
+            resp.raise_for_status()
+            return resp.json()["data"][0]["embedding"]
+    # Fallback to empty vector if not supported
+    return []
+
+async def search_knowledge_chunks(company_id: str, query: str, api_key: str) -> str:
+    """Retrieve relevant chunks from vector database."""
+    try:
+        # Default to OpenAI embeddings for now
+        embedding = await get_embedding("openai", "text-embedding-3-small", query, api_key)
+        if not embedding:
+            return ""
+            
+        vector_str = f"[{','.join(map(str, embedding))}]"
+        
+        rows = await db_pool.fetch(
+            """
+            SELECT content, 1 - (embedding <=> $1::vector) AS similarity
+            FROM knowledge_chunks
+            WHERE company_id = $2
+            ORDER BY embedding <=> $1::vector
+            LIMIT 3
+            """,
+            vector_str,
+            uuid.UUID(company_id)
+        )
+        
+        # Filter chunks with good similarity
+        context_chunks = [r["content"] for r in rows if r["similarity"] > 0.70]
+        if not context_chunks:
+            return ""
+            
+        return "\n\n".join(context_chunks)
+    except Exception as e:
+        print(f"⚠️ RAG Search Failed: {e}")
+        return ""
+
 
 async def llm_complete(provider: str, model_id: str, messages: list, api_key: str) -> tuple[str, int]:
     """
@@ -482,19 +541,22 @@ async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str) 
     Unified TTS adapter.
     Returns audio bytes (MP3/WAV).
     """
-    if provider == "elevenlabs":
-        return await _elevenlabs_tts(voice_id, text, api_key)
-    elif provider == "openai":
-        return await _openai_tts(voice_id, text, api_key)
-    elif provider == "azure":
-        return await _azure_tts(voice_id, text, api_key)
-    elif provider == "edge":
-        return await _edge_tts(voice_id, text)
-    elif provider == "google":
-        return await _google_tts(voice_id or "am", text)
-    else:
-        # Fallback to edge
-        return await _edge_tts(voice_id or "am-ET-MekdesNeural", text)
+    try:
+        if provider == "elevenlabs":
+            return await _elevenlabs_tts(voice_id, text, api_key)
+        elif provider == "openai":
+            return await _openai_tts(voice_id, text, api_key)
+        elif provider == "azure":
+            return await _azure_tts(voice_id, text, api_key)
+        elif provider == "edge":
+            return await _edge_tts(voice_id, text)
+        elif provider == "google":
+            return await _google_tts(voice_id or "am", text)
+    except Exception as e:
+        print(f"⚠️ Primary TTS {provider} failed: {e}. Falling back to edge-tts.")
+        
+    # Guaranteed fallback to edge-tts so Twilio <Say> doesn't butcher Amharic with an Arabic voice
+    return await _edge_tts("am-ET-MekdesNeural", text)
 
 
 async def _elevenlabs_tts(voice_id: str, text: str, api_key: str) -> bytes:
@@ -552,19 +614,29 @@ async def _edge_tts(voice_id: str, text: str) -> bytes:
         
         # Try to convert to WAV using ffmpeg if available for better tele-compatibility
         try:
-            import subprocess
             wav_name = tmp_name.replace(".mp3", ".wav")
-            subprocess.run(
-                ['ffmpeg', '-y', '-i', tmp_name, '-ar', '16000', '-ac', '1', wav_name],
-                check=True, capture_output=True, timeout=10
+            # Run ffmpeg asynchronously to avoid blocking the event loop
+            process = await asyncio.create_subprocess_exec(
+                'ffmpeg', '-y', '-i', tmp_name, '-ar', '16000', '-ac', '1', wav_name,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
             )
-            with open(wav_name, "rb") as f:
-                wav_bytes = f.read()
             try:
-                os.unlink(wav_name)
-            except:
-                pass
-            return wav_bytes
+                await asyncio.wait_for(process.communicate(), timeout=10.0)
+                if process.returncode == 0:
+                    with open(wav_name, "rb") as f:
+                        wav_bytes = f.read()
+                    try:
+                        os.unlink(wav_name)
+                    except:
+                        pass
+                    return wav_bytes
+            except Exception as e:
+                try:
+                    process.kill()
+                except:
+                    pass
+            return mp3_bytes
         except Exception as e:
             # Fallback to returning raw MP3
             return mp3_bytes
@@ -601,14 +673,8 @@ POLITE_RETRY_RESPONSES = [
     "ይቅርታ፣ በደንብ አልሰማሁዎትም። እባክዎ ቀስ ብለው ይንገሩኝ?",
     "ይቅርታ፣ መስመሩ ትንሽ ደካማ ነው። እባክዎ ደግመው ይናገሩ?",
 ]
-_retry_index = 0
-
-
 def get_polite_retry() -> str:
-    global _retry_index
-    response = POLITE_RETRY_RESPONSES[_retry_index % len(POLITE_RETRY_RESPONSES)]
-    _retry_index += 1
-    return response
+    return random.choice(POLITE_RETRY_RESPONSES)
 
 
 # Homophone normalizer map
@@ -875,62 +941,6 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
 @app.get("/health")
 async def health():
     return {"status": "OK", "service": "orchestrator", "version": "2.0.0"}
-
-
-async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) -> str:
-    """AI agent speech gather (post-IVR or direct)."""
-    agent_lang = "amharic"
-    prompt = (agent.get("prompt") or "")
-    if "english" in prompt.lower():
-        agent_lang = "english"
-
-    voice_config = TWILIO_VOICE_MAP.get(agent_lang, TWILIO_VOICE_MAP["amharic"])
-    voice = voice_config["voice"]
-    lang_code = voice_config["lang"]
-    stt_code = voice_config["stt"]
-
-    name = agent.get("agent_name") or "our assistant"
-    if agent_lang == "english":
-        welcome_text = f"Hello! You've reached {name}. How can I help you today?"
-    else:
-        welcome_text = "Hello, how can I help you today?"
-
-    recording_enabled = bool((state.get("phone_settings") or {}).get("recording_enabled", True))
-    record_verbs = ""
-    if recording_enabled:
-        base = str(request.base_url).rstrip("/")
-        record_verbs = (
-            f'<Start><Recording recordingStatusCallback="{base}/twilio/recording" /></Start>'
-        )
-
-    tts_config = await get_provider_config(
-        state["company_id"], "voice", agent.get("voice_provider") or "edge"
-    )
-    tts_key = tts_config.get("api_key") if tts_config else ""
-    audio_url = None
-    if agent.get("voice_provider") and agent.get("voice_id"):
-        audio_url = await get_audio_url_for_text(
-            agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request
-        )
-
-    if audio_url:
-        return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    {record_verbs}
-    <Play>{audio_url}</Play>
-    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">...</Say>
-    </Gather>
-    <Redirect>/twilio/respond</Redirect>
-</Response>"""
-    return f"""<?xml version="1.0" encoding="UTF-8"?>
-<Response>
-    {record_verbs}
-    <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">{welcome_text}</Say>
-    </Gather>
-    <Redirect>/twilio/respond</Redirect>
-</Response>"""
 
 
 async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) -> str:
@@ -1352,18 +1362,41 @@ async def handle_speech_response(
     state["messages"].append({"role": "user", "content": user_text})
     state["turn_count"] += 1
 
-    # Generate AI response
-    try:
-        ai_text, tokens_used = await llm_complete(
-            provider=state["model_provider"],
-            model_id=state["model_id"],
-            messages=state["messages"],
-            api_key=llm_key
-        )
-    except Exception as e:
-        print(f"❌ LLM error: {e}")
-        ai_text = "ይቅርታ፣ አሁን መስመር ላይ ችግር አለ። ቆይተው ይደውሉ።" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
-        tokens_used = 0
+    # RAG Injection
+    if company_id and llm_key:
+        rag_context = await search_knowledge_chunks(company_id, user_text, llm_key)
+        if rag_context:
+            rag_message = f"Relevant Knowledge Context:\\n{rag_context}\\n\\nUse this context to answer the user's latest message if applicable."
+            state["messages"].append({"role": "system", "content": rag_message})
+
+    # Check Semantic Cache before invoking LLM
+    cached_hit = None
+    user_emb = None
+    if llm_key:
+        try:
+            user_emb = await get_embedding("openai", "text-embedding-3-small", user_text, llm_key)
+            if user_emb:
+                cached_hit = await semantic_cache.get(user_emb)
+        except Exception as e:
+            print(f"Cache lookup exception: {e}")
+
+    if cached_hit:
+        ai_text, tokens_used = cached_hit[0], 0
+    else:
+        # Generate AI response
+        try:
+            ai_text, tokens_used = await llm_complete(
+                provider=state["model_provider"],
+                model_id=state["model_id"],
+                messages=state["messages"],
+                api_key=llm_key
+            )
+            if user_emb and ai_text:
+                await semantic_cache.set(user_emb, ai_text)
+        except Exception as e:
+            print(f"❌ LLM error: {e}")
+            ai_text = "ይቅርታ፣ አሁን መስመር ላይ ችግር አለ። ቆይተው ይደውሉ።" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
+            tokens_used = 0
 
     # Save AI transcript in database
     if call_id:
@@ -1374,10 +1407,11 @@ async def handle_speech_response(
 
     # Track usage in Postgres
     if company_id:
+        estimated_stt = max(1, len(user_text) // 15)
         await track_usage(
             company_id=company_id,
             llm_tokens=tokens_used,
-            stt_seconds=3,
+            stt_seconds=estimated_stt,
             tts_characters=len(ai_text),
             call_minutes=0  # Increment dynamically in stats or status callback
         )

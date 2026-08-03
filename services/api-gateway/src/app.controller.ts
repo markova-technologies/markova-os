@@ -75,6 +75,18 @@ export class AppController {
     return proxyTo(this.authServiceUrl, req, res);
   }
 
+  @All('v1/admin*')
+  proxyAdminV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res, (url) =>
+      url.replace(/^\/v1\/admin/, '/api/admin'),
+    );
+  }
+
+  @All('api/admin*')
+  proxyAdminLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res);
+  }
+
   @All('v1/keys*')
   proxyKeysV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.tenantServiceUrl, req, res, (url) =>

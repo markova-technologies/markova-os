@@ -75,6 +75,21 @@ export class AuthMiddleware implements NestMiddleware {
       try {
         const secret = process.env.SUPABASE_JWT_SECRET;
         if (!secret) throw new Error("SUPABASE_JWT_SECRET is missing");
+        
+        // Decode without verification first to check audience for routing
+        const unverifiedDecoded = jwt.decode(token) as any;
+        const aud = unverifiedDecoded?.aud;
+        const isAdminRoute = path.startsWith('/v1/admin') || path.startsWith('/api/admin');
+        const isClientRoute = path.startsWith('/v1/client') || path.startsWith('/api/client') || path.startsWith('/api/tenant');
+
+        if (isAdminRoute && aud !== 'admin') {
+          return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Admin token required for this route' });
+        }
+        if (isClientRoute && aud === 'admin') {
+          return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Cannot use admin token for client routes' });
+        }
+
+        // Now verify with the appropriate audience (if Supabase allows custom aud, otherwise we just check the claim)
         const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as any;
         
         const userId = decoded.sub;
@@ -91,17 +106,20 @@ export class AuthMiddleware implements NestMiddleware {
           }
         }
         
-        if (!dbUser) {
+        // For admin tokens, dbUser might not exist in public.users if they are managed separately, 
+        // but assuming they do for now or we rely on decoded claims.
+        if (!dbUser && aud !== 'admin') {
           return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'User record not found in database' });
         }
 
         tenantContext = {
-          tenantId: dbUser.company_id,
+          tenantId: dbUser?.company_id || decoded.company_id,
           userId: userId,
-          role: dbUser.role,
-          permissions: [],
+          role: dbUser?.role || decoded.role,
+          permissions: decoded.permissions || [],
           subscriptionPlan: 'starter',
           environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
+          aud: aud,
         };
       } catch (err) {
         return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Token invalid or expired' });
@@ -178,6 +196,32 @@ export class AuthMiddleware implements NestMiddleware {
         error: 'test-call is sandbox-only. Use a mk_test_ API key.',
         requestId,
       });
+    }
+
+    // Admin APIs Authorization & Zero Trust Check
+    if (path.startsWith('/v1/admin') || path.startsWith('/api/admin')) {
+      // 1. Cloudflare Access Check
+      const cfAccessHeader = req.headers['cf-access-jwt-assertion'];
+      if (!cfAccessHeader && process.env.NODE_ENV === 'production') {
+        return res.status(HttpStatus.FORBIDDEN).json({
+          error: 'Forbidden: Zero Trust Network Access required.',
+          requestId,
+        });
+      }
+
+      // 2. Role Check (Only specific admin roles)
+      const allowedAdminRoles = ['SUPER_ADMIN', 'PLATFORM_ADMIN', 'SUPPORT_ADMIN', 'BILLING_ADMIN', 'DEVELOPER'];
+      const userRole = (tenantContext.role || '').toUpperCase();
+      
+      if (!allowedAdminRoles.includes(userRole)) {
+        return res.status(HttpStatus.FORBIDDEN).json({
+          error: 'Forbidden: Admin access required',
+          requestId,
+        });
+      }
+      
+      // Inject admin role specifically
+      req.headers['x-admin-role'] = userRole;
     }
 
     next();

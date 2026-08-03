@@ -296,6 +296,158 @@ app.post(
   }
 });
 
+// Admin Dedicated Login (Issues JWT with aud: 'admin' and HS256 Supabase compatibility)
+app.post(
+  ['/api/auth/admin/login', '/v1/auth/admin/login'],
+  validate(schemas.login),
+  async (req, res) => {
+
+  const { email, password } = req.body;
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required' });
+  }
+
+  const rateLimitKey = `admin_login_attempts:${email}`;
+
+  try {
+    const attempts = await redisClient.get(rateLimitKey);
+    if (attempts && parseInt(attempts, 10) >= 5) {
+      return res.status(429).json({ error: 'Too many failed login attempts.' });
+    }
+
+    const userRes = await pool.query(
+      'SELECT id, company_id, name, email, password_hash, role, status FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    const user = userRes.rows[0];
+
+    const allowedAdminRoles = ['superadmin', 'admin', 'platform_admin', 'support_admin', 'billing_admin', 'developer'];
+    if (!allowedAdminRoles.includes((user.role || '').toLowerCase())) {
+      return res.status(403).json({ error: 'Access denied: Admin role required' });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Account is deactivated' });
+    }
+
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    if (!isValidPassword) {
+      await redisClient.incr(rateLimitKey);
+      await redisClient.expire(rateLimitKey, 15 * 60);
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+
+    await redisClient.del(rateLimitKey);
+
+    const secret = process.env.SUPABASE_JWT_SECRET;
+    if (!secret) {
+      return res.status(500).json({ error: 'Server configuration error (missing JWT secret)' });
+    }
+
+    // Sign Token with HS256 (Supabase Gateway format) with AUD: admin
+    const token = jwt.sign(
+      {
+        sub: user.id,
+        company_id: user.company_id,
+        role: user.role,
+        aud: 'admin'
+      },
+      secret,
+      { algorithm: 'HS256', expiresIn: '24h' }
+    );
+
+    await pool.query(
+      `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user.company_id, user.id, 'ADMIN_LOGIN', 'user', user.id]
+    );
+
+    res.json({
+      success: true,
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    console.error('Admin Login Error:', error);
+    res.status(500).json({ error: 'Internal Server Error during admin login' });
+  }
+});
+
+// Admin Impersonation Endpoint
+app.post(
+  ['/api/auth/admin/impersonate', '/v1/auth/admin/impersonate'],
+  async (req, res) => {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader) return res.status(401).json({ error: 'Missing token' });
+    const token = authHeader.split(' ')[1];
+    
+    try {
+      const secret = process.env.SUPABASE_JWT_SECRET;
+      if (!secret) return res.status(500).json({ error: 'Missing secret' });
+      
+      const decoded = jwt.verify(token, secret);
+      if (decoded.aud !== 'admin') {
+        return res.status(403).json({ error: 'Admin token required' });
+      }
+
+      const { targetCompanyId } = req.body;
+      if (!targetCompanyId) return res.status(400).json({ error: 'targetCompanyId required' });
+
+      // Find an active user in the target company
+      const targetRes = await pool.query('SELECT id, company_id, name, email, role FROM users WHERE company_id = $1 LIMIT 1', [targetCompanyId]);
+      if (targetRes.rows.length === 0) return res.status(404).json({ error: 'Target company not found or has no users' });
+      
+      const targetUser = targetRes.rows[0];
+
+      // Sign a client token acting as targetUser, with impersonator flag
+      const clientToken = jwt.sign(
+        {
+          sub: targetUser.id,
+          company_id: targetUser.company_id,
+          role: targetUser.role,
+          impersonator_id: decoded.sub
+        },
+        secret,
+        { algorithm: 'HS256', expiresIn: '1h' }
+      );
+      
+      await pool.query(
+        `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [targetUser.company_id, decoded.sub, 'IMPERSONATE_TENANT', 'company', targetCompanyId]
+      );
+
+      res.json({
+        success: true,
+        token: clientToken,
+        user: {
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          role: targetUser.role,
+          company_id: targetUser.company_id,
+          impersonatorId: decoded.sub
+        }
+      });
+
+    } catch (err) {
+      console.error('Impersonation error:', err);
+      res.status(401).json({ error: 'Invalid admin token' });
+    }
+  }
+);
+
 // Token Verification Endpoint
 app.post(['/api/auth/verify-token', '/v1/auth/verify-token'], async (req, res) => {
   const { token } = req.body;
