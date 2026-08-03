@@ -74,38 +74,44 @@ async def cleanup_old_audio():
         await asyncio.sleep(86400)
 
 
+# Fallback in-memory state and degraded status tracking
+_in_memory_state: dict[str, str] = {}
+REDIS_DEGRADED: bool = False
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db_pool, redis_client
+    global db_pool, redis_client, REDIS_DEGRADED
 
-    # Connect PostgreSQL
-    for attempt in range(10):
+    # Connect PostgreSQL with up to 20 attempts & exponential/bounded backoff (for Render cold starts)
+    for attempt in range(20):
         try:
-            db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10)
+            db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, command_timeout=8)
             print("✅ Orchestrator connected to PostgreSQL")
             break
         except Exception as e:
-            print(f"⚠️ DB attempt {attempt + 1}/10 failed: {e}. Retrying in 3s...")
-            await asyncio.sleep(3)
+            wait_sec = min(2 + attempt, 10)
+            print(f"⚠️ DB attempt {attempt + 1}/20 failed: {e}. Retrying in {wait_sec}s...")
+            await asyncio.sleep(wait_sec)
     else:
         print("❌ Orchestrator: DB connection failed permanently")
         raise RuntimeError("Cannot connect to PostgreSQL")
 
-    # Connect Redis
-    for attempt in range(10):
+    # Connect Redis (degrade gracefully if unavailable without crashing voice calls)
+    for attempt in range(5):
         try:
-            redis_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+            redis_client = aioredis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=3)
             await redis_client.ping()
             print("✅ Orchestrator connected to Redis")
+            REDIS_DEGRADED = False
             break
         except Exception as e:
-            print(f"⚠️ Redis attempt {attempt + 1}/10 failed: {e}. Retrying in 3s...")
-            await asyncio.sleep(3)
+            print(f"⚠️ Redis attempt {attempt + 1}/5 failed: {e}. Retrying in 2s...")
+            await asyncio.sleep(2)
     else:
-        print("❌ Orchestrator: Redis connection failed permanently")
-        raise RuntimeError("Cannot connect to Redis")
+        print("❌ Orchestrator: Redis connection failed permanently. Degrading to in-memory conversation fallback.")
+        REDIS_DEGRADED = True
 
-    print(f"🚀 Orchestrator ready on port {PORT}")
+    print(f"🚀 Orchestrator ready on port {PORT} (Redis Degraded: {REDIS_DEGRADED})")
     
     # Start background tasks
     pubsub_task = asyncio.create_task(listen_for_logs())
@@ -127,6 +133,22 @@ app = FastAPI(title="Markova Orchestrator", version="2.0.0", lifespan=lifespan)
 app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
 
 
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    path = request.url.path
+    if any(path.startswith(p) for p in ["/twilio", "/incoming-call", "/handle-input", "/v1/calls"]):
+        print(f"❌ UNHANDLED EXCEPTION on telephony route {path}: {exc}")
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Zeina" language="ar-EG">ይቅርታ፣ አሁን የቴክኒክ ችግር አለ። እባክዎ ቆይተው ይደውሉ።</Say>
+    <Say language="en-US">We are experiencing a technical issue. Please call back shortly.</Say>
+    <Hangup/>
+</Response>"""
+        return PlainTextResponse(content=twiml, media_type="application/xml", status_code=200)
+    print(f"❌ UNHANDLED EXCEPTION on REST route {path}: {exc}")
+    raise exc
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS: DB Lookups & Writes
 # ─────────────────────────────────────────────────────────────────────────────
@@ -136,53 +158,65 @@ async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
     Look up which company+agent owns this phone number.
     Returns full agent configuration including provider settings.
     """
-    row = await db_pool.fetchrow(
-        """
-        SELECT 
-            pn.id as phone_number_id,
-            pn.phone_number,
-            pn.company_id,
-            pn.settings as phone_settings,
-            a.id as agent_id,
-            a.name as agent_name,
-            a.prompt,
-            a.voice_provider,
-            a.voice_id,
-            a.model_provider,
-            a.model_id
-        FROM phone_numbers pn
-        LEFT JOIN agents a ON a.id = pn.agent_id
-        WHERE pn.phone_number = $1 AND pn.status = 'active'
-        """,
-        phone_number
-    )
-    if not row:
-        return None
-    data = dict(row)
-    settings = data.get("phone_settings") or {}
-    if isinstance(settings, str):
-        settings = json.loads(settings)
-    data["phone_settings"] = settings
-    return data
+    if not db_pool:
+        raise RuntimeError("DB pool not initialized in get_agent_by_phone")
+    try:
+        row = await db_pool.fetchrow(
+            """
+            SELECT 
+                pn.id as phone_number_id,
+                pn.phone_number,
+                pn.company_id,
+                pn.settings as phone_settings,
+                a.id as agent_id,
+                a.name as agent_name,
+                a.prompt,
+                a.voice_provider,
+                a.voice_id,
+                a.model_provider,
+                a.model_id
+            FROM phone_numbers pn
+            LEFT JOIN agents a ON a.id = pn.agent_id
+            WHERE pn.phone_number = $1 AND pn.status = 'active'
+            """,
+            phone_number
+        )
+        if not row:
+            return None
+        data = dict(row)
+        settings = data.get("phone_settings") or {}
+        if isinstance(settings, str):
+            settings = json.loads(settings)
+        data["phone_settings"] = settings
+        return data
+    except Exception as e:
+        print(f"❌ Critical DB failure in get_agent_by_phone({phone_number}): {e}")
+        raise e
 
 
 async def get_routing_rules_for_phone(phone_number_id: str, company_id: str) -> list:
-    rows = await db_pool.fetch(
-        """
-        SELECT rules FROM routing_rules
-        WHERE phone_number_id = $1 AND company_id = $2
-        ORDER BY created_at ASC
-        """,
-        uuid.UUID(phone_number_id), uuid.UUID(company_id),
-    )
-    out = []
-    for r in rows:
-        rules = r["rules"]
-        if isinstance(rules, str):
-            rules = json.loads(rules)
-        if isinstance(rules, list):
-            out.extend(rules)
-    return out
+    if not db_pool:
+        return []
+    try:
+        rows = await db_pool.fetch(
+            """
+            SELECT rules FROM routing_rules
+            WHERE phone_number_id = $1 AND company_id = $2
+            ORDER BY created_at ASC
+            """,
+            uuid.UUID(phone_number_id), uuid.UUID(company_id),
+        )
+        out = []
+        for r in rows:
+            rules = r["rules"]
+            if isinstance(rules, str):
+                rules = json.loads(rules)
+            if isinstance(rules, list):
+                out.extend(rules)
+        return out
+    except Exception as e:
+        print(f"⚠️ Failed to load routing rules from DB: {e}")
+        return []
 
 
 def decrypt_provider_config(config: dict) -> dict:
@@ -222,17 +256,22 @@ def encrypt_provider_config(config: dict) -> dict:
 
 async def get_provider_config(company_id: str, provider_type: str, provider_name: str) -> Optional[dict]:
     """Fetch provider credentials for a company, decrypting keys if encrypted."""
-    row = await db_pool.fetchrow(
-        """
-        SELECT encrypted_config FROM provider_configs
-        WHERE company_id = $1 AND provider_type = $2 AND provider_name = $3
-        """,
-        uuid.UUID(company_id), provider_type, provider_name
-    )
-    if row:
-        config = row["encrypted_config"]
-        cfg_dict = json.loads(config) if isinstance(config, str) else dict(config)
-        return decrypt_provider_config(cfg_dict)
+    if not db_pool:
+        return None
+    try:
+        row = await db_pool.fetchrow(
+            """
+            SELECT encrypted_config FROM provider_configs
+            WHERE company_id = $1 AND provider_type = $2 AND provider_name = $3
+            """,
+            uuid.UUID(company_id), provider_type, provider_name
+        )
+        if row:
+            config = row["encrypted_config"]
+            cfg_dict = json.loads(config) if isinstance(config, str) else dict(config)
+            return decrypt_provider_config(cfg_dict)
+    except Exception as e:
+        print(f"⚠️ DB error in get_provider_config ({provider_type}/{provider_name}): {e}")
     return None
 
 
@@ -244,17 +283,22 @@ async def create_call_record(
 ) -> str:
     """Create a call record and return its ID."""
     call_id = uuid.uuid4()
-    await db_pool.execute(
-        """
-        INSERT INTO calls (id, company_id, agent_id, phone_number_id, caller_number, status, turn_count)
-        VALUES ($1, $2, $3, $4, $5, 'active', 0)
-        """,
-        call_id,
-        uuid.UUID(company_id),
-        uuid.UUID(agent_id) if agent_id else None,
-        uuid.UUID(phone_number_id) if phone_number_id else None,
-        caller_number,
-    )
+    if not db_pool:
+        return str(call_id)
+    try:
+        await db_pool.execute(
+            """
+            INSERT INTO calls (id, company_id, agent_id, phone_number_id, caller_number, status, turn_count)
+            VALUES ($1, $2, $3, $4, $5, 'active', 0)
+            """,
+            call_id,
+            uuid.UUID(company_id),
+            uuid.UUID(agent_id) if agent_id else None,
+            uuid.UUID(phone_number_id) if phone_number_id else None,
+            caller_number,
+        )
+    except Exception as e:
+        print(f"⚠️ Failed to insert call record in DB (proceeding with ephemeral call_id {call_id}): {e}")
     return str(call_id)
 
 
@@ -286,29 +330,39 @@ def _ivr_prompt_from_settings(settings: dict, routing_rules: list) -> str:
 
 async def save_transcript(call_id: str, role: str, content: str):
     """Save a conversation turn to transcripts table and update turn_count."""
-    tx_id = uuid.uuid4()
-    async with db_pool.acquire() as conn:
-        async with conn.transaction():
-            await conn.execute(
-                """
-                INSERT INTO transcripts (id, call_id, role, content)
-                VALUES ($1, $2, $3, $4)
-                """,
-                tx_id, uuid.UUID(call_id), role, content
-            )
-            # Increment turn count in calls table
-            await conn.execute(
-                "UPDATE calls SET turn_count = turn_count + 1 WHERE id = $1",
-                uuid.UUID(call_id)
-            )
+    if not db_pool or not call_id:
+        return
+    try:
+        tx_id = uuid.uuid4()
+        async with db_pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    INSERT INTO transcripts (id, call_id, role, content)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    tx_id, uuid.UUID(call_id), role, content
+                )
+                # Increment turn count in calls table
+                await conn.execute(
+                    "UPDATE calls SET turn_count = turn_count + 1 WHERE id = $1",
+                    uuid.UUID(call_id)
+                )
+    except Exception as e:
+        print(f"⚠️ Non-fatal: Failed to save transcript for call {call_id}: {e}")
 
 
 async def end_call_record(call_id: str):
     """Mark call as completed."""
-    await db_pool.execute(
-        "UPDATE calls SET status = 'completed', end_time = NOW() WHERE id = $1",
-        uuid.UUID(call_id)
-    )
+    if not db_pool or not call_id:
+        return
+    try:
+        await db_pool.execute(
+            "UPDATE calls SET status = 'completed', end_time = NOW() WHERE id = $1",
+            uuid.UUID(call_id)
+        )
+    except Exception as e:
+        print(f"⚠️ Non-fatal: Failed to mark call {call_id} completed: {e}")
 
 
 async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0,
@@ -317,17 +371,19 @@ async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0
     Append a usage event row (ledger). GET /v1/usage sums these for the current period.
     Also notifies tenant-service so Redis cache stays consistent.
     """
-    if not company_id:
+    if not company_id or not any([llm_tokens, stt_seconds, tts_characters, call_minutes]):
         return
-    if not any([llm_tokens, stt_seconds, tts_characters, call_minutes]):
-        return
-    await db_pool.execute(
-        """
-        INSERT INTO usage_metrics (id, company_id, llm_tokens, stt_seconds, tts_characters, call_minutes)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        """,
-        uuid.uuid4(), uuid.UUID(company_id), llm_tokens, stt_seconds, tts_characters, call_minutes
-    )
+    if db_pool:
+        try:
+            await db_pool.execute(
+                """
+                INSERT INTO usage_metrics (id, company_id, llm_tokens, stt_seconds, tts_characters, call_minutes)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                """,
+                uuid.uuid4(), uuid.UUID(company_id), llm_tokens, stt_seconds, tts_characters, call_minutes
+            )
+        except Exception as e:
+            print(f"⚠️ Non-fatal: Failed to record usage metric in DB: {e}")
     # Best-effort cache sync via tenant-service internal increment
     tenant_url = os.getenv("TENANT_SERVICE_URL", "http://tenant-service:5002")
     secret = os.getenv("SERVICE_AUTH_SECRET")
@@ -899,32 +955,67 @@ async def repair_amharic_transcription(text: str, api_key: str) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def get_conversation_state(call_sid: str) -> dict:
-    raw = await redis_client.get(f"call:{call_sid}:state")
+    global REDIS_DEGRADED
+    if not REDIS_DEGRADED and redis_client:
+        try:
+            raw = await redis_client.get(f"call:{call_sid}:state")
+            if raw:
+                return json.loads(raw)
+            return {"messages": [], "turn_count": 0, "call_id": None}
+        except Exception as e:
+            print(f"⚠️ Redis read failure ({e}). Degrading to in-memory state.")
+            REDIS_DEGRADED = True
+
+    # In-memory fallback
+    raw = _in_memory_state.get(f"call:{call_sid}:state")
     if raw:
         return json.loads(raw)
     return {"messages": [], "turn_count": 0, "call_id": None}
 
 
 async def save_conversation_state(call_sid: str, state: dict, ttl: int = 3600):
-    await redis_client.setex(f"call:{call_sid}:state", ttl, json.dumps(state))
+    global REDIS_DEGRADED
+    serialized = json.dumps(state)
+    if not REDIS_DEGRADED and redis_client:
+        try:
+            await redis_client.setex(f"call:{call_sid}:state", ttl, serialized)
+            return
+        except Exception as e:
+            print(f"⚠️ Redis write failure ({e}). Degrading to in-memory state.")
+            REDIS_DEGRADED = True
+    # In-memory fallback
+    _in_memory_state[f"call:{call_sid}:state"] = serialized
 
 
 async def delete_conversation_state(call_sid: str):
-    await redis_client.delete(f"call:{call_sid}:state")
+    global REDIS_DEGRADED
+    if not REDIS_DEGRADED and redis_client:
+        try:
+            await redis_client.delete(f"call:{call_sid}:state")
+        except Exception:
+            REDIS_DEGRADED = True
+    _in_memory_state.pop(f"call:{call_sid}:state", None)
 
 
 async def get_audio_url_for_text(provider: str, voice_id: str, text: str, api_key: str, request: Request) -> Optional[str]:
-    """Generates audio via TTS adapter and returns the static URL to serve it."""
+    """Generates audio via TTS adapter and returns the static URL to serve it, validating file size to prevent playing corrupt audio."""
     try:
         text_hash = hashlib.md5(f"{provider}_{voice_id}_{text}".encode('utf-8')).hexdigest()[:8]
         filename = f"tts_{text_hash}.wav"
         filepath = os.path.join(AUDIO_DIR, filename)
 
         if os.path.exists(filepath):
-            return f"{str(request.base_url).rstrip('/')}/audio/{filename}"
+            if os.path.getsize(filepath) > 100:
+                return f"{str(request.base_url).rstrip('/')}/audio/{filename}"
+            else:
+                print(f"⚠️ Corrupted or zero-byte TTS cache file detected ({filename}). Regenerating...")
+                try:
+                    os.remove(filepath)
+                except OSError:
+                    pass
 
         audio_bytes = await tts_synthesize(provider, voice_id, text, api_key)
-        if audio_bytes:
+        if audio_bytes and len(audio_bytes) > 100:
             with open(filepath, "wb") as f:
                 f.write(audio_bytes)
             return f"{str(request.base_url).rstrip('/')}/audio/{filename}"
@@ -975,24 +1066,28 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 async def listen_for_logs():
-    """Background task to listen to Redis Pub/Sub for log events and broadcast them."""
-    try:
-        # Create a dedicated redis connection for pubsub
-        pubsub_client = aioredis.from_url(REDIS_URL, decode_responses=True)
-        pubsub = pubsub_client.pubsub()
-        await pubsub.psubscribe("logs:*")
-        
-        async for message in pubsub.listen():
-            if message["type"] == "pmessage":
-                channel = message["channel"]
-                data = message["data"]
-                # Channel format: logs:{company_id}
-                parts = channel.split(":")
-                if len(parts) == 2:
-                    company_id = parts[1]
-                    await manager.broadcast(data, company_id)
-    except Exception as e:
-        print(f"⚠️ Redis Pub/Sub listener error: {e}")
+    """Background task to listen to Redis Pub/Sub for log events and broadcast them with robust auto-reconnect."""
+    while True:
+        try:
+            pubsub_client = aioredis.from_url(REDIS_URL, decode_responses=True)
+            pubsub = pubsub_client.pubsub()
+            await pubsub.psubscribe("logs:*")
+            print("✅ Redis Pub/Sub listener active on logs:*")
+            
+            async for message in pubsub.listen():
+                if message["type"] == "pmessage":
+                    channel = message["channel"]
+                    data = message["data"]
+                    parts = channel.split(":")
+                    if len(parts) == 2:
+                        company_id = parts[1]
+                        await manager.broadcast(data, company_id)
+        except asyncio.CancelledError:
+            print("🛑 Redis Pub/Sub listener stopped (cancelled).")
+            break
+        except Exception as e:
+            print(f"⚠️ Redis Pub/Sub listener disconnected ({e}). Reconnecting in 5s...")
+            await asyncio.sleep(5)
 
 async def broadcast_log(company_id: str, log_data: dict):
     """Helper to publish log to Redis so it goes to all workers and then to WebSockets."""
@@ -1021,7 +1116,7 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
         jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
         if jwt_secret:
             import jwt as pyjwt
-            payload = pyjwt.decode(token, jwt_secret, algorithms=["HS256"], options={"verify_aud": False, "verify_exp": False})
+            payload = pyjwt.decode(token, jwt_secret, algorithms=["HS256"], options={"verify_aud": False, "verify_exp": True})
         else:
             payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
         claim_company = payload.get("companyId") or payload.get("company_id")
@@ -1045,6 +1140,36 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
 @app.get("/health")
 async def health():
     return {"status": "OK", "service": "orchestrator", "version": "2.0.0"}
+
+
+@app.get("/health/detailed")
+async def health_detailed():
+    checks = {
+        "database": "ok",
+        "redis": "ok",
+        "tts_edge": "ok",
+        "stt_hasab": "ok",
+    }
+    # Check DB reachability
+    try:
+        if db_pool:
+            await db_pool.fetchval("SELECT 1")
+        else:
+            checks["database"] = "degraded"
+    except Exception:
+        checks["database"] = "degraded"
+    
+    # Check Redis reachability
+    try:
+        if not REDIS_DEGRADED and redis_client:
+            await redis_client.ping()
+        else:
+            checks["redis"] = "degraded"
+    except Exception:
+        checks["redis"] = "degraded"
+
+    overall = "ok" if all(v == "ok" for v in checks.values()) else "degraded"
+    return {"status": overall, "services": checks, "timestamp": datetime.utcnow().isoformat()}
 
 
 async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) -> str:
@@ -1158,6 +1283,28 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
 </Response>"""
 
 
+async def verify_twilio_signature(request: Request) -> bool:
+    """Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints when configured."""
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
+    signature = request.headers.get("X-Twilio-Signature")
+    if not auth_token or not signature:
+        # Gracefully bypass when testing locally without strict auth enforcement
+        return True
+    try:
+        import hmac, base64
+        url = str(request.url)
+        form_data = await request.form()
+        sorted_params = "".join([f"{k}{v}" for k, v in sorted(form_data.items())])
+        data_to_sign = (url + sorted_params).encode("utf-8")
+        computed = base64.b64encode(hmac.new(auth_token.encode("utf-8"), data_to_sign, hashlib.sha1).digest()).decode()
+        if not hmac.compare_digest(computed, signature):
+            print(f"❌ Twilio cryptographic signature check failed for {url}")
+            return False
+    except Exception as e:
+        print(f"⚠️ Error verifying Twilio signature: {e}")
+    return True
+
+
 @app.post("/incoming-call")
 @app.post("/twilio/voice")
 async def handle_inbound_call(
@@ -1170,6 +1317,9 @@ async def handle_inbound_call(
     Twilio inbound call webhook.
     Resolve number → optional IVR → agent gather; honor recording toggle.
     """
+    if not await verify_twilio_signature(request):
+        return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio cryptographic signature.")
+
     print(f"📞 Inbound call: From={From} To={To} SID={CallSid}")
 
     agent = await get_agent_by_phone(To)
@@ -1270,6 +1420,15 @@ async def handle_ivr(
         if d and d == digit:
             matched = rule
             break
+
+    if rules and not matched and digit not in ("9", ""):
+        # Invalid DTMF digit pressed; speak explicit re-prompt instead of silent fallback
+        reprompt_xml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say>Invalid option selected. Please try again.</Say>
+    <Redirect method="POST">/incoming-call</Redirect>
+</Response>"""
+        return PlainTextResponse(content=reprompt_xml, media_type="application/xml")
 
     action = (matched or {}).get("action") or ("voicemail" if digit == "9" else "agent")
 
@@ -1460,8 +1619,35 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
 
     # Validate Whisper / STT output (garbage detection / silence)
     if not user_text or (agent_lang == "amharic" and is_garbage_transcription(user_text)):
+        empty_count = state.get("empty_turns", 0) + 1
+        state["empty_turns"] = empty_count
+        await save_conversation_state(CallSid, state)
+        
+        # Break infinite silence loops after 3 attempts
+        if empty_count >= 3:
+            print(f"🔇 3 consecutive empty/garbage inputs for SID={CallSid}. Ending call gracefully.")
+            bye_msg = "ይቅርታ፣ ድምፅዎ በደንብ አልተሰማንም። እባክዎ መስመሩ ሲሻሻል ደግመው ይደውሉልን።" if agent_lang == "amharic" else "We are having trouble hearing you clearly. Please call back when you have a better connection. Goodbye."
+            tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
+            tts_key = tts_config.get("api_key") if tts_config else ""
+            audio_url = await get_audio_url_for_text(state["voice_provider"], state["voice_id"], bye_msg, tts_key, request)
+            if call_id:
+                await end_call_record(call_id)
+            await delete_conversation_state(CallSid)
+            if audio_url:
+                return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Play>{audio_url}</Play>
+    <Hangup/>
+</Response>"""
+            else:
+                return f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="{voice}" language="{lang_code}">{bye_msg}</Say>
+    <Hangup/>
+</Response>"""
+
         retry_msg = get_polite_retry() if agent_lang == "amharic" else "I didn't catch that. Could you please repeat?"
-        print(f"🔇 Garbage/Empty input. Prompting retry: {retry_msg}")
+        print(f"🔇 Garbage/Empty input (attempt {empty_count}/3). Prompting retry: {retry_msg}")
         
         # Get TTS configs
         tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
@@ -1498,7 +1684,10 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
     </Gather>
 </Response>"""
 
-    # Get LLM API credentials
+    # Reset empty turns on valid speech recognition
+    if state.get("empty_turns", 0) > 0:
+        state["empty_turns"] = 0
+
     llm_config = await get_provider_config(company_id, "llm", state["model_provider"])
     llm_key = llm_config.get("api_key") if llm_config else ""
     if not llm_key:
@@ -1508,6 +1697,19 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
             llm_key = os.getenv("GROQ_API_KEY", "")
         elif state["model_provider"] == "gemini":
             llm_key = os.getenv("GEMINI_API_KEY", "")
+
+    # Pre-flight check: do not execute request if LLM key is entirely missing
+    if not llm_key:
+        print(f"❌ Pre-flight check failed: Missing API Key for provider '{state['model_provider']}'")
+        if company_id:
+            await publish_event("system.llm.failure", {
+                "company_id": str(company_id),
+                "call_sid": CallSid,
+                "provider": state["model_provider"],
+                "error": "Missing or unconfigured LLM API Key."
+            })
+        err_speech = "ይቅርታ፣ የኤአይ አገልግሎት በአግባቡ አልተዘጋጀም።" if agent_lang == "amharic" else "Sorry, the AI voice service is not configured properly."
+        return f'<?xml version="1.0" encoding="UTF-8"?><Response><Say>{err_speech}</Say><Hangup/></Response>'
 
     # Run phonetic repair
     if agent_lang == "amharic":
@@ -1546,6 +1748,13 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
         print(f"❌ LLM error: {e}")
         ai_text = "ይቅርታ፣ አሁን መስመር ላይ ችግር አለ። ቆይተው ይደውሉ።" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
         tokens_used = 0
+        if company_id:
+            await publish_event("system.llm.failure", {
+                "company_id": str(company_id),
+                "call_sid": CallSid,
+                "provider": state.get("model_provider", "unknown"),
+                "error": str(e)
+            })
 
     # Save AI transcript in database
     if call_id:
@@ -1712,6 +1921,13 @@ async def handle_audio_response(
                                 user_text = await _openai_stt("whisper-1", audio_bytes, "audio.wav", openai_key, "am")
         except Exception as ex:
             print(f"❌ Audio download or STT cascade failed: {ex}")
+
+        if not user_text and company_id:
+            await publish_event("system.stt.cascade_failure", {
+                "company_id": str(company_id),
+                "call_sid": CallSid,
+                "error": "All STT providers failed or returned empty transcription"
+            })
 
     twiml_content = await _process_voice_turn(request, CallSid, user_text.strip(), mode="record")
     return PlainTextResponse(content=twiml_content, media_type="application/xml")

@@ -16,6 +16,7 @@ import {
   Loader2
 } from 'lucide-react'
 import api from '../api/client'
+import realTimeService from '../services/realTimeService'
 import './CallCenter.css'
 
 const fallbackCalls = [
@@ -77,32 +78,44 @@ const CallCenter = () => {
   useEffect(() => {
     fetchCalls()
 
-    // Setup WebSocket for live updates
-    const ws = new WebSocket('ws://localhost:3003')
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data)
-        if (data.type === 'CALL_UPDATE') {
-          setCalls(prev => {
-            const exists = prev.find(c => c.id === data.payload.id)
-            if (exists) {
-              return prev.map(c => c.id === data.payload.id ? { ...c, ...data.payload } : c)
-            } else {
-              return [data.payload, ...prev]
-            }
-          })
-        } else if (data.type === 'CALL_TRANSCRIPT') {
-          setCalls(prev => prev.map(c => {
-            if (c.id === data.payload.callId) {
-              return { ...c, transcript: [...(c.transcript || []), data.payload.message] }
-            }
-            return c
-          }))
+    // Setup resilient realTimeService WebSocket for live updates with auto-reconnect
+    const onCallUpdate = (payload) => {
+      setCalls(prev => {
+        const targetId = payload.id || payload.call_id
+        if (!targetId) return prev
+        const exists = prev.find(c => c.id === targetId || c.call_id === targetId)
+        if (exists) {
+          return prev.map(c => (c.id === targetId || c.call_id === targetId) ? { ...c, ...payload } : c)
+        } else {
+          return [payload, ...prev]
         }
-      } catch (e) {}
+      })
     }
 
-    return () => ws.close()
+    const onCallTranscript = (payload) => {
+      setCalls(prev => prev.map(c => {
+        const targetId = payload.callId || payload.call_id
+        if (c.id === targetId || c.call_id === targetId) {
+          return { ...c, transcript: [...(c.transcript || []), payload.message || payload] }
+        }
+        return c
+      }))
+    }
+
+    realTimeService.on('CALL_UPDATE', onCallUpdate)
+    realTimeService.on('call.updated', onCallUpdate)
+    realTimeService.on('call.started', onCallUpdate)
+    realTimeService.on('CALL_TRANSCRIPT', onCallTranscript)
+    realTimeService.on('call.transcript', onCallTranscript)
+    realTimeService.connect()
+
+    return () => {
+      realTimeService.off('CALL_UPDATE', onCallUpdate)
+      realTimeService.off('call.updated', onCallUpdate)
+      realTimeService.off('call.started', onCallUpdate)
+      realTimeService.off('CALL_TRANSCRIPT', onCallTranscript)
+      realTimeService.off('call.transcript', onCallTranscript)
+    }
   }, [])
 
   const fetchCalls = async () => {

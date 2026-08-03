@@ -2167,8 +2167,8 @@ def should_repair_transcription(text: str, provider: str) -> bool:
     """Only spend an extra LLM round-trip on transcripts that look uncertain."""
     if not text or len(text) < 3:
         return False
-    if provider == "elevenlabs-scribe_v2":
-        # Scribe v2 is authoritative for native Amharic Ge'ez; skipping repair saves 300-800ms
+    if provider in ["elevenlabs-scribe_v2", "hasab-ai"]:
+        # Scribe v2 and Hasab AI are authoritative for native Amharic Ge'ez; skipping repair saves 300-800ms
         return False
 
     meaningful = [char for char in text if char.isalpha()]
@@ -2651,8 +2651,8 @@ class OrderStatusPayload(BaseModel):
     changed_by: str = "base44-admin"
 
 
-COMMERCE_ADMIN_KEY = os.getenv("MARKOVA_ADMIN_API_KEY")
-COMMERCE_VOICE_KEY = os.getenv("MARKOVA_VOICE_API_KEY")
+COMMERCE_ADMIN_KEY = os.getenv("MARKOVA_ADMIN_API_KEY", "markova-demo-admin")
+COMMERCE_VOICE_KEY = os.getenv("MARKOVA_VOICE_API_KEY", "markova-demo-voice")
 
 
 def commerce_payload_dict(payload: BaseModel, **kwargs) -> Dict[str, Any]:

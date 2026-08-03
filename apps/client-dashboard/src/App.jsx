@@ -32,6 +32,7 @@ import { ROUTES } from './config/site'
 import { ToastProvider } from './contexts/ToastContext'
 import { EnvironmentProvider } from './contexts/EnvironmentContext'
 import EnvironmentStrip from './components/EnvironmentStrip'
+import SystemHealthBar from './components/SystemHealthBar'
 import MobileBottomBar from './components/MobileBottomBar'
 import './App.css'
 
@@ -172,6 +173,7 @@ function App() {
             isAuthenticated ? (
               <EnvironmentProvider>
                 <div className="app-container">
+                  <SystemHealthBar />
                   <EnvironmentStrip />
                   <Sidebar
                     onLogout={handleLogout}

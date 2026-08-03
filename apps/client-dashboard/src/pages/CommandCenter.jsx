@@ -27,6 +27,7 @@ import { listAgents, listCalls, getUsage } from '../api/client'
 import { useEnvironment } from '../contexts/EnvironmentContext'
 import Skeleton from '../components/Skeleton'
 import { ROUTES } from '../config/site'
+import realTimeService from '../services/realTimeService'
 import './CommandCenter.css'
 
 const PLAN_LABEL = { basic: 'Basic', starter: 'Basic', pro: 'Pro', plus: 'Plus', enterprise: 'Enterprise Pro' }
@@ -87,9 +88,22 @@ const CommandCenter = () => {
 
     load()
     const timer = setInterval(load, 25000)
+
+    // Trigger instant reload on live WebSocket telephony events
+    const onLiveEvent = () => {
+      if (!cancelled) load()
+    }
+    realTimeService.on('call.started', onLiveEvent)
+    realTimeService.on('call.ended', onLiveEvent)
+    realTimeService.on('call.updated', onLiveEvent)
+    realTimeService.connect()
+
     return () => {
       cancelled = true
       clearInterval(timer)
+      realTimeService.off('call.started', onLiveEvent)
+      realTimeService.off('call.ended', onLiveEvent)
+      realTimeService.off('call.updated', onLiveEvent)
     }
   }, [environment])
 

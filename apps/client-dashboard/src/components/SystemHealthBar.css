@@ -1,0 +1,99 @@
+.system-health-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  z-index: 1000;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.health-banner-yellow {
+  background: linear-gradient(135deg, rgba(50, 40, 10, 0.95), rgba(40, 30, 0, 0.95));
+  border-bottom: 2px solid #eab308;
+  color: #fef08a;
+}
+
+.health-banner-red {
+  background: linear-gradient(135deg, rgba(60, 15, 20, 0.95), rgba(45, 10, 15, 0.95));
+  border-bottom: 2px solid #ef4444;
+  color: #fecaca;
+}
+
+.health-bar-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  flex: 1;
+}
+
+.health-icon {
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.yellow-icon {
+  color: #facc15;
+}
+
+.red-icon {
+  color: #f87171;
+}
+
+.health-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.health-item {
+  line-height: 1.4;
+}
+
+.alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 4px 10px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.dismiss-alert-btn {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 8px;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+.dismiss-alert-btn:hover {
+  opacity: 1;
+}
+
+.banner-dismiss-btn {
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.7;
+  padding: 4px;
+  transition: opacity 0.2s;
+}
+
+.banner-dismiss-btn:hover {
+  opacity: 1;
+}
