@@ -115,6 +115,34 @@ export default function CompaniesManagement() {
     }
   };
 
+  const handleImpersonateCompany = async (tenant) => {
+    try {
+      const token = localStorage.getItem('admin_token');
+      const response = await fetch(`${API_BASE}/v1/auth/admin/impersonate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ targetCompanyId: tenant.id })
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to impersonate tenant');
+      }
+
+      const data = await response.json();
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      const clientUrl = import.meta.env.VITE_CLIENT_DASHBOARD_URL || 'http://localhost:3000';
+      window.location.href = `${clientUrl}/app`;
+    } catch (err) {
+      alert(err.message);
+    }
+  };
+
   const filtered = (tenants || []).filter(t => {
     const matchSearch = t.name.toLowerCase().includes(search.toLowerCase()) || 
                         (t.industry && t.industry.toLowerCase().includes(search.toLowerCase()));
@@ -239,6 +267,13 @@ export default function CompaniesManagement() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => handleImpersonateCompany(t)}
+                          title="Impersonate Tenant Dashboard"
+                          className="p-1.5 text-gray-500 dark:text-slate-400 hover:text-amber-500 dark:hover:text-amber-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                        >
+                          <IoShieldCheckmark className="w-4 h-4" />
+                        </button>
                         <button 
                           onClick={() => handleToggleStatus(t)}
                           title={t.status === 'active' ? 'Suspend Company' : 'Activate Company'}
