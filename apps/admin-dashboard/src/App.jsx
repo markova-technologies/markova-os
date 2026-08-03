@@ -22,6 +22,8 @@ import AlertBanner from './components/AlertBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import AIAssistant from './components/AIAssistant';
 
+import Login from './pages/Login';
+
 function AdminShell() {
   const [showSidebar, setShowSidebar] = React.useState(false);
 
@@ -48,6 +50,14 @@ function SettingsWithMenu() {
 }
 
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = React.useState(() => {
+    return !!localStorage.getItem('admin_token');
+  });
+
+  const handleLogin = (user) => {
+    setIsAuthenticated(true);
+  };
+
   return (
     <ErrorBoundary>
       <ThemeProvider>
@@ -59,14 +69,36 @@ function App() {
                 <Route
                   path={ROUTES.home}
                   element={
-                    <Landing
-                      primaryTo={ROUTES.dashboard}
-                      primaryLabel="Enter console"
-                    />
+                    isAuthenticated ? (
+                      <Navigate to={ROUTES.dashboard} replace />
+                    ) : (
+                      <Landing
+                        primaryTo="/login"
+                        primaryLabel="Enter console"
+                      />
+                    )
                   }
                 />
-                {/* Admin console — named paths, never occupies / */}
-                <Route element={<AdminShell />}>
+                <Route
+                  path="/login"
+                  element={
+                    isAuthenticated ? (
+                      <Navigate to={ROUTES.dashboard} replace />
+                    ) : (
+                      <Login onLogin={handleLogin} />
+                    )
+                  }
+                />
+                {/* Admin console — named paths, guarded */}
+                <Route
+                  element={
+                    isAuthenticated ? (
+                      <AdminShell />
+                    ) : (
+                      <Navigate to="/login" replace />
+                    )
+                  }
+                >
                   <Route path={ROUTES.dashboard} element={<DashboardWithMenu />} />
                   <Route path={ROUTES.companies} element={<CompaniesManagement />} />
                   <Route path={ROUTES.revenue} element={<RevenueAnalytics />} />

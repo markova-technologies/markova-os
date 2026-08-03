@@ -27,6 +27,25 @@ const DataProvider = ({ children }) => {
 
     const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
+    const fetchWithAuth = async (url, options = {}) => {
+        const token = localStorage.getItem('admin_token');
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers,
+        };
+        if (token) {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        const res = await fetch(url, { ...options, headers });
+        if (res.status === 401 || res.status === 403) {
+            localStorage.removeItem('admin_token');
+            localStorage.removeItem('admin_user');
+            window.location.href = '/login';
+            throw new Error('Unauthorized');
+        }
+        return res;
+    };
+
     // Fetch initial data
     useEffect(() => {
         const fetchData = async () => {
@@ -34,17 +53,17 @@ const DataProvider = ({ children }) => {
                 setLoading(true);
 
                 // Fetch agents
-                const agentsRes = await fetch(`${API_BASE}/api/agents`);
+                const agentsRes = await fetchWithAuth(`${API_BASE}/v1/admin/agents`);
                 const agentsData = await agentsRes.json();
                 setAgents(agentsData);
 
-                // Fetch clients
-                const clientsRes = await fetch(`${API_BASE}/api/clients`);
+                // Fetch clients (companies)
+                const clientsRes = await fetchWithAuth(`${API_BASE}/v1/admin/companies`);
                 const clientsData = await clientsRes.json();
                 setClients(clientsData);
 
                 // Fetch analytics
-                const analyticsRes = await fetch(`${API_BASE}/api/analytics`);
+                const analyticsRes = await fetchWithAuth(`${API_BASE}/v1/admin/analytics`);
                 const analyticsData = await analyticsRes.json();
                 setAnalytics(analyticsData);
 
@@ -134,9 +153,8 @@ const DataProvider = ({ children }) => {
 
     const addAgent = async (agentData) => {
         try {
-            const res = await fetch(`${API_BASE}/api/agents`, {
+            const res = await fetchWithAuth(`${API_BASE}/v1/admin/agents`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(agentData),
             });
             const newAgent = await res.json();
@@ -150,9 +168,8 @@ const DataProvider = ({ children }) => {
 
     const updateAgent = async (id, updates) => {
         try {
-            const res = await fetch(`${API_BASE}/api/agents/${id}`, {
+            const res = await fetchWithAuth(`${API_BASE}/v1/admin/agents/${id}`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates),
             });
             const updatedAgent = await res.json();
@@ -168,7 +185,7 @@ const DataProvider = ({ children }) => {
 
     const deleteAgent = async (id) => {
         try {
-            await fetch(`${API_BASE}/api/agents/${id}`, {
+            await fetchWithAuth(`${API_BASE}/v1/admin/agents/${id}`, {
                 method: 'DELETE',
             });
             setAgents(prev => prev.filter(agent => agent.id !== id));
@@ -180,8 +197,9 @@ const DataProvider = ({ children }) => {
 
     const approveClient = async (id) => {
         try {
-            const res = await fetch(`${API_BASE}/api/clients/${id}/approve`, {
-                method: 'POST',
+            const res = await fetchWithAuth(`${API_BASE}/v1/admin/companies/${id}`, {
+                method: 'PUT',
+                body: JSON.stringify({ status: 'active' }),
             });
             const updatedClient = await res.json();
             setClients(prev =>
@@ -196,7 +214,7 @@ const DataProvider = ({ children }) => {
 
     const rejectClient = async (id) => {
         try {
-            await fetch(`${API_BASE}/api/clients/${id}/reject`, {
+            await fetchWithAuth(`${API_BASE}/v1/admin/companies/${id}`, {
                 method: 'DELETE',
             });
             setClients(prev => prev.filter(client => client.id !== id));
@@ -228,9 +246,8 @@ const DataProvider = ({ children }) => {
         rejectClient,
         assignAgent: async (clientId, agentId) => {
             try {
-                const res = await fetch(`${API_BASE}/api/clients/${clientId}/assign-agent`, {
+                const res = await fetchWithAuth(`${API_BASE}/v1/admin/companies/${clientId}/assign-agent`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ agentId }),
                 });
                 const updatedClient = await res.json();
@@ -245,7 +262,7 @@ const DataProvider = ({ children }) => {
         },
         unassignAgent: async (clientId, agentId) => {
             try {
-                const res = await fetch(`${API_BASE}/api/clients/${clientId}/unassign-agent/${agentId}`, {
+                const res = await fetchWithAuth(`${API_BASE}/v1/admin/companies/${clientId}/unassign-agent/${agentId}`, {
                     method: 'DELETE',
                 });
                 const updatedClient = await res.json();

@@ -1,11 +1,15 @@
 const { createClient, commandOptions } = require('redis');
 const { validateEvent } = require('./schemas');
 
+/**
+ * EventBus with Dual-Write capabilities (Redis Streams + Kafka/HTTP Broker Dual-Write)
+ */
 class EventBus {
-  constructor(redisUrl) {
-    this.client = createClient({ url: redisUrl });
+  constructor(redisUrl, options = {}) {
+    this.client = createClient({ url: redisUrl || process.env.REDIS_URL || 'redis://redis:6379' });
     this.client.on('error', (err) => console.error('Redis EventBus Error', err));
     this.streamKey = 'markova_events';
+    this.kafkaBrokerUrl = options.kafkaBrokerUrl || process.env.KAFKA_BROKER_URL || null;
   }
 
   async connect() {
@@ -26,15 +30,31 @@ class EventBus {
       traceId: options.traceId || '',
     };
 
-    // Use XADD to add to Redis Stream
+    // 1. Primary Write: Redis Stream (XADD)
     const id = await this.client.xAdd(this.streamKey, '*', event);
+
+    // 2. Dual-Write: Kafka / Event Broker (Best-effort non-blocking)
+    if (this.kafkaBrokerUrl) {
+      this._publishToKafka(eventType, payload, event).catch(err => {
+        console.warn(`⚠️ Kafka Dual-Write skipped/failed: ${err.message}`);
+      });
+    }
+
     return id;
+  }
+
+  async _publishToKafka(eventType, payload, metadata) {
+    const axios = require('axios');
+    await axios.post(`${this.kafkaBrokerUrl}/v1/events`, {
+      eventType,
+      payload,
+      metadata
+    }, { timeout: 2000 });
   }
 
   async consumeGroup(groupName, consumerName, callback) {
     await this.connect();
 
-    // Create consumer group if it doesn't exist
     try {
       await this.client.xGroupCreate(this.streamKey, groupName, '0', { MKSTREAM: true });
     } catch (e) {
@@ -44,7 +64,6 @@ class EventBus {
       }
     }
 
-    // Poll for messages
     while (true) {
       try {
         const response = await this.client.xReadGroup(
@@ -68,8 +87,6 @@ class EventBus {
             };
 
             await callback(event);
-
-            // Acknowledge the message
             await this.client.xAck(this.streamKey, groupName, message.id);
           }
         }

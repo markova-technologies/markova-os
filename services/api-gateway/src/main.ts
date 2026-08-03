@@ -1,6 +1,7 @@
+import './tracing'; // Must be the absolute first import for OpenTelemetry
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { createProxyMiddleware } from 'http-proxy-middleware';
+const { createProxyMiddleware } = require('http-proxy-middleware');
 import rateLimit from 'express-rate-limit';
 import * as jwt from 'jsonwebtoken';
 

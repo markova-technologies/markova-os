@@ -13,6 +13,8 @@ export class AppController {
   private orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://orchestrator:6000';
   private connectorHubUrl = process.env.CONNECTOR_HUB_URL || 'http://connector-hub:5005';
   private knowledgeServiceUrl = process.env.KNOWLEDGE_SERVICE_URL || 'http://knowledge-service:5006';
+  private capabilityRegistryUrl = process.env.CAPABILITY_REGISTRY_URL || 'http://capability-registry:5009';
+  private plannerServiceUrl = process.env.PLANNER_SERVICE_URL || 'http://planner-service:5006';
 
   // ── Legacy /api/* ──────────────────────────────────────────────────────────
 
@@ -73,6 +75,18 @@ export class AppController {
   @All('v1/auth*')
   proxyAuthV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/admin*')
+  proxyAdminV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res, (url) =>
+      url.replace(/^\/v1\/admin/, '/api/admin'),
+    );
+  }
+
+  @All('api/admin*')
+  proxyAdminLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res);
   }
 
   @All('v1/keys*')
@@ -159,6 +173,21 @@ export class AppController {
     return proxyTo(this.tenantServiceUrl, req, res, (url) =>
       url.replace(/^\/v1\/workflow-settings/, '/api/tenant/workflow-settings'),
     );
+  }
+
+  @All('v1/capabilities*')
+  proxyCapabilitiesV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.capabilityRegistryUrl, req, res);
+  }
+
+  @All('v1/plan*')
+  proxyPlannerV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.plannerServiceUrl, req, res);
+  }
+
+  @All('v1/plans*')
+  proxyPlansV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.plannerServiceUrl, req, res);
   }
 
   // ── Telephony webhooks (public) ────────────────────────────────────────────

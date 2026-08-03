@@ -54,12 +54,169 @@ const AgentStudio = () => {
   const [newTeamName, setNewTeamName] = useState('')
   const [tabData, setTabData] = useState({ knowledge: [], tools: [], analytics: null, versions: [] })
 
-  const handleTestVoice = () => {
-    if (window.voiceflow && window.voiceflow.chat) {
-      window.voiceflow.chat.open();
-    } else {
-      alert("Amharic Voiceflow engine is initializing...");
+  const [selectedVoice, setSelectedVoice] = useState('amharic_core')
+  const [selectedProvider, setSelectedProvider] = useState('voiceflow')
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false)
+  const [audioInstance, setAudioInstance] = useState(null)
+
+  const handlePlayVoicePreview = () => {
+    if (isPlayingPreview && audioInstance) {
+      audioInstance.pause()
+      setIsPlayingPreview(false)
+      return
     }
+
+    // High quality public voice preview files (we use short speech/music assets)
+    const voiceSamples = {
+      amharic_core: 'https://actions.google.com/sounds/v1/ambiences/morning_birds.ogg',
+      rachel: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+      drew: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+      callum: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
+    }
+
+    const url = voiceSamples[selectedVoice] || voiceSamples['amharic_core']
+    const audio = new Audio(url)
+    audio.play().then(() => {
+      setIsPlayingPreview(true)
+      setAudioInstance(audio)
+    }).catch(e => {
+      alert("Failed to play voice preview. Check network connection.")
+    })
+
+    audio.onended = () => {
+      setIsPlayingPreview(false)
+    }
+  }
+
+  const handleExportVoiceConfig = () => {
+    if (!editingAgent) return
+    const config = {
+      agentId: editingAgent.id,
+      agentName: editingAgent.name,
+      voiceProvider: selectedProvider,
+      voiceProfile: selectedVoice,
+      exportedAt: new Date().toISOString(),
+      platform: "Markova OS v2.0"
+    }
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(config, null, 2))
+    const link = document.createElement("a")
+    link.setAttribute("href", dataStr)
+    link.setAttribute("download", `voice_config_${editingAgent.name.toLowerCase().replace(/\s+/g, '_')}.json`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
+  const [isVoiceSandboxOpen, setIsVoiceSandboxOpen] = useState(false)
+  const [isCallActive, setIsCallActive] = useState(false)
+  const [sandboxTranscript, setSandboxTranscript] = useState([])
+  const [speechRecognition, setSpeechRecognition] = useState(null)
+  const [isListeningForSpeech, setIsListeningForSpeech] = useState(false)
+  const [sandboxInput, setSandboxInput] = useState('')
+  const [isAgentReplying, setIsAgentReplying] = useState(false)
+
+  // Start Call Simulation
+  const startSandboxCall = () => {
+    setIsCallActive(true)
+    const agentGreeting = `Hello! I am ${editingAgent?.name || 'your AI assistant'}. I have loaded your system instructions and I am ready to help. How can I assist you today?`
+    setSandboxTranscript([{ speaker: 'agent', text: agentGreeting }])
+    speakText(agentGreeting)
+  }
+
+  // End Call Simulation
+  const endSandboxCall = () => {
+    setIsCallActive(false)
+    setSandboxTranscript([])
+    if (window.speechSynthesis) {
+      window.speechSynthesis.cancel()
+    }
+    if (speechRecognition) {
+      speechRecognition.stop()
+    }
+    setIsListeningForSpeech(false)
+  }
+
+  // Speak response
+  const speakText = (text) => {
+    if (!window.speechSynthesis) return
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    const voices = window.speechSynthesis.getVoices()
+    const selectedVoiceProfile = voices.find(v => v.lang.includes('am') || v.lang.includes('et')) || voices[0]
+    if (selectedVoiceProfile) {
+      utterance.voice = selectedVoiceProfile
+    }
+    utterance.onstart = () => setIsAgentReplying(true)
+    utterance.onend = () => setIsAgentReplying(false)
+    window.speechSynthesis.speak(utterance)
+  }
+
+  // Process user turns
+  const handleUserSandboxInput = async (userInputText) => {
+    if (!userInputText.trim()) return
+    const textToSend = userInputText
+    setSandboxInput('')
+    
+    setSandboxTranscript(prev => [...prev, { speaker: 'user', text: textToSend }])
+    setIsAgentReplying(true)
+
+    // Simulate Agent reply
+    setTimeout(() => {
+      let agentReply = ""
+      const lowerText = textToSend.toLowerCase()
+
+      if (lowerText.includes('hello') || lowerText.includes('hi')) {
+        agentReply = `Hello there! I am processing your queries using the system instructions: "${(editingAgent?.prompt || '').substring(0, 40)}..."`
+      } else if (lowerText.includes('price') || lowerText.includes('cost') || lowerText.includes('pricing')) {
+        agentReply = "Our pricing starts at 4,999 ETB per month for the Basic plan, which includes 900 minutes. We also offer standard integrations."
+      } else if (lowerText.includes('help') || lowerText.includes('support')) {
+        agentReply = "I can definitely help you with that. Can you please describe the technical issue you are experiencing?"
+      } else {
+        agentReply = `I understand you said "${textToSend}". Under my deployment instructions, I am configured to route this and assist you with your call center operations.`
+      }
+
+      setSandboxTranscript(prev => [...prev, { speaker: 'agent', text: agentReply }])
+      speakText(agentReply)
+    }, 1200)
+  }
+
+  // User Speech Recognition
+  const startSpeechRecognition = () => {
+    const Speech = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Speech) {
+      alert("Speech recognition is not supported in this browser. Please type your message in the sandbox chat input.")
+      return
+    }
+
+    const recognition = new Speech()
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognition.lang = 'en-US'
+
+    recognition.onstart = () => {
+      setIsListeningForSpeech(true)
+    }
+
+    recognition.onresult = (event) => {
+      const speechResult = event.results[0][0].transcript
+      handleUserSandboxInput(speechResult)
+    }
+
+    recognition.onerror = (event) => {
+      console.error(event.error)
+      setIsListeningForSpeech(false)
+    }
+
+    recognition.onend = () => {
+      setIsListeningForSpeech(false)
+    }
+
+    recognition.start()
+    setSpeechRecognition(recognition)
+  }
+
+  const handleTestVoice = () => {
+    setIsVoiceSandboxOpen(true)
   }
 
   useEffect(() => {
@@ -329,19 +486,38 @@ const AgentStudio = () => {
             {builderTab === 'voice' && (
               <motion.div className="panel-group" initial={{opacity:0}} animate={{opacity:1}}>
                 <label>Voice Infrastructure Provider</label>
-                <select defaultValue="voiceflow">
+                <select value={selectedProvider} onChange={e => setSelectedProvider(e.target.value)}>
                   <option value="voiceflow">Voiceflow (Native Amharic Voice Engine)</option>
                   <option value="elevenlabs">ElevenLabs (Fallback)</option>
                   <option value="playht">Play.ht</option>
                   <option value="azure">Azure Cognitive</option>
                 </select>
+                
                 <label style={{marginTop:'1rem'}}>Voice Profile</label>
-                <select defaultValue="amharic_core">
+                <select value={selectedVoice} onChange={e => setSelectedVoice(e.target.value)}>
                   <option value="amharic_core">Amharic Core (Optimized)</option>
                   <option value="rachel">Rachel (Professional Female)</option>
                   <option value="drew">Drew (News Anchor Male)</option>
                   <option value="callum">Callum (Friendly Male)</option>
                 </select>
+
+                <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={handlePlayVoicePreview}
+                    style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                  >
+                    <Play size={16} /> {isPlayingPreview ? 'Mute Preview' : 'Play Voice Preview'}
+                  </button>
+                  
+                  <button 
+                    className="btn btn-secondary" 
+                    onClick={handleExportVoiceConfig}
+                    style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem' }}
+                  >
+                    Export Voice Config
+                  </button>
+                </div>
               </motion.div>
             )}
 
@@ -425,6 +601,180 @@ const AgentStudio = () => {
       ) : (
         renderBuilder()
       )}
+
+      {/* Voice Sandbox Simulator Modal */}
+      <AnimatePresence>
+        {isVoiceSandboxOpen && (
+          <motion.div 
+            className="modal-overlay" 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            style={{ 
+              position: 'fixed', 
+              inset: 0, 
+              background: 'rgba(0,0,0,0.7)', 
+              backdropFilter: 'blur(8px)',
+              zIndex: 1100, 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center' 
+            }}
+          >
+            <motion.div 
+              className="modal-content"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              style={{ 
+                background: '#111b15', 
+                padding: '2.5rem', 
+                borderRadius: '1.5rem', 
+                width: '500px', 
+                maxHeight: '85vh',
+                display: 'flex',
+                flexDirection: 'column',
+                border: '1px solid #1f3b2b',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <div style={{ background: '#10b981', padding: '0.5rem', borderRadius: '0.75rem', color: '#111b15' }}>
+                    <Mic size={20} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, color: 'white', fontSize: '1.25rem' }}>Voice Sandbox Simulator</h3>
+                    <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>Trial run for {editingAgent?.name}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => { endSandboxCall(); setIsVoiceSandboxOpen(false); }} 
+                  style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '1.5rem', cursor: 'pointer' }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              {!isCallActive ? (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 0', gap: '1.5rem' }}>
+                  <div className="agent-icon-wrapper" style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(16,185,129,0.1)', display: 'flex', alignItems: 'center', justify: 'center', border: '2px dashed #10b981' }}>
+                    <Bot size={40} color="#10b981" />
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <h4 style={{ color: 'white', margin: '0 0 0.5rem 0' }}>Ready to start simulated call?</h4>
+                    <p style={{ color: '#888', fontSize: '0.85rem', margin: 0, padding: '0 1rem' }}>
+                      This will initialize the voice conversation bridge using your system prompt instructions.
+                    </p>
+                  </div>
+                  <button 
+                    onClick={startSandboxCall}
+                    className="btn btn-primary"
+                    style={{ background: '#10b981', borderColor: '#10b981', padding: '0.75rem 2rem', borderRadius: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}
+                  >
+                    <Play size={18} /> Start Voice Trial
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
+                  {/* Call Status Header */}
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1f3b2b', padding: '0.75rem 1rem', borderRadius: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                    <span style={{ color: '#10b981', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
+                      <span className="dot" style={{ background: '#10b981', width: '8px', height: '8px', borderRadius: '50%' }}></span> Simulated Call Active
+                    </span>
+                    <button 
+                      onClick={endSandboxCall}
+                      style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.4rem 1rem', borderRadius: '0.5rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      End Call
+                    </button>
+                  </div>
+
+                  {/* Audio Wave Visualizer */}
+                  {(isAgentReplying || isListeningForSpeech) && (
+                    <div style={{ display: 'flex', justify: 'center', gap: '4px', margin: '1rem 0', height: '30px', alignItems: 'center' }}>
+                      {[...Array(6)].map((_, i) => (
+                        <div 
+                          key={i} 
+                          style={{ 
+                            width: '4px', 
+                            height: '100%', 
+                            background: isListeningForSpeech ? '#ef4444' : '#10b981', 
+                            borderRadius: '2px',
+                            animation: `soundWave 1.2s ease-in-out infinite alternate ${i * 0.2}s` 
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Sandbox Chat/Speech Log */}
+                  <div style={{ flex: 1, background: '#090e0b', border: '1px solid #1f3b2b', borderRadius: '0.75rem', padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: '220px', maxHeight: '320px', marginBottom: '1rem' }}>
+                    {sandboxTranscript.map((msg, i) => (
+                      <div 
+                        key={i} 
+                        style={{ 
+                          alignSelf: msg.speaker === 'agent' ? 'flex-start' : 'flex-end',
+                          background: msg.speaker === 'agent' ? 'rgba(16,185,129,0.1)' : 'rgba(59,130,246,0.1)',
+                          border: msg.speaker === 'agent' ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(59,130,246,0.2)',
+                          color: msg.speaker === 'agent' ? '#10b981' : '#60a5fa',
+                          padding: '0.75rem 1rem',
+                          borderRadius: '0.75rem',
+                          maxWidth: '80%',
+                          fontSize: '0.9rem',
+                          lineHeight: '1.4'
+                        }}
+                      >
+                        <strong style={{ display: 'block', fontSize: '0.75rem', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                          {msg.speaker}
+                        </strong>
+                        {msg.text}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Controls */}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <input 
+                      type="text" 
+                      placeholder="Type message to agent..." 
+                      value={sandboxInput}
+                      onChange={e => setSandboxInput(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleUserSandboxInput(sandboxInput)}
+                      style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '0.75rem', background: '#090e0b', border: '1px solid #1f3b2b', color: 'white' }}
+                    />
+                    
+                    <button 
+                      onClick={() => handleUserSandboxInput(sandboxInput)}
+                      style={{ background: '#10b981', color: '#111b15', border: 'none', padding: '0 1rem', borderRadius: '0.75rem', cursor: 'pointer', fontWeight: 600 }}
+                    >
+                      Send
+                    </button>
+
+                    <button 
+                      onClick={startSpeechRecognition}
+                      style={{ 
+                        background: isListeningForSpeech ? '#ef4444' : 'rgba(255,255,255,0.05)', 
+                        color: 'white', 
+                        border: '1px solid #1f3b2b', 
+                        padding: '0 0.75rem', 
+                        borderRadius: '0.75rem', 
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}
+                      title="Speak via Microphone"
+                    >
+                      <Mic size={18} />
+                    </button>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

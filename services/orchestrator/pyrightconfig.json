@@ -1,0 +1,9 @@
+{
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
+  ]
+}

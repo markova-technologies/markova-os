@@ -11,7 +11,12 @@ export default defineConfig({
       allow: ['..', '../..'],
     },
     proxy: {
-      // All /api/* requests proxy to the central API Gateway
+      // All /v1/* and /api/* requests proxy to the central API Gateway
+      '/v1': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/api': {
         target: 'http://localhost:8000',
         changeOrigin: true,

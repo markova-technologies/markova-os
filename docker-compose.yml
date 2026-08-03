@@ -187,6 +187,8 @@ services:
       - CONNECTOR_HUB_URL=http://connector-hub:5005
       - KNOWLEDGE_SERVICE_URL=http://knowledge-service:5006
       - ORCHESTRATOR_URL=http://orchestrator:6000
+      - CAPABILITY_REGISTRY_URL=http://capability-registry:5009
+      - PLANNER_SERVICE_URL=http://planner-service:5006
       - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
     volumes:
       - ./openapi.yaml:/openapi.yaml:ro
@@ -212,6 +214,82 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    restart: always
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Phase 1-4 Services (New Microservices — capability-registry, planner, voice, media)
+  # ─────────────────────────────────────────────────────────────────────────────
+  capability-registry:
+    build:
+      context: .
+      dockerfile: services/capability-registry/Dockerfile
+    container_name: markova-capability-registry
+    ports:
+      - "5009:5009"
+    environment:
+      - PORT=5009
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  planner-service:
+    build:
+      context: .
+      dockerfile: services/planner-service/Dockerfile
+    container_name: markova-planner-service
+    ports:
+      - "5010:5006"
+    environment:
+      - PORT=5006
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - CAPABILITY_REGISTRY_URL=http://capability-registry:5009
+    depends_on:
+      postgres:
+        condition: service_healthy
+      capability-registry:
+        condition: service_started
+    restart: always
+
+  voice-runtime:
+    build:
+      context: .
+      dockerfile: services/voice-runtime/Dockerfile
+    container_name: markova-voice-runtime
+    ports:
+      - "5007:5007"
+    environment:
+      - PORT=5007
+      - REDIS_URL=redis://redis:6379
+      - ORCHESTRATOR_URL=http://orchestrator:6000
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  voice-runtime-go:
+    build:
+      context: ./services/voice-runtime-go
+      dockerfile: Dockerfile
+    container_name: markova-voice-runtime-go
+    ports:
+      - "5008:5008"
+    environment:
+      - PORT=5008
+    restart: always
+
+  media-server-go:
+    build:
+      context: ./services/media-server-go
+      dockerfile: Dockerfile
+    container_name: markova-media-server-go
+    ports:
+      - "10000:10000/udp"
+    environment:
+      - RTP_PORT=10000
     restart: always
 
 volumes:

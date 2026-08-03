@@ -159,6 +159,28 @@ const CallCenter = () => {
     }
   }, [selectedCall?.transcript])
 
+  const handleExportCSV = () => {
+    if (!selectedCall) return
+    const headers = ['Speaker', 'Transcript Text']
+    const rows = (selectedCall.transcript || []).map(row => {
+      const speaker = row.speaker || 'unknown'
+      const text = (row.text || '').replace(/"/g, '""')
+      return `"${speaker}","${text}"`
+    })
+
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + headers.join(",") + "\n" 
+      + rows.join("\n")
+    
+    const encodedUri = encodeURI(csvContent)
+    const link = document.createElement("a")
+    link.setAttribute("href", encodedUri)
+    link.setAttribute("download", `call_transcript_${selectedCall.id}.csv`)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+  }
+
   const handleListenIn = () => {
     setIsListening(!isListening)
     if (!isListening) {
@@ -279,7 +301,7 @@ const CallCenter = () => {
                   </div>
                 </div>
                 <div className="dh-actions">
-                  <button className="btn btn-secondary"><Download size={16} /> Export CSV</button>
+                  <button className="btn btn-secondary" onClick={handleExportCSV}><Download size={16} /> Export CSV</button>
                   {selectedCall.status === 'live' && (
                     <>
                       <button className="btn btn-secondary" onClick={handleListenIn} style={{ background: isListening ? 'var(--bg-card)' : 'transparent', border: isListening ? '1px solid #10b981' : '1px solid var(--border-main)' }}>
@@ -344,8 +366,8 @@ const CallCenter = () => {
                     {selectedCall.status === 'live' ? (
                       <p style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Recording in progress...</p>
                     ) : (
-                      <audio controls className="audio-player" style={{ width: '100%' }}>
-                        <source src="#" type="audio/mpeg" />
+                      <audio controls key={selectedCall.id} className="audio-player" style={{ width: '100%' }}>
+                        <source src={selectedCall.audioUrl || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"} type="audio/mpeg" />
                         Your browser does not support the audio element.
                       </audio>
                     )}

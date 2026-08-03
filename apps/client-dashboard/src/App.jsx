@@ -33,6 +33,7 @@ import { ToastProvider } from './contexts/ToastContext'
 import { EnvironmentProvider } from './contexts/EnvironmentContext'
 import EnvironmentStrip from './components/EnvironmentStrip'
 import SystemHealthBar from './components/SystemHealthBar'
+import ImpersonationBanner from './components/ImpersonationBanner'
 import MobileBottomBar from './components/MobileBottomBar'
 import './App.css'
 
@@ -173,6 +174,7 @@ function App() {
             isAuthenticated ? (
               <EnvironmentProvider>
                 <div className="app-container">
+                  <ImpersonationBanner user={user} />
                   <SystemHealthBar />
                   <EnvironmentStrip />
                   <Sidebar

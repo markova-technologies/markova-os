@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: markova-api-gateway
+  namespace: markova-prod
+  labels:
+    app: markova-api-gateway
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: markova-api-gateway
+  template:
+    metadata:
+      labels:
+        app: markova-api-gateway
+    spec:
+      containers:
+      - name: api-gateway
+        image: markova/api-gateway:latest
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: markova-secrets
+        resources:
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+          requests:
+            cpu: "250m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: markova-api-gateway
+  namespace: markova-prod
+spec:
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+  selector:
+    app: markova-api-gateway
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: markova-orchestrator
+  namespace: markova-prod
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: markova-orchestrator
+  template:
+    metadata:
+      labels:
+        app: markova-orchestrator
+    spec:
+      containers:
+      - name: orchestrator
+        image: markova/orchestrator:latest
+        ports:
+        - containerPort: 6000
+        envFrom:
+        - secretRef:
+            name: markova-secrets
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: markova-orchestrator
+  namespace: markova-prod
+spec:
+  ports:
+  - port: 6000
+    targetPort: 6000
+    name: http
+  selector:
+    app: markova-orchestrator
