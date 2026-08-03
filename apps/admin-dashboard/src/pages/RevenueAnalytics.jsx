@@ -7,6 +7,7 @@ import { DollarSign, TrendingUp, Users, ArrowUpRight, ArrowDownRight, Download }
 export default function RevenueAnalytics() {
   const [revenueData, setRevenueData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     fetchRevenueData();
@@ -14,49 +15,22 @@ export default function RevenueAnalytics() {
 
   const fetchRevenueData = async () => {
     setIsLoading(true);
+    setError(null);
     try {
-      // Mocking /api/admin/revenue endpoint
-      const res = await axios.get('http://localhost:8000/api/admin/revenue').catch(() => ({
-        data: {
-          metrics: {
-            mrr: 45200,
-            arr: 542400,
-            mrrGrowth: 12.5,
-            newSubscriptions: 18,
-            churnRate: 1.2,
-            arpu: 383
-          },
-          revenueTrend: [
-            { month: 'Jan', revenue: 32000, expenses: 15000 },
-            { month: 'Feb', revenue: 35000, expenses: 16000 },
-            { month: 'Mar', revenue: 38500, expenses: 16500 },
-            { month: 'Apr', revenue: 41000, expenses: 18000 },
-            { month: 'May', revenue: 43500, expenses: 19000 },
-            { month: 'Jun', revenue: 45200, expenses: 20500 }
-          ],
-          planDistribution: [
-            { name: 'Starter', value: 45, color: '#3b82f6' },
-            { name: 'Growth', value: 55, color: '#10b981' },
-            { name: 'Enterprise', value: 18, color: '#8b5cf6' }
-          ],
-          recentTransactions: [
-            { id: 'TRX-101', tenant: 'Acme Corp', amount: 299.00, plan: 'Growth', date: '2026-06-29', status: 'completed' },
-            { id: 'TRX-102', tenant: 'MedHealth Clinics', amount: 999.00, plan: 'Enterprise', date: '2026-06-28', status: 'completed' },
-            { id: 'TRX-103', tenant: 'EduTech Online', amount: 99.00, plan: 'Starter', date: '2026-06-28', status: 'completed' },
-            { id: 'TRX-104', tenant: 'FastRetail', amount: 299.00, plan: 'Growth', date: '2026-06-27', status: 'failed' },
-            { id: 'TRX-105', tenant: 'Global Logistics', amount: 99.00, plan: 'Starter', date: '2026-06-27', status: 'completed' }
-          ]
-        }
-      }));
+      const res = await axios.get(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/admin/revenue`,
+        { headers: { Authorization: `Bearer ${localStorage.getItem('admin_token')}` } }
+      );
       setRevenueData(res.data);
-    } catch (error) {
-      console.error('Failed to fetch revenue data:', error);
+    } catch (err) {
+      console.error('Failed to fetch revenue data:', err);
+      setError(err?.response?.data?.error || 'Failed to load revenue data. Check API connection.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (isLoading || !revenueData) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full text-emerald-400">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mr-3"></div>
@@ -64,6 +38,23 @@ export default function RevenueAnalytics() {
       </div>
     );
   }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <div className="text-red-400 text-lg font-semibold">⚠️ Revenue data unavailable</div>
+        <p className="text-gray-400 text-sm max-w-md text-center">{error}</p>
+        <button
+          onClick={fetchRevenueData}
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-sm transition-colors"
+        >
+          Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (!revenueData) return null;
 
   const formatCurrency = (val) => `$${val.toLocaleString()}`;
 

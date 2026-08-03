@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -46,7 +47,7 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 
 	streamSid := r.URL.Query().Get("streamSid")
 	if streamSid == "" {
-		streamSid = fmt.Sprintf("stream_%d", http.TimeNow().UnixNano())
+		streamSid = fmt.Sprintf("stream_%d", time.Now().UnixNano())
 	}
 
 	streamsMutex.Lock()

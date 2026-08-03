@@ -31,6 +31,7 @@ import asyncpg  # type: ignore
 import httpx
 import redis.asyncio as aioredis  # type: ignore
 from semantic_cache import SemanticCache
+import crypto  # local AES-256-GCM encrypt/decrypt module
 
 semantic_cache = SemanticCache(similarity_threshold=0.92)
 from dotenv import load_dotenv
@@ -169,8 +170,6 @@ async def get_routing_rules_for_phone(phone_number_id: str, company_id: str) -> 
             out.extend(rules)
     return out
 
-
-import crypto # Added for decryption
 
 async def get_provider_config(company_id: str, provider_type: str, provider_name: str) -> Optional[dict]:
     """Fetch provider credentials for a company."""

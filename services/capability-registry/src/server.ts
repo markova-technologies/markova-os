@@ -9,7 +9,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 5005;
+const PORT = process.env.PORT || 5009;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL
