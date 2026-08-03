@@ -27,9 +27,9 @@ import uuid
 from contextlib import asynccontextmanager
 from typing import Optional, Tuple
 
-import asyncpg
+import asyncpg  # type: ignore
 import httpx
-import redis.asyncio as aioredis
+import redis.asyncio as aioredis  # type: ignore
 from semantic_cache import SemanticCache
 
 semantic_cache = SemanticCache(similarity_threshold=0.92)
@@ -602,7 +602,7 @@ async def _azure_tts(voice_id: str, text: str, api_key: str) -> bytes:
 
 
 async def _edge_tts(voice_id: str, text: str) -> bytes:
-    import edge_tts
+    import edge_tts  # type: ignore
     voice = voice_id or "am-ET-MekdesNeural"
     communicate = edge_tts.Communicate(text, voice)
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tmp:

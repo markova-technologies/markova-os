@@ -1,11 +1,9 @@
 {
-  "venvPath": ".",
-  "venv": ".venv",
-  "pythonVersion": "3.11",
-  "pythonPlatform": "Windows",
-  "typeCheckingMode": "basic",
-  "reportMissingModuleSource": "warning",
-  "exclude": [
-    "__pycache__"
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false,
+  "executionEnvironments": [
+    {
+      "root": "."
+    }
   ]
 }
