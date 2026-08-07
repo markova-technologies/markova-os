@@ -9,11 +9,22 @@ from typing import Optional, List
 
 from embeddings import embed_text, vector_literal, embedding_backend
 
+ALLOWED_EXTENSIONS = frozenset({
+    '.txt', '.pdf', '.docx', '.doc', '.csv',
+    '.md', '.json', '.xlsx', '.xls', '.odt'
+})
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB hard limit
+
 app = FastAPI(title="Markova Knowledge Service")
+
+_ALLOWED_ORIGINS = [
+    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
+    if o.strip()
+] or ["http://localhost:5173", "http://localhost:3000"]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,21 +36,36 @@ if not DATABASE_URL:
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Helper function to get database connection with retries
-def get_db_connection(retries=10, delay=3):
-    for i in range(retries):
-        try:
-            conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-            return conn
-        except Exception as e:
-            print(f"Database connection attempt {i+1} failed: {e}")
-            print(f"Retrying in {delay}s...")
-            time.sleep(delay)
-    raise Exception("Could not connect to PostgreSQL database")
+from psycopg2 import pool as _pg_pool
 
-# Test connection on startup
-conn = get_db_connection()
-conn.close()
+_db_pool = None
+
+def init_db_pool():
+    global _db_pool
+    for i in range(10):
+        try:
+            _db_pool = _pg_pool.ThreadedConnectionPool(
+                2, 10, DATABASE_URL, cursor_factory=RealDictCursor
+            )
+            print("✅ Knowledge Service: DB connection pool initialized (2-10 connections)")
+            return
+        except Exception as e:
+            print(f"DB pool init attempt {i+1} failed: {e}")
+            time.sleep(3)
+    raise RuntimeError("Could not initialize DB pool after 10 attempts")
+
+def get_db_connection():
+    """Get a connection from the pool. Always call release() in a finally block."""
+    return _db_pool.getconn()
+
+def release_db_connection(conn):
+    """Return a connection to the pool."""
+    if conn and _db_pool:
+        _db_pool.putconn(conn)
+
+@app.on_event("startup")
+def startup():
+    init_db_pool()
 
 class SourceCreate(BaseModel):
     name: str
@@ -106,7 +132,7 @@ async def create_source(
         print("Create source error:", e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        conn.close()
+        release_db_connection(conn)
 
 @app.get("/api/knowledge/sources")
 async def list_sources(
@@ -128,9 +154,29 @@ async def list_sources(
         print("List sources error:", e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        conn.close()
+        release_db_connection(conn)
 
 async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
+    # ── Security: validate file type and size ────────────────────────────────
+    raw_ext = os.path.splitext(file.filename or "")[1].lower()
+    if raw_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{raw_ext}' is not allowed. Permitted: {sorted(ALLOWED_EXTENSIONS)}"
+        )
+
+    content = await file.read()  # Read once
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File size {len(content):,} bytes exceeds the 50MB limit."
+        )
+    # ── End security validation ──────────────────────────────────────────────
+
+    # Sanitize filename: strip path components, keep only the base name
+    safe_filename = os.path.basename(file.filename or "unnamed") \
+                      .replace("..", "").replace("/", "").replace("\\", "")
+                      
     conn = get_db_connection()
     try:
         with conn.cursor() as cur:
@@ -141,10 +187,8 @@ async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Knowledge source not found or not owned by company")
 
-            file_extension = os.path.splitext(file.filename or "")[1]
-            unique_filename = f"{source_id}_{int(time.time())}{file_extension}"
+            unique_filename = f"{source_id}_{int(time.time())}{raw_ext}"
             file_path = os.path.join(UPLOAD_DIR, unique_filename)
-            content = await file.read()
             with open(file_path, "wb") as f:
                 f.write(content)
 
@@ -152,7 +196,7 @@ async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
                 """INSERT INTO knowledge_documents (source_id, file_name, file_path, file_size, status)
                    VALUES (%s, %s, %s, %s, 'uploaded')
                    RETURNING id, source_id, file_name, file_path, file_size, status, created_at""",
-                (source_id, file.filename, file_path, len(content))
+                (source_id, safe_filename, file_path, len(content))
             )
             document = cur.fetchone()
             # Index plain-text chunks for tenant-scoped search (Phase 2 keyword)
@@ -184,7 +228,7 @@ async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
         print("Upload document error:", e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        conn.close()
+        release_db_connection(conn)
 
 
 @app.post("/api/knowledge/upload")
@@ -237,7 +281,7 @@ async def list_documents(
         print("List documents error:", e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        conn.close()
+        release_db_connection(conn)
 
 
 class SearchRequest(BaseModel):
@@ -314,7 +358,7 @@ async def search_knowledge(
         print("Search error:", e)
         raise HTTPException(status_code=500, detail="Internal server error")
     finally:
-        conn.close()
+        release_db_connection(conn)
 
 
 @app.get("/health")

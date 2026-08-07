@@ -30,9 +30,38 @@ async function TenantGuard(req, res, next) {
     } 
     // Otherwise check for API key or internal headers from Gateway
     else if (req.headers['x-tenant-id']) {
+      const tenantId   = req.headers['x-tenant-id'];
+      const userId     = req.headers['x-user-id'];
+      const ts         = req.headers['x-gateway-timestamp'];
+      const sig        = req.headers['x-gateway-sig'];
+      const secret     = process.env.SERVICE_AUTH_SECRET;
+
+      if (!secret || !ts || !sig) {
+          return res.status(401).json({ error: 'Missing gateway authentication signature' });
+      }
+
+      // Replay attack protection: reject tokens older than 5 minutes
+      if (Date.now() - parseInt(ts) > 300_000) {
+          return res.status(401).json({ error: 'Gateway signature expired' });
+      }
+
+      const expectedPayload = `${tenantId}:${userId}:${ts}`;
+      const crypto = require('crypto');
+      const expectedSig = crypto
+          .createHmac('sha256', secret)
+          .update(expectedPayload)
+          .digest('hex');
+
+      const sigBuf  = Buffer.from(sig, 'utf8');
+      const expBuf  = Buffer.from(expectedSig, 'utf8');
+      if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
+          console.error(`⚠️ TenantGuard: gateway signature mismatch for tenant ${tenantId}`);
+          return res.status(401).json({ error: 'Invalid gateway signature' });
+      }
+
       context = new SecurityContext({
-        tenantId: req.headers['x-tenant-id'],
-        userId: req.headers['x-user-id'],
+        tenantId,
+        userId,
         sessionId: req.headers['x-session-id'],
         role: req.headers['x-role'],
         permissions: req.headers['x-permissions'] ? req.headers['x-permissions'].split(',') : [],

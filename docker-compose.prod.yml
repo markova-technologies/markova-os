@@ -1,0 +1,44 @@
+# Production overrides — apply with:
+# docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+services:
+  # Remove all direct port bindings from internal services.
+  # Only the API gateway is the public entry point.
+  auth-service:
+    ports: []
+
+  tenant-service:
+    ports: []
+
+  agent-builder:
+    ports: []
+
+  tool-engine:
+    ports: []
+
+  knowledge-service:
+    ports: []
+
+  connector-hub:
+    ports: []
+
+  orchestrator:
+    ports: []
+
+  capability-registry:
+    ports: []
+
+  planner-service:
+    ports: []
+
+  voice-runtime:
+    ports: []
+
+  voice-runtime-go:
+    ports: []
+
+  # Only the gateway is externally accessible
+  api-gateway:
+    ports:
+      - "443:8000"   # HTTPS termination via reverse proxy (nginx/Cloudflare)

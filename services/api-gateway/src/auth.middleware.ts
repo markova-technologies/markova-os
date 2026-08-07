@@ -224,6 +224,19 @@ export class AuthMiddleware implements NestMiddleware {
       req.headers['x-admin-role'] = userRole;
     }
 
+    // Sign the injected tenant context so internal services can verify it came from the gateway
+    const gwTimestamp = Date.now().toString();
+    const gwPayload = `${tenantContext.tenantId}:${tenantContext.userId}:${gwTimestamp}`;
+    const gwSecret = process.env.SERVICE_AUTH_SECRET;
+    if (gwSecret) {
+        const { createHmac } = await import('crypto');
+        const gwSig = createHmac('sha256', gwSecret)
+                        .update(gwPayload)
+                        .digest('hex');
+        req.headers['x-gateway-timestamp'] = gwTimestamp;
+        req.headers['x-gateway-sig'] = gwSig;
+    }
+
     next();
   }
 }

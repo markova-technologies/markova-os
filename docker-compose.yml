@@ -122,6 +122,7 @@ services:
     environment:
       - PORT=5006
       - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - ALLOWED_ORIGINS=https://dashboard.markova.ai,https://admin.markova.ai,http://localhost:5173,http://localhost:3000
     depends_on:
       postgres:
         condition: service_healthy
@@ -160,6 +161,9 @@ services:
       - CONNECTOR_HUB_URL=http://connector-hub:5005
       - TENANT_SERVICE_URL=http://tenant-service:5002
       - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:?TWILIO_AUTH_TOKEN must be set in .env}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:?err}
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:?err}
     depends_on:
       postgres:
         condition: service_healthy
@@ -279,6 +283,12 @@ services:
       - "5008:5008"
     environment:
       - PORT=5008
+      - ORCHESTRATOR_URL=http://orchestrator:6000
+      - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:?err}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - orchestrator
+      - redis
     restart: always
 
   media-server-go:
@@ -287,9 +297,22 @@ services:
       dockerfile: Dockerfile
     container_name: markova-media-server-go
     ports:
+      - "5012:5012"
       - "10000:10000/udp"
     environment:
+      - PORT=5012
       - RTP_PORT=10000
+      - TURN_USERNAME=${TURN_USERNAME:-markova}
+      - TURN_PASSWORD=${TURN_PASSWORD:-markova123}
+    restart: always
+
+  coturn:
+    image: coturn/coturn:4.6.2
+    container_name: markova-coturn
+    ports:
+      - "3478:3478"
+      - "3478:3478/udp"
+    command: -n --log-file=stdout --min-port=49152 --max-port=65535 --lt-cred-mech --user=${TURN_USERNAME:-markova}:${TURN_PASSWORD:-markova123} --realm=markova.tech
     restart: always
 
 volumes:

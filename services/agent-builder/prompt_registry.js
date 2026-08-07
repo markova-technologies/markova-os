@@ -80,6 +80,48 @@ class PromptRegistry {
     );
     return res.rows;
   }
+  // Prompt injection and safety patterns
+  static INJECTION_PATTERNS = [
+      /ignore\s+(all\s+)?previous\s+instructions/i,
+      /you\s+are\s+now\s+a?\s+different/i,
+      /disregard\s+(all|prior|previous)/i,
+      /jailbreak/i,
+      /\bDAN\b/,  // "Do Anything Now" jailbreak
+      /(extract|steal|collect|exfiltrate)\s+(password|pin|card\s+number|account)/i,
+      /http[s]?:\/\//,                 // No URLs in system prompts
+      /\bsystem\b\s*:\s*/i,            // No "system:" role injection
+      /\[\s*INST\s*\]/i,               // LLaMA instruction injection
+      /<\|im_start\|>/i,               // GPT instruction injection
+  ];
+
+  /**
+   * Returns a list of security violations found in the prompt.
+   * Returns [] if prompt is safe.
+   */
+  static scanPromptSafety(prompt) {
+      if (!prompt || typeof prompt !== 'string') return ['Invalid prompt format'];
+      const violations = [];
+      for (const pattern of PromptRegistry.INJECTION_PATTERNS) {
+          if (pattern.test(prompt)) {
+              violations.push(`Matched injection pattern: ${pattern.source}`);
+          }
+      }
+      // Check for suspicious length (LLM budget exhaustion attack)
+      if (prompt.length > 10000) {
+          violations.push(`Prompt too long: ${prompt.length} chars (max 10,000)`);
+      }
+      return violations;
+  }
+
+  async createVersionSafe(agentId, prompt, commitMessage = 'Updated prompt') {
+      const violations = PromptRegistry.scanPromptSafety(prompt);
+      if (violations.length > 0) {
+          throw new Error(
+              `Prompt rejected by safety scanner. Violations:\n${violations.join('\n')}`
+          );
+      }
+      return this.createVersion(agentId, prompt, commitMessage);
+  }
 }
 
 module.exports = PromptRegistry;

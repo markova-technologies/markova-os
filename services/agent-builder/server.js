@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const TenantGuard = require('../../kernel/identity/tenant-guard');
 const TenantDb = require('../../kernel/identity/tenant-db');
 const requestLogger = require('../../kernel/identity/request-logger');
+const PromptRegistry = require('./prompt_registry');
 require('dotenv').config();
 
 const app = express();
@@ -72,6 +73,11 @@ app.post('/api/builder/agents', async (req, res) => {
       error: 'Missing required agent fields',
       required: ['name', 'prompt', 'voice_config|voice_provider+voice_id', 'model_config|model_provider+model_id'],
     });
+  }
+
+  const violations = PromptRegistry.scanPromptSafety(prompt);
+  if (violations.length > 0) {
+      return res.status(400).json({ error: `Prompt rejected by safety scanner. Violations:\n${violations.join('\n')}` });
   }
 
   try {
@@ -161,6 +167,11 @@ app.put('/api/builder/agents/:id', async (req, res) => {
   const userId = auditUserId(ctx);
   const { id } = req.params;
   const { name, prompt, voice_provider, voice_id, model_provider, model_id } = req.body;
+
+  const violations = PromptRegistry.scanPromptSafety(prompt);
+  if (violations.length > 0) {
+      return res.status(400).json({ error: `Prompt rejected by safety scanner. Violations:\n${violations.join('\n')}` });
+  }
 
   try {
     const updatedAgent = await tenantDb.withTenant(ctx, async (client) => {

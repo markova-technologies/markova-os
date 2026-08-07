@@ -11,9 +11,15 @@ export class RateLimiterService {
 
   // Per-plan request limits (requests per minute)
   private readonly PLAN_LIMITS: Record<string, number> = {
+    // Canonical plan IDs (from tenant-service pricing)
     starter: 60,
+    basic: 60,
     growth: 200,
+    plus: 200,
     enterprise: 1000,
+    // Legacy aliases
+    free: 30,
+    trial: 30,
   };
 
   constructor() {

@@ -24,6 +24,7 @@ import re
 import tempfile
 import time
 import uuid
+from xml.sax.saxutils import escape as _xml_escape
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 from typing import Optional, Tuple
@@ -31,16 +32,72 @@ from typing import Optional, Tuple
 import asyncpg  # type: ignore
 import httpx
 import redis.asyncio as aioredis  # type: ignore
-from semantic_cache import SemanticCache
+from semantic_cache import DistributedSemanticCache
 import crypto  # local AES-256-GCM encrypt/decrypt module
 
-semantic_cache = SemanticCache(similarity_threshold=0.92)
+import structlog
+structlog.configure(
+    processors=[
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.stdlib.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.JSONRenderer()
+    ],
+)
+logger = structlog.get_logger()
+
+semantic_cache = None
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
+
+import re as _re
+
+_VALID_TWILIO_RECORDING_URL = _re.compile(
+    r'^https://(?:[a-z0-9\-]+\.)?twilio\.com/'
+    r'|^https://(?:[a-z0-9\-]+\.)?twilio\.media/',
+    _re.IGNORECASE
+)
+
+def _validate_recording_url(url: str) -> bool:
+    """
+    SSRF guard: only allow recording URLs from Twilio's own domains.
+    Rejects: 169.254.x.x, redis://, internal hostnames, etc.
+    """
+    if not url or len(url) > 512:
+        return False
+    return bool(_VALID_TWILIO_RECORDING_URL.match(url))
+
+_E164_RE = _re.compile(r'^\+[1-9]\d{6,14}$')
+# Ethiopian, International premium-rate, and special prefixes to block
+_BLOCKED_PREFIXES = [
+    '+1900', '+1976', '+44909', '+44870', '+44871', '+44872',
+    '+44873', '+44874', '+44875', '+44876', '+44877', '+44878',
+    '+44879', '+44118', '+44119', '+44842', '+44843', '+44844',
+    '+44845', '+44846', '+44847', '+44848', '+44849',
+]
+
+def _validate_dial_target(target: str) -> bool:
+    """
+    Validates a phone number intended for Twilio <Dial>.
+    Returns True only for valid E.164 format non-premium-rate numbers.
+    """
+    if not target or not isinstance(target, str):
+        return False
+    target = target.strip()
+    if not _E164_RE.match(target):
+        print(f"⚠️ Dial validation failed: '{target}' is not valid E.164 format")
+        return False
+    for prefix in _BLOCKED_PREFIXES:
+        if target.startswith(prefix):
+            print(f"❌ Dial blocked: '{target}' matches premium-rate prefix '{prefix}'")
+            return False
+    return True
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
@@ -52,6 +109,7 @@ REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 TOOL_ENGINE_URL = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
 PORT = int(os.getenv("PORT", 6000))
 AUDIO_DIR = os.getenv("AUDIO_DIR", "/app/audio")
+DATA_RESIDENCY_MODE = os.getenv("DATA_RESIDENCY_MODE", "").lower() == "true"
 
 # Create audio directory if it doesn't exist
 os.makedirs(AUDIO_DIR, exist_ok=True)
@@ -79,13 +137,24 @@ async def cleanup_old_audio():
         await asyncio.sleep(86400)
 
 
+async def cleanup_semantic_cache_task():
+    while True:
+        await asyncio.sleep(3600)  # Run hourly
+        try:
+            if db_pool:
+                await db_pool.execute("SELECT cleanup_semantic_cache()")
+                print("🧹 Semantic cache cleanup complete")
+        except Exception as e:
+            print(f"⚠️ Semantic cache cleanup error: {e}")
+
+
 # Fallback in-memory state and degraded status tracking
 _in_memory_state: dict[str, str] = {}
 REDIS_DEGRADED: bool = False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global db_pool, redis_client, REDIS_DEGRADED
+    global db_pool, redis_client, REDIS_DEGRADED, semantic_cache
 
     # Connect PostgreSQL with up to 20 attempts & exponential/bounded backoff (for Render cold starts)
     for attempt in range(20):
@@ -118,14 +187,25 @@ async def lifespan(app: FastAPI):
 
     print(f"🚀 Orchestrator ready on port {PORT} (Redis Degraded: {REDIS_DEGRADED})")
     
+    # Initialize Distributed Semantic Cache
+    semantic_cache = DistributedSemanticCache(
+        redis_client=redis_client,
+        db_pool=db_pool,
+        similarity_threshold=0.92,
+    )
+
     # Start background tasks
     pubsub_task = asyncio.create_task(listen_for_logs())
     cleanup_task = asyncio.create_task(cleanup_old_audio())
+    semantic_cache_cleanup_task = asyncio.create_task(cleanup_semantic_cache_task())
+    transcript_consumer_task = asyncio.create_task(consume_transcript_stream())
 
     yield
     
     pubsub_task.cancel()
     cleanup_task.cancel()
+    semantic_cache_cleanup_task.cancel()
+    transcript_consumer_task.cancel()
     if db_pool:
         await db_pool.close()
     if redis_client:
@@ -747,8 +827,6 @@ async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str) 
             return await _openai_tts(voice_id, text, api_key)
         elif provider == "azure":
             return await _azure_tts(voice_id, text, api_key)
-        elif provider == "google":
-            return await _google_tts(voice_id or "am", text)
     except Exception as e:
         print(f"⚠️ Primary TTS {provider} failed: {e}. Falling back to edge-tts / addisai.")
         
@@ -842,22 +920,6 @@ async def _edge_tts(voice_id: str, text: str) -> bytes:
     finally:
         if os.path.exists(tmp_name):
             os.unlink(tmp_name)
-
-
-async def _google_tts(lang: str, text: str) -> bytes:
-    from urllib.parse import quote
-    encoded_text = quote(text)
-    speed = 0.9 if lang == "am" else 1.0
-    url = f"https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl={lang}&client=tw-ob&ttsspeed={speed}"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'audio/mpeg, audio/*, */*',
-    }
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, headers=headers, timeout=15)
-        resp.raise_for_status()
-        return resp.content
-
 
 async def _addisai_tts(text: str, api_key: str) -> bytes:
     key = api_key or os.getenv("ADDIS_AI_TTS_KEY", "")
@@ -1060,16 +1122,19 @@ async def delete_conversation_state(call_sid: str):
     _in_memory_state.pop(f"call:{call_sid}:state", None)
 
 
-async def get_audio_url_for_text(provider: str, voice_id: str, text: str, api_key: str, request: Request) -> Optional[str]:
+async def get_audio_url_for_text(company_id: str, provider: str, voice_id: str, text: str, api_key: str, request: Optional[Request] = None) -> Optional[str]:
     """Generates audio via TTS adapter and returns the static URL to serve it, validating file size to prevent playing corrupt audio."""
     try:
-        text_hash = hashlib.md5(f"{provider}_{voice_id}_{text}".encode('utf-8')).hexdigest()[:8]
+        base_url = str(request.base_url).rstrip('/') if request else os.getenv("ORCHESTRATOR_PUBLIC_URL", "http://localhost:6000").rstrip('/')
+        # Include company_id in cache key to prevent cross-tenant audio collisions
+        _cache_key_input = f"{company_id}_{provider}_{voice_id}_{text}"
+        text_hash = hashlib.sha256(_cache_key_input.encode('utf-8')).hexdigest()[:16]
         filename = f"tts_{text_hash}.wav"
         filepath = os.path.join(AUDIO_DIR, filename)
 
         if os.path.exists(filepath):
             if os.path.getsize(filepath) > 100:
-                return f"{str(request.base_url).rstrip('/')}/audio/{filename}"
+                return f"{base_url}/audio/{filename}"
             else:
                 print(f"⚠️ Corrupted or zero-byte TTS cache file detected ({filename}). Regenerating...")
                 try:
@@ -1081,7 +1146,7 @@ async def get_audio_url_for_text(provider: str, voice_id: str, text: str, api_ke
         if audio_bytes and len(audio_bytes) > 100:
             with open(filepath, "wb") as f:
                 f.write(audio_bytes)
-            return f"{str(request.base_url).rstrip('/')}/audio/{filename}"
+            return f"{base_url}/audio/{filename}"
     except Exception as e:
         print(f"Error generating audio URL: {e}")
     return None
@@ -1157,6 +1222,54 @@ async def broadcast_log(company_id: str, log_data: dict):
     if redis_client:
         await redis_client.publish(f"logs:{company_id}", json.dumps(log_data))
 
+
+async def consume_transcript_stream():
+    """
+    Consume transcription events from voice-runtime-go via Redis Streams.
+    Uses consumer groups for at-least-once delivery across replicas.
+    """
+    STREAM_KEY = "markova_transcripts"
+    GROUP = "orchestrator-group"
+    CONSUMER = f"orchestrator-{os.getenv('HOSTNAME', 'local')}"
+
+    if not redis_client:
+        print("⚠️ Transcript stream consumer: Redis unavailable")
+        return
+
+    try:
+        await redis_client.xgroup_create(STREAM_KEY, GROUP, id="0", mkstream=True)
+    except Exception:
+        pass
+
+    print(f"✅ Transcript stream consumer active: {STREAM_KEY}/{GROUP}/{CONSUMER}")
+    while True:
+        try:
+            messages = await redis_client.xreadgroup(
+                GROUP, CONSUMER, {STREAM_KEY: ">"}, count=10, block=1000
+            )
+            for stream, entries in (messages or []):
+                for msg_id, fields in entries:
+                    try:
+                        call_sid   = fields.get("call_sid", "")
+                        transcript = fields.get("transcript", "")
+                        if call_sid and transcript:
+                            await _process_stream_transcript(call_sid, transcript)
+                        await redis_client.xack(STREAM_KEY, GROUP, msg_id)
+                    except Exception as e:
+                        print(f"⚠️ Stream message processing error: {e}")
+        except asyncio.CancelledError:
+            print("🛑 Transcript stream consumer stopped.")
+            break
+        except Exception as e:
+            print(f"⚠️ Stream consumer error ({e}). Retrying in 2s...")
+            await asyncio.sleep(2)
+
+
+async def _process_stream_transcript(call_sid: str, transcript: str):
+    print(f"📡 Processing stream transcript for SID={call_sid}: '{transcript}'")
+    await _process_voice_turn(None, call_sid, transcript, mode="gather")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # ROUTES
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1175,13 +1288,17 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
         await websocket.close(code=4401)
         return
     try:
-        import base64
         jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
-        if jwt_secret:
-            import jwt as pyjwt
-            payload = pyjwt.decode(token, jwt_secret, algorithms=["HS256"], options={"verify_aud": False, "verify_exp": True})
-        else:
-            payload = json.loads(base64.urlsafe_b64decode(parts[1] + "=="))
+        if not jwt_secret:
+            print("❌ SECURITY: SUPABASE_JWT_SECRET not set. WebSocket connection rejected.")
+            await websocket.close(code=4401)
+            return
+        import jwt as pyjwt
+        payload = pyjwt.decode(
+            token, jwt_secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False, "verify_exp": True}
+        )
         claim_company = payload.get("companyId") or payload.get("company_id")
         if claim_company and str(claim_company) != str(company_id):
             await websocket.close(code=4403)
@@ -1254,7 +1371,17 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
         else "ሰላም፣ እንዴት ልረዳዎ?"
     )
 
-    recording_enabled = bool((state.get("phone_settings") or {}).get("recording_enabled", True))
+    settings = state.get("phone_settings") or {}
+    consent_enabled = settings.get("ai_disclosure_enabled", True)  # Default ON for INSA compliance
+    if consent_enabled:
+        consent_text = settings.get("ai_disclosure_text") or (
+            "ይህ ጥሪ በሰው ሰራሽ አስተሳሰብ ስርዓት ይስተናገዳል። ቀረጻ ሊደረግ ይችላል። "
+            if agent_lang == "amharic" else
+            "This call is handled by an AI system and may be recorded. "
+        )
+        welcome_text = f"{consent_text.strip()} {welcome_text}"
+
+    recording_enabled = bool(settings.get("recording_enabled", True))
     record_verbs = ""
     if recording_enabled:
         base = str(request.base_url).rstrip("/")
@@ -1267,14 +1394,14 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
     audio_url = None
     if agent.get("voice_provider") and agent.get("voice_id"):
         audio_url = await get_audio_url_for_text(
-            agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request
+            state["company_id"], agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request
         )
 
     if audio_url:
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     {record_verbs}
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">...</Say>
     </Gather>
@@ -1284,19 +1411,28 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
 <Response>
     {record_verbs}
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">{welcome_text}</Say>
+        <Say voice="{voice}" language="{lang_code}">{_xml_escape(welcome_text)}</Say>
     </Gather>
     <Redirect>/twilio/respond</Redirect>
 </Response>"""
 
 
 async def verify_twilio_signature(request: Request) -> bool:
-    """Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints when configured."""
+    """
+    Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints when configured.
+    NEVER bypass in production — an unconfigured token means any attacker can
+    forge webhooks.
+    """
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
-    signature = request.headers.get("X-Twilio-Signature")
-    if not auth_token or not signature:
-        # Gracefully bypass when testing locally without strict auth enforcement
-        return True
+    if not auth_token:
+        print("❌ SECURITY: TWILIO_AUTH_TOKEN not configured. Rejecting all webhooks.")
+        return False
+
+    signature = request.headers.get("X-Twilio-Signature", "")
+    if not signature:
+        print("❌ SECURITY: Missing X-Twilio-Signature header.")
+        return False
+
     try:
         import hmac, base64
         url = str(request.url)
@@ -1309,6 +1445,7 @@ async def verify_twilio_signature(request: Request) -> bool:
             return False
     except Exception as e:
         print(f"⚠️ Error verifying Twilio signature: {e}")
+        return False
     return True
 
 
@@ -1454,6 +1591,10 @@ async def handle_ivr(
 
     if action in ("transfer", "human") or (matched and matched.get("to")):
         target = (matched or {}).get("to") or settings.get("transfer_number")
+        if not _validate_dial_target(target):
+            print(f"❌ Invalid or blocked transfer target: {target}")
+            # Fall through to agent handling instead of dialing
+            target = None
         if target:
             handoff = await _build_transfer_context(state["call_id"], target, reason="ivr")
             await db_pool.execute(
@@ -1592,7 +1733,7 @@ async def _build_transfer_context(call_id: str, target: str, reason: str = "api"
     }
 
 
-async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mode: str = "gather") -> str:
+async def _process_voice_turn(request: Optional[Request], CallSid: str, user_text: str, mode: str = "gather") -> str:
     """
     Shared conversation turn processor for both Gather (streaming STT) and Record (Whisper audio STT) modes.
     Handles RAG, LLM completion, TTS, usage tracking, and TwiML generation.
@@ -1636,20 +1777,20 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
             bye_msg = "ይቅርታ፣ ድምፅዎ በደንብ አልተሰማንም። እባክዎ መስመሩ ሲሻሻል ደግመው ይደውሉልን።" if agent_lang == "amharic" else "We are having trouble hearing you clearly. Please call back when you have a better connection. Goodbye."
             tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
             tts_key = tts_config.get("api_key") if tts_config else ""
-            audio_url = await get_audio_url_for_text(state["voice_provider"], state["voice_id"], bye_msg, tts_key, request)
+            audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], bye_msg, tts_key, request)
             if call_id:
                 await end_call_record(call_id)
             await delete_conversation_state(CallSid)
             if audio_url:
                 return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Hangup/>
 </Response>"""
             else:
                 return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="{voice}" language="{lang_code}">{bye_msg}</Say>
+    <Say voice="{voice}" language="{lang_code}">{_xml_escape(bye_msg)}</Say>
     <Hangup/>
 </Response>"""
 
@@ -1659,26 +1800,26 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
         # Get TTS configs
         tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
         tts_key = tts_config.get("api_key") if tts_config else ""
-        audio_url = await get_audio_url_for_text(state["voice_provider"], state["voice_id"], retry_msg, tts_key, request)
+        audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], retry_msg, tts_key, request)
 
         if mode == "record":
             if audio_url:
                 return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
 </Response>"""
             else:
                 return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="{voice}" language="{lang_code}">{retry_msg}</Say>
+    <Say voice="{voice}" language="{lang_code}">{_xml_escape(retry_msg)}</Say>
     <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
 </Response>"""
         else:
             if audio_url:
                 return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">...</Say>
     </Gather>
@@ -1687,7 +1828,7 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
                 return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">{retry_msg}</Say>
+        <Say voice="{voice}" language="{lang_code}">{_xml_escape(retry_msg)}</Say>
     </Gather>
 </Response>"""
 
@@ -1716,7 +1857,7 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
                 "error": "Missing or unconfigured LLM API Key."
             })
         err_speech = "ይቅርታ፣ የኤአይ አገልግሎት በአግባቡ አልተዘጋጀም።" if agent_lang == "amharic" else "Sorry, the AI voice service is not configured properly."
-        return f'<?xml version="1.0" encoding="UTF-8"?><Response><Say>{err_speech}</Say><Hangup/></Response>'
+        return f'<?xml version="1.0" encoding="UTF-8"?><Response><Say>{_xml_escape(err_speech)}</Say><Hangup/></Response>'
 
     # Run phonetic repair
     if agent_lang == "amharic":
@@ -1752,8 +1893,8 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
     if llm_key:
         try:
             user_emb = await get_embedding("openai", "text-embedding-3-small", user_text, llm_key)
-            if user_emb:
-                cached_hit = await semantic_cache.get(user_emb)
+            if user_emb and semantic_cache:
+                cached_hit = await semantic_cache.get(user_emb, company_id=company_id, prompt_text=user_text)
         except Exception as e:
             print(f"Cache lookup exception: {e}")
 
@@ -1768,8 +1909,8 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
                 messages=messages_for_llm,
                 api_key=llm_key
             )
-            if user_emb and ai_text:
-                await semantic_cache.set(user_emb, ai_text)
+            if user_emb and ai_text and semantic_cache:
+                await semantic_cache.set(user_emb, ai_text, company_id=company_id, prompt_text=user_text)
         except Exception as e:
             print(f"❌ LLM error: {e}")
             ai_text = "ይቅርታ፣ አሁን መስመር ላይ ችግር አለ። ቆይተው ይደውሉ።" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
@@ -1819,19 +1960,19 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
         elif state["voice_provider"] in ["addisai", "edge"]:
             tts_key = os.getenv("ADDIS_AI_TTS_KEY", "")
 
-    audio_url = await get_audio_url_for_text(state["voice_provider"], state["voice_id"], ai_text, tts_key, request)
+    audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], ai_text, tts_key, request)
 
     if is_goodbye or state["turn_count"] >= 20:
         if audio_url:
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Hangup/>
 </Response>"""
         else:
             twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="{voice}" language="{lang_code}">{ai_text}</Say>
+    <Say voice="{voice}" language="{lang_code}">{_xml_escape(ai_text)}</Say>
     <Hangup/>
 </Response>"""
         if call_id:
@@ -1842,20 +1983,20 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
             if audio_url:
                 twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
 </Response>"""
             else:
                 twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="{voice}" language="{lang_code}">{ai_text}</Say>
+    <Say voice="{voice}" language="{lang_code}">{_xml_escape(ai_text)}</Say>
     <Record action="/twilio/respond-audio" maxLength="15" playBeep="false" timeout="3" finishOnKey="#" />
 </Response>"""
         else:
             if audio_url:
                 twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Play>{audio_url}</Play>
+    <Play>{_xml_escape(audio_url)}</Play>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">...</Say>
     </Gather>
@@ -1865,7 +2006,7 @@ async def _process_voice_turn(request: Request, CallSid: str, user_text: str, mo
                 twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
-        <Say voice="{voice}" language="{lang_code}">{ai_text}</Say>
+        <Say voice="{voice}" language="{lang_code}">{_xml_escape(ai_text)}</Say>
     </Gather>
     <Redirect>/twilio/respond</Redirect>
 </Response>"""
@@ -1905,6 +2046,11 @@ async def handle_audio_response(
     company_id = state.get("company_id")
     
     user_text = ""
+    # SSRF Guard: validate recording URL before fetching
+    if RecordingUrl and not _validate_recording_url(RecordingUrl):
+        print(f"❌ SSRF guard triggered: rejected recording URL '{RecordingUrl}'")
+        RecordingUrl = ""   # Treat as empty — proceed with blank transcript
+
     if RecordingUrl and company_id:
         twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
         twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
@@ -1917,35 +2063,46 @@ async def handle_audio_response(
                     # 1. Primary: Hasab AI STT (Winner of 2026 Amharic benchmark)
                     hasab_config = await get_provider_config(company_id, "stt", "hasab")
                     hasab_key = (hasab_config or {}).get("api_key") or os.getenv("HASAB_API_KEY", "")
-                    if hasab_key:
-                        try:
-                            user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
-                            print("✅ Transcribed via Primary STT (Hasab AI)")
-                        except Exception as h_err:
-                            print(f"⚠️ Hasab AI STT failed ({h_err}), falling back to ElevenLabs...")
-                    
-                    # 2. Fallback: ElevenLabs Scribe v2
-                    if not user_text:
-                        el_config = await get_provider_config(company_id, "stt", "elevenlabs")
-                        el_key = (el_config or {}).get("api_key") or os.getenv("ELEVENLABS_API_KEY", "")
-                        if el_key:
+                    if DATA_RESIDENCY_MODE:
+                        # INSA compliance: strictly lock to Ethiopian STT (Hasab AI)
+                        if hasab_key:
                             try:
-                                user_text = await _elevenlabs_stt(audio_bytes, "audio.wav", el_key, "am")
-                                print("✅ Transcribed via Fallback STT (ElevenLabs)")
-                            except Exception as e_err:
-                                print(f"⚠️ ElevenLabs STT failed ({e_err}), falling back to Groq Whisper...")
-
-                    # 3. Emergency Fallback: Groq Whisper / OpenAI
-                    if not user_text:
-                        stt_config = await get_provider_config(company_id, "stt", "groq")
-                        stt_key = (stt_config or {}).get("api_key") or os.getenv("GROQ_API_KEY", "")
-                        if stt_key:
-                            user_text = await _groq_stt("whisper-large-v3-turbo", audio_bytes, "audio.wav", stt_key, "am")
-                            print("✅ Transcribed via Emergency Fallback STT (Groq Whisper)")
+                                user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
+                                print("✅ Transcribed via Primary STT (Hasab AI in DATA_RESIDENCY_MODE)")
+                            except Exception as h_err:
+                                print(f"❌ Hasab AI STT failed in DATA_RESIDENCY_MODE: {h_err}")
                         else:
-                            openai_key = os.getenv("OPENAI_API_KEY", "")
-                            if openai_key:
-                                user_text = await _openai_stt("whisper-1", audio_bytes, "audio.wav", openai_key, "am")
+                            print("❌ DATA_RESIDENCY_MODE=true but no Hasab AI key configured! Blocking foreign fallback.")
+                    else:
+                        if hasab_key:
+                            try:
+                                user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
+                                print("✅ Transcribed via Primary STT (Hasab AI)")
+                            except Exception as h_err:
+                                print(f"⚠️ Hasab AI STT failed ({h_err}), falling back to ElevenLabs...")
+                        
+                        # 2. Fallback: ElevenLabs Scribe v2
+                        if not user_text:
+                            el_config = await get_provider_config(company_id, "stt", "elevenlabs")
+                            el_key = (el_config or {}).get("api_key") or os.getenv("ELEVENLABS_API_KEY", "")
+                            if el_key:
+                                try:
+                                    user_text = await _elevenlabs_stt(audio_bytes, "audio.wav", el_key, "am")
+                                    print("✅ Transcribed via Fallback STT (ElevenLabs)")
+                                except Exception as e_err:
+                                    print(f"⚠️ ElevenLabs STT failed ({e_err}), falling back to Groq Whisper...")
+
+                        # 3. Emergency Fallback: Groq Whisper / OpenAI
+                        if not user_text:
+                            stt_config = await get_provider_config(company_id, "stt", "groq")
+                            stt_key = (stt_config or {}).get("api_key") or os.getenv("GROQ_API_KEY", "")
+                            if stt_key:
+                                user_text = await _groq_stt("whisper-large-v3-turbo", audio_bytes, "audio.wav", stt_key, "am")
+                                print("✅ Transcribed via Emergency Fallback STT (Groq Whisper)")
+                            else:
+                                openai_key = os.getenv("OPENAI_API_KEY", "")
+                                if openai_key:
+                                    user_text = await _openai_stt("whisper-1", audio_bytes, "audio.wav", openai_key, "am")
         except Exception as ex:
             print(f"❌ Audio download or STT cascade failed: {ex}")
 

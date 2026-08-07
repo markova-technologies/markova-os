@@ -1,0 +1,6 @@
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class KnowledgePort(Protocol):
+    async def query(self, company_id: str, query: str, limit: int = 3) -> str: ...
+    async def search_chunks(self, company_id: str, query: str, api_key: str) -> str: ...

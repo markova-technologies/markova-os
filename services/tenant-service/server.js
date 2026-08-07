@@ -235,9 +235,12 @@ app.post('/api/tenant/billing/webhooks/:provider', async (req, res) => {
 });
 
 // Admin Authorization Guard
+const ADMIN_ROLES = new Set(['admin', 'superadmin', 'SUPER_ADMIN', 'PLATFORM_ADMIN', 'BILLING_ADMIN', 'SUPPORT_ADMIN', 'DEVELOPER']);
+
 function adminGuard(req, res, next) {
-  const role = req.headers['x-role'];
-  if (role !== 'admin' && role !== 'superadmin') {
+  const role = (req.headers['x-role'] || '').trim();
+  if (!role || !ADMIN_ROLES.has(role)) {
+    console.warn(`[adminGuard] Rejected: role='${role}' not in allowed set.`);
     return res.status(403).json({ error: 'Forbidden: Admin access required' });
   }
   next();

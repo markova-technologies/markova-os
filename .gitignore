@@ -3,6 +3,7 @@ dist/
 build/
 .env
 .env.local
+services/**/.env
 .DS_Store
 coverage/
 .next/
