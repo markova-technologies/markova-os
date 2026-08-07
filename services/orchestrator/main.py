@@ -43,7 +43,7 @@ structlog.configure(
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.stdlib.add_log_level,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
+        structlog.processors.ExceptionRenderer(),
         structlog.processors.JSONRenderer()
     ],
 )
@@ -59,11 +59,7 @@ load_dotenv()
 
 import re as _re
 
-_VALID_TWILIO_RECORDING_URL = _re.compile(
-    r'^https://(?:[a-z0-9\-]+\.)?twilio\.com/'
-    r'|^https://(?:[a-z0-9\-]+\.)?twilio\.media/',
-    _re.IGNORECASE
-)
+
 
 def _validate_recording_url(url: str) -> bool:
     """
@@ -72,7 +68,20 @@ def _validate_recording_url(url: str) -> bool:
     """
     if not url or len(url) > 512:
         return False
-    return bool(_VALID_TWILIO_RECORDING_URL.match(url))
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        hostname = (parsed.hostname or "").lower()
+        return (
+            hostname.endswith(".twilio.com") or
+            hostname == "twilio.com" or
+            hostname.endswith(".twilio.media") or
+            hostname == "twilio.media"
+        )
+    except Exception:
+        return False
 
 _E164_RE = _re.compile(r'^\+[1-9]\d{6,14}$')
 # Ethiopian, International premium-rate, and special prefixes to block
@@ -147,10 +156,10 @@ async def cleanup_semantic_cache_task():
         await asyncio.sleep(3600)  # Run hourly
         try:
             if db_pool:
-                await db_pool.execute("SELECT cleanup_semantic_cache()")
-                print("🧹 Semantic cache cleanup complete")
+                deleted = await db_pool.fetchval("SELECT cleanup_semantic_cache()")
+                logger.info("semantic_cache_cleanup", deleted_rows=deleted)
         except Exception as e:
-            print(f"⚠️ Semantic cache cleanup error: {e}")
+            logger.error("semantic_cache_cleanup_error", error=str(e))
 
 
 # Fallback in-memory state and degraded status tracking

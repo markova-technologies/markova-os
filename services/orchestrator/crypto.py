@@ -15,8 +15,10 @@ KEY_LENGTH = 32
 def get_master_key() -> str:
     key = os.getenv("ENCRYPTION_KEY")
     if not key:
-        print("⚠️ ENCRYPTION_KEY environment variable not set. Using fallback key for development.")
-        return "fallback_insecure_dev_key_only!"
+        raise RuntimeError(
+            "ENCRYPTION_KEY environment variable is required and was not set. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
     return key
 
 def decrypt(encrypted_data_b64: str, master_key: str = None) -> str:

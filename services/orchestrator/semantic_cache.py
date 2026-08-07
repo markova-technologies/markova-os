@@ -34,7 +34,7 @@ class DistributedSemanticCache:
         self._cold_ttl_hours = cold_ttl_hours
 
     def _prompt_hash(self, text: str) -> str:
-        return hashlib.md5(text.encode("utf-8")).hexdigest()
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
     async def get(
         self, embedding: list[float], company_id: str, prompt_text: str = ""

@@ -14,14 +14,28 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"github.com/markova/voice-runtime-go/buffer"
-	"github.com/markova/voice-runtime-go/stt"
-	"github.com/markova/voice-runtime-go/vad"
+	"markova.tech/voice-runtime-go/buffer"
+	"markova.tech/voice-runtime-go/stt"
+	"markova.tech/voice-runtime-go/vad"
 )
+
+import "strings"
+
+var allowedOrigins = strings.Split(os.Getenv("ALLOWED_ORIGINS"), ",")
 
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
-		return true
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // server-to-server (no browser origin header)
+		}
+		for _, allowed := range allowedOrigins {
+			if strings.TrimSpace(allowed) == origin {
+				return true
+			}
+		}
+		log.Printf("⛔ WebSocket rejected from origin: %s", origin)
+		return false
 	},
 }
 

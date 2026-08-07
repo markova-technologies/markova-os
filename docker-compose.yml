@@ -333,6 +333,7 @@ services:
     environment:
       - PORT=5008
       - ORCHESTRATOR_URL=http://orchestrator:6000
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:?err}
       - REDIS_URL=redis://redis:6379
     depends_on:
