@@ -77,8 +77,9 @@ const CallCenter = () => {
   useEffect(() => {
     fetchCalls()
 
-    // Setup WebSocket for live updates
-    const ws = new WebSocket('ws://localhost:3003')
+    // Setup WebSocket for live updates with JWT token
+    const token = localStorage.getItem('mk_session')
+    const ws = new WebSocket(`ws://localhost:3003?token=${token || ''}`)
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)

@@ -705,30 +705,8 @@ CREATE POLICY tenant_isolation_knowledge_chunks ON knowledge_chunks USING (compa
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_company ON knowledge_chunks (company_id);
 
 -- Migration 007: RBAC Admin Roles & Permissions
-
-CREATE TABLE IF NOT EXISTS roles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(50) UNIQUE NOT NULL,
-    description TEXT
-);
-
-CREATE TABLE IF NOT EXISTS permissions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    action VARCHAR(100) UNIQUE NOT NULL,
-    description TEXT
-);
-
-CREATE TABLE IF NOT EXISTS role_permissions (
-    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
-    permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,
-    PRIMARY KEY (role_id, permission_id)
-);
-
-CREATE TABLE IF NOT EXISTS user_roles (
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
-    PRIMARY KEY (user_id, role_id)
-);
+-- NOTE: roles/permissions/role_permissions/user_roles tables already created in the
+-- base schema above. Only the seed data is applied here.
 
 -- Seed default admin roles
 INSERT INTO roles (name, description) VALUES
@@ -739,3 +717,34 @@ INSERT INTO roles (name, description) VALUES
     ('billing_admin', 'Access to Stripe/billing metrics'),
     ('developer', 'API key and webhook management')
 ON CONFLICT (name) DO NOTHING;
+
+-- Migration 008: Planner Service — Agent Plans
+CREATE TABLE IF NOT EXISTS agent_plans (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+    goal TEXT NOT NULL,
+    tasks JSONB NOT NULL DEFAULT '[]'::jsonb,
+    status VARCHAR(50) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP
+);
+
+ALTER TABLE agent_plans ENABLE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation_agent_plans ON agent_plans
+    USING (company_id = current_setting('app.current_tenant', true)::uuid);
+
+CREATE INDEX IF NOT EXISTS idx_agent_plans_company ON agent_plans (company_id, created_at DESC);
+
+-- Migration 009: Performance Indexes
+-- Calls: tenant-scoped analytics queries
+CREATE INDEX IF NOT EXISTS idx_calls_company_start ON calls (company_id, start_time DESC);
+CREATE INDEX IF NOT EXISTS idx_calls_status ON calls (company_id, status);
+
+-- Transcripts: transcript fetch by call is a very frequent operation
+CREATE INDEX IF NOT EXISTS idx_transcripts_call ON transcripts (call_id, created_at ASC);
+
+-- Usage metrics: billing period aggregation
+CREATE INDEX IF NOT EXISTS idx_usage_metrics_company_time ON usage_metrics (company_id, created_at DESC);
+
+-- Knowledge chunks: vector search pre-filter by company
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc ON knowledge_chunks (document_id);

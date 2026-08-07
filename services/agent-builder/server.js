@@ -75,6 +75,27 @@ app.post('/api/builder/agents', async (req, res) => {
   }
 
   try {
+    // Quota check: enforce max_agents per company plan
+    const quotaRes = await pool.query(
+      `SELECT c.max_agents, COUNT(a.id)::int AS current_count
+       FROM companies c
+       LEFT JOIN agents a ON a.company_id = c.id
+       WHERE c.id = $1
+       GROUP BY c.max_agents`,
+      [companyId]
+    );
+    if (quotaRes.rows.length > 0) {
+      const { max_agents, current_count } = quotaRes.rows[0];
+      if (max_agents > 0 && current_count >= max_agents) {
+        return res.status(402).json({
+          error: 'Agent limit reached',
+          detail: `Your plan allows up to ${max_agents} agent(s). You currently have ${current_count}. Upgrade your plan to create more.`,
+          current: current_count,
+          limit: max_agents,
+        });
+      }
+    }
+
     const agent = await tenantDb.withTenant(ctx, async (client) => {
       // 1. Create Agent record
       const agentRes = await client.query(

@@ -160,6 +160,7 @@ services:
       - CONNECTOR_HUB_URL=http://connector-hub:5005
       - TENANT_SERVICE_URL=http://tenant-service:5002
       - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -188,7 +189,7 @@ services:
       - KNOWLEDGE_SERVICE_URL=http://knowledge-service:5006
       - ORCHESTRATOR_URL=http://orchestrator:6000
       - CAPABILITY_REGISTRY_URL=http://capability-registry:5009
-      - PLANNER_SERVICE_URL=http://planner-service:5006
+      - PLANNER_SERVICE_URL=http://planner-service:5011
       - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
     volumes:
       - ./openapi.yaml:/openapi.yaml:ro
@@ -212,6 +213,55 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  embedding-worker:
+    build:
+      context: ./workers/embedding-worker
+      dockerfile: Dockerfile
+    container_name: markova-embedding-worker
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - POLL_INTERVAL_MS=${EMBEDDING_POLL_MS:-5000}
+      - BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-10}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  event-processor:
+    build:
+      context: ./workers/event-processor
+      dockerfile: Dockerfile
+    container_name: markova-event-processor
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  voicemail-worker:
+    build:
+      context: ./workers/voicemail-worker
+      dockerfile: Dockerfile
+    container_name: markova-voicemail-worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - FROM_EMAIL=${FROM_EMAIL:-voicemail@markova.ai}
+    depends_on:
       redis:
         condition: service_healthy
     restart: always
@@ -241,9 +291,9 @@ services:
       dockerfile: services/planner-service/Dockerfile
     container_name: markova-planner-service
     ports:
-      - "5010:5006"
+      - "5011:5011"
     environment:
-      - PORT=5006
+      - PORT=5011
       - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
       - CAPABILITY_REGISTRY_URL=http://capability-registry:5009
     depends_on:
@@ -290,6 +340,7 @@ services:
       - "10000:10000/udp"
     environment:
       - RTP_PORT=10000
+      - VOICE_RUNTIME_URL=http://voice-runtime-go:5008
     restart: always
 
 volumes:
