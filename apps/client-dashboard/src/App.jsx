@@ -35,6 +35,7 @@ import EnvironmentStrip from './components/EnvironmentStrip'
 import SystemHealthBar from './components/SystemHealthBar'
 import ImpersonationBanner from './components/ImpersonationBanner'
 import MobileBottomBar from './components/MobileBottomBar'
+import ErrorBoundary from './components/ErrorBoundary'
 import './App.css'
 
 function App() {
@@ -192,27 +193,29 @@ function App() {
                       <div className="mobile-overlay" onClick={toggleMobileMenu} />
                     )}
                     <div className="content-wrapper">
-                      <Routes>
-                        <Route index element={<CommandCenter />} />
-                        <Route path="onboarding" element={<OnboardingCenter />} />
-                        <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
-                        <Route path="agent-studio" element={<AgentStudio />} />
-                        <Route path="knowledge" element={<KnowledgeCenter />} />
-                        <Route path="phone-channels" element={<PhoneChannels />} />
-                        <Route path="keys" element={<Keys />} />
-                        <Route path="integrations" element={<IntegrationHub />} />
-                        <Route path="call-center" element={<CallCenter />} />
-                        <Route path="call-center/:callId" element={<CallCenter />} />
-                        <Route path="usage" element={<UsageCenter />} />
-                        <Route path="analytics" element={<AnalyticsCenter />} />
-                        <Route path="settings" element={<Settings />} />
-                        <Route path="billing" element={<BillingCenter />} />
-                        <Route path="crm" element={<CRM />} />
-                        <Route path="governance" element={<Governance />} />
-                        <Route path="organization" element={<Organization />} />
-                        <Route path="notifications" element={<Notifications />} />
-                        <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
-                      </Routes>
+                      <ErrorBoundary>
+                        <Routes>
+                          <Route index element={<CommandCenter />} />
+                          <Route path="onboarding" element={<OnboardingCenter />} />
+                          <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
+                          <Route path="agent-studio" element={<AgentStudio />} />
+                          <Route path="knowledge" element={<KnowledgeCenter />} />
+                          <Route path="phone-channels" element={<PhoneChannels />} />
+                          <Route path="keys" element={<Keys />} />
+                          <Route path="integrations" element={<IntegrationHub />} />
+                          <Route path="call-center" element={<CallCenter />} />
+                          <Route path="call-center/:callId" element={<CallCenter />} />
+                          <Route path="usage" element={<UsageCenter />} />
+                          <Route path="analytics" element={<AnalyticsCenter />} />
+                          <Route path="settings" element={<Settings />} />
+                          <Route path="billing" element={<BillingCenter />} />
+                          <Route path="crm" element={<CRM />} />
+                          <Route path="governance" element={<Governance />} />
+                          <Route path="organization" element={<Organization />} />
+                          <Route path="notifications" element={<Notifications />} />
+                          <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
+                        </Routes>
+                      </ErrorBoundary>
                     </div>
                   </div>
                   <MobileBottomBar toggleMobileMenu={toggleMobileMenu} />

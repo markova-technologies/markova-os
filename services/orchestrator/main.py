@@ -15,6 +15,8 @@ Responsibilities:
 """
 
 import asyncio
+import base64
+import glob
 import hashlib
 import hmac
 import json
@@ -110,6 +112,9 @@ TOOL_ENGINE_URL = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
 PORT = int(os.getenv("PORT", 6000))
 AUDIO_DIR = os.getenv("AUDIO_DIR", "/app/audio")
 DATA_RESIDENCY_MODE = os.getenv("DATA_RESIDENCY_MODE", "").lower() == "true"
+# Max conversation turns kept in LLM context (system prompt always kept).
+# Older turns are dropped to prevent token blow-up on long calls.
+MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", 12))
 
 # Create audio directory if it doesn't exist
 os.makedirs(AUDIO_DIR, exist_ok=True)
@@ -671,7 +676,11 @@ async def _gemini_complete(model_id: str, messages: list, api_key: str) -> tuple
         resp.raise_for_status()
         data = resp.json()
         text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return text, 0  # Gemini doesn't return usage details in standard OpenAI format
+        # Gemini v1beta doesn't return token usage in generateContent.
+        # Estimate: ~4 chars/token for prompt + response as a billing approximation.
+        prompt_chars = sum(len(m.get("content", "")) for m in messages)
+        estimated_tokens = (prompt_chars + len(text)) // 4
+        return text, estimated_tokens
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1153,12 +1162,84 @@ async def get_audio_url_for_text(company_id: str, provider: str, voice_id: str, 
 
 
 # Twilio Language mappings for Say and Gather
+# NOTE: Twilio <Say> does NOT support Amharic natively.
+# For Amharic agents we always serve pre-synthesized Edge TTS audio via <Play>.
+# The voice/lang fields here are used ONLY as a last-resort fallback if TTS generation fails.
 TWILIO_VOICE_MAP = {
-    "amharic": {"voice": "Polly.Zeina", "lang": "ar-EG", "stt": "am-ET"},
+    "amharic": {"voice": "Polly.Joanna", "lang": "en-US", "stt": "am-ET"},
     "english": {"voice": "Polly.Joanna", "lang": "en-US", "stt": "en-US"},
     "spanish": {"voice": "Polly.Conchita", "lang": "es-ES", "stt": "es-ES"},
     "french": {"voice": "Polly.Celine", "lang": "fr-FR", "stt": "fr-FR"}
 }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TWILIO SECURITY: Signature Validation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def verify_twilio_signature(request: Request, form_params: dict) -> bool:
+    """
+    Validate X-Twilio-Signature using HMAC-SHA1.
+    Returns True if the request is genuinely from Twilio.
+    Skips validation if TWILIO_AUTH_TOKEN is not set (dev mode).
+    See: https://www.twilio.com/docs/usage/security#validating-signatures
+    """
+    auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
+    if not auth_token:
+        # Dev mode: skip validation but warn
+        print("⚠️  TWILIO_AUTH_TOKEN not set — Twilio signature validation disabled")
+        return True
+
+    signature = request.headers.get("X-Twilio-Signature", "")
+    if not signature:
+        return False
+
+    # Build the validation string: URL + sorted POST params
+    url = str(request.url)
+    s = url
+    for key in sorted(form_params.keys()):
+        s += key + (form_params[key] or "")
+
+    # HMAC-SHA1 of the string with auth token as key
+    mac = hmac.new(auth_token.encode("utf-8"), s.encode("utf-8"), hashlib.sha1)
+    expected = base64.b64encode(mac.digest()).decode("utf-8")
+    return hmac.compare_digest(expected, signature)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TTS AUDIO CACHE CLEANUP
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def cleanup_audio_cache(max_age_seconds: int = 7 * 24 * 3600):
+    """
+    Background task: delete TTS audio files older than max_age_seconds.
+    Runs every 6 hours to prevent the /app/audio directory from filling the disk.
+    Default max age: 7 days.
+    """
+    while True:
+        try:
+            await asyncio.sleep(6 * 3600)  # Wait 6 hours between runs
+            now = time.time()
+            pattern = os.path.join(AUDIO_DIR, "tts_*.wav")
+            files = glob.glob(pattern)
+            deleted = 0
+            freed_bytes = 0
+            for filepath in files:
+                try:
+                    mtime = os.path.getmtime(filepath)
+                    if (now - mtime) > max_age_seconds:
+                        size = os.path.getsize(filepath)
+                        os.unlink(filepath)
+                        deleted += 1
+                        freed_bytes += size
+                except Exception:
+                    pass
+            if deleted > 0:
+                print(f"🧹 Audio cache cleanup: removed {deleted} files, freed {freed_bytes // 1024}KB")
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"⚠️  Audio cache cleanup error: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1486,8 +1567,23 @@ async def handle_inbound_call(
         await get_routing_rules_for_phone(phone_number_id, company_id) if phone_number_id else []
     )
 
+    # 1. Load Caller Long-Term Memory (CRM Contact)
+    crm_contact = await db_pool.fetchrow(
+        "SELECT name, email FROM crm_contacts WHERE company_id = $1 AND phone = $2 LIMIT 1",
+        uuid.UUID(company_id), From
+    )
+    caller_context = f"Caller Name: {crm_contact['name']}." if crm_contact and crm_contact.get("name") else ""
+    if crm_contact and crm_contact.get("email"):
+        caller_context += f" Email: {crm_contact['email']}."
+
+    # 2. Build initial state
+    system_prompt = agent.get("prompt", "You are a helpful assistant.")
+    if caller_context:
+        system_prompt += f"\n\n--- Caller Context ---\n{caller_context}\nYou are talking to this known contact. Greet them by name if appropriate.\n--- End Caller Context ---"
+
+    initial_messages = [{"role": "system", "content": system_prompt}]
     state = {
-        "messages": [{"role": "system", "content": agent.get("prompt") or "You are a helpful voice agent."}],
+        "messages": initial_messages,
         "turn_count": 0,
         "call_id": call_id,
         "company_id": company_id,
@@ -1738,6 +1834,7 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
     Shared conversation turn processor for both Gather (streaming STT) and Record (Whisper audio STT) modes.
     Handles RAG, LLM completion, TTS, usage tracking, and TwiML generation.
     """
+    # Proceed without form_params validation in this shared method
     state = await get_conversation_state(CallSid)
     call_id = state.get("call_id")
     company_id = state.get("company_id")
@@ -1871,21 +1968,24 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
     state["messages"].append({"role": "user", "content": user_text})
     state["turn_count"] += 1
 
+    # Apply sliding window: keep system prompt + last MAX_HISTORY_TURNS*2 messages
+    # This prevents token blow-up on long calls (>12 turns)
+    messages = state["messages"]
+    if len(messages) > 1 + MAX_HISTORY_TURNS * 2:
+        messages = [messages[0]] + messages[-(MAX_HISTORY_TURNS * 2):]
+        state["messages"] = messages
+
     # === RAG: Query knowledge base and inject context ===
     rag_context = await query_knowledge_base(company_id, user_text)
     if not rag_context and company_id and llm_key:
         rag_context = await search_knowledge_chunks(company_id, user_text, llm_key)
     
-    messages_for_llm = list(state["messages"])
     if rag_context:
-        messages_for_llm.insert(len(messages_for_llm) - 1, {
-            "role": "system",
-            "content": (
-                "The following is relevant knowledge from this company's knowledge base. "
-                "Use it to answer the customer's question accurately:\n\n"
-                f"{rag_context}"
-            )
-        })
+        # Build LLM messages with RAG baked into system prompt
+        rag_enriched_system = messages[0]["content"] + f"\n\n--- Knowledge Base Context ---\n{rag_context}\n--- End Context ---"
+        messages_with_rag = [{"role": "system", "content": rag_enriched_system}] + messages[1:]
+    else:
+        messages_with_rag = messages
 
     # Check Semantic Cache before invoking LLM
     cached_hit = None
@@ -1906,7 +2006,7 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
             ai_text, tokens_used = await llm_complete(
                 provider=state["model_provider"],
                 model_id=state["model_id"],
-                messages=messages_for_llm,
+                messages=messages_with_rag,
                 api_key=llm_key
             )
             if user_emb and ai_text and semantic_cache:
@@ -2149,9 +2249,42 @@ async def handle_call_status(
                 except Exception as ex:
                     print(f"Error logging duration: {ex}")
 
+            # Generate long-term memory summary for returning callers
+            if state.get("messages") and len(state["messages"]) > 2:
+                # We do this asynchronously so it doesn't block Twilio's webhook response
+                asyncio.create_task(_generate_and_save_call_summary(
+                    company_id, call_id, state["messages"], state.get("caller_number", "Unknown")
+                ))
+
         await delete_conversation_state(CallSid)
 
     return {"status": "ok"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Long-Term Memory Summary Generator
+# ─────────────────────────────────────────────────────────────────────────────
+async def _generate_and_save_call_summary(company_id: str, call_id: str, messages: list, caller_number: str):
+    """Generates a brief summary of the call and saves it as a CRM interaction."""
+    try:
+        # Check if we have an LLM key available (using OpenAI fallback for system tasks)
+        llm_key = os.getenv("OPENAI_API_KEY")
+        if not llm_key:
+            return
+            
+        transcript_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages if m['role'] != 'system'])
+        prompt = f"Summarize this call transcript in 1-2 sentences for a CRM note. Focus on caller intent and outcome:\n\n{transcript_text}"
+        
+        summary, _ = await llm_complete("openai", "gpt-4o-mini", [{"role": "user", "content": prompt}], llm_key)
+        
+        # Save to audit_logs as a long-term memory entry
+        await db_pool.execute(
+            """INSERT INTO audit_logs (company_id, action, details, entity_type, entity_id) 
+               VALUES ($1, 'CALL_SUMMARY', $2, 'call', $3)""",
+            uuid.UUID(company_id), json.dumps({"caller": caller_number, "summary": summary}), uuid.UUID(call_id)
+        )
+    except Exception as e:
+        print(f"Failed to generate call summary: {e}")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
