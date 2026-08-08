@@ -108,6 +108,18 @@ export class AppController {
     return proxyTo(this.orchestratorUrl, req, res);
   }
 
+  @All('v1/campaigns*')
+  proxyCampaignsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res);
+  }
+
+  @All('v1/webhooks*')
+  proxyWebhooksV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res, (url) =>
+      url.replace(/^\/v1\/webhooks/, '/api/tenant/webhooks'),
+    );
+  }
+
   @All('v1/numbers*')
   proxyNumbersV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.tenantServiceUrl, req, res, (url) =>
@@ -133,6 +145,13 @@ export class AppController {
   proxyBillingV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.tenantServiceUrl, req, res, (url) =>
       url.replace(/^\/v1\/billing/, '/api/tenant/billing'),
+    );
+  }
+
+  @All('v1/white-label*')
+  proxyWhiteLabelV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res, (url) =>
+      url.replace(/^\/v1\/white-label/, '/api/tenant/white-label'),
     );
   }
 

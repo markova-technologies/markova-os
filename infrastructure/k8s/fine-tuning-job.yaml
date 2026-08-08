@@ -1,0 +1,50 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: markova-amharic-qlora-train
+  namespace: ml-pipeline
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: markova-amharic-train
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: qlora-trainer
+        image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            pip install -r /app/requirements.txt
+            python /app/services/ml-pipeline/fine_tuning/qlora_train.py
+        env:
+        - name: MODEL_ID
+          value: "meta-llama/Llama-3.3-70B-Instruct"
+        - name: DATASET_PATH
+          value: "/data/amharic_call_transcripts.jsonl"
+        - name: OUTPUT_DIR
+          value: "/model-output/lora-amharic-70b"
+        resources:
+          limits:
+            nvidia.com/gpu: 2 # Request 2x A100 GPUs
+            memory: "128Gi"
+            cpu: "16"
+        volumeMounts:
+        - name: dataset-volume
+          mountPath: /data
+        - name: code-volume
+          mountPath: /app
+        - name: model-output-volume
+          mountPath: /model-output
+      volumes:
+      - name: dataset-volume
+        persistentVolumeClaim:
+          claimName: amharic-dataset-pvc
+      - name: code-volume
+        configMap:
+          name: markova-ml-scripts
+      - name: model-output-volume
+        persistentVolumeClaim:
+          claimName: amharic-model-output-pvc

@@ -3,11 +3,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
 import time
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import asyncio
+import asyncpg
 from typing import Optional, List
+import uuid
+import structlog
+import json
+
+logger = structlog.get_logger()
 
 from embeddings import embed_text, vector_literal, embedding_backend
+from qdrant_adapter import QdrantAdapter
+
+QDRANT_ENABLED = os.getenv("QDRANT_ENABLED", "true").lower() == "true"
+qdrant_client = QdrantAdapter() if QDRANT_ENABLED else None
 
 ALLOWED_EXTENSIONS = frozenset({
     '.txt', '.pdf', '.docx', '.doc', '.csv',
@@ -36,36 +45,74 @@ if not DATABASE_URL:
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "./uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-from psycopg2 import pool as _pg_pool
+_db_pool: asyncpg.Pool | None = None
 
-_db_pool = None
-
-def init_db_pool():
+async def init_db_pool_async():
     global _db_pool
-    for i in range(10):
+    for attempt in range(10):
         try:
-            _db_pool = _pg_pool.ThreadedConnectionPool(
-                2, 10, DATABASE_URL, cursor_factory=RealDictCursor
+            _db_pool = await asyncpg.create_pool(
+                DATABASE_URL,
+                min_size=2,
+                max_size=10,
+                command_timeout=30,
             )
-            print("✅ Knowledge Service: DB connection pool initialized (2-10 connections)")
+            logger.info("knowledge_service_asyncpg_pool_ready")
             return
         except Exception as e:
-            print(f"DB pool init attempt {i+1} failed: {e}")
-            time.sleep(3)
-    raise RuntimeError("Could not initialize DB pool after 10 attempts")
+            logger.error("db_pool_init_failed", attempt=attempt+1, error=str(e))
+            await asyncio.sleep(3)
+    raise RuntimeError("Could not initialize asyncpg pool after 10 attempts")
 
-def get_db_connection():
-    """Get a connection from the pool. Always call release() in a finally block."""
-    return _db_pool.getconn()
+_embedding_queue: asyncio.Queue = asyncio.Queue()
 
-def release_db_connection(conn):
-    """Return a connection to the pool."""
-    if conn and _db_pool:
-        _db_pool.putconn(conn)
+async def embedding_worker_loop():
+    """Background coroutine: embed newly uploaded document chunks."""
+    while True:
+        try:
+            job = await asyncio.wait_for(_embedding_queue.get(), timeout=30)
+            chunk_id = job["chunk_id"]
+            content = job["content"]
+            company_id = job["company_id"]
+            
+            # This is blocking, but fast enough. For better async, use run_in_executor
+            embedding = embed_text(content)
+            
+            if embedding:
+                try:
+                    async with _db_pool.acquire() as conn:
+                        await conn.execute(
+                            "UPDATE knowledge_chunks SET embedding = $1::vector WHERE id = $2",
+                            vector_literal(embedding), chunk_id
+                        )
+                        
+                    if QDRANT_ENABLED:
+                        payload = {
+                            "chunk_id": str(chunk_id),
+                            "content": content,
+                            "company_id": str(company_id)
+                        }
+                        await qdrant_client.ensure_collection("knowledge_chunks")
+                        await qdrant_client.upsert_point("knowledge_chunks", str(uuid.uuid4()), embedding, payload)
+                        
+                except Exception as e:
+                    logger.error("write_embedding_failed", error=str(e))
+        except asyncio.TimeoutError:
+            continue
+        except Exception as e:
+            logger.error("embedding_worker_error", error=str(e))
 
 @app.on_event("startup")
-def startup():
-    init_db_pool()
+async def startup():
+    await init_db_pool_async()
+    asyncio.create_task(embedding_worker_loop())
+
+@app.on_event("shutdown")
+async def shutdown():
+    if qdrant_client:
+        await qdrant_client.close()
+    if _db_pool:
+        await _db_pool.close()
 
 class SourceCreate(BaseModel):
     name: str
@@ -81,7 +128,6 @@ def company_id_from_headers(
         raise HTTPException(status_code=400, detail="X-Company-ID or X-Tenant-ID header is required")
     return cid
 
-
 def audit_user_id(x_user_id: Optional[str]) -> Optional[str]:
     """API-key auth uses synthetic user ids like 'api-key-auth' — do not insert as UUID."""
     if not x_user_id:
@@ -95,7 +141,6 @@ def audit_user_id(x_user_id: Optional[str]) -> Optional[str]:
         return x_user_id
     return None
 
-
 @app.post("/api/knowledge/sources")
 async def create_source(
     source: SourceCreate,
@@ -106,33 +151,30 @@ async def create_source(
     x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
     user_id = audit_user_id(x_user_id)
         
-    import json
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                """INSERT INTO knowledge_sources (company_id, type, name, status, config)
-                   VALUES (%s, %s, %s, 'active', %s)
-                   RETURNING id, company_id, type, name, status, config, created_at""",
-                (x_company_id, source.type, source.name, json.dumps(source.config or {}))
-            )
-            new_source = cur.fetchone()
-            
-            # Create Audit Log
-            cur.execute(
-                """INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id)
-                   VALUES (%s, %s, %s, %s, %s)""",
-                (x_company_id, user_id, "KNOWLEDGE_SOURCE_CREATED", "knowledge_source", new_source["id"])
-            )
-            
-            conn.commit()
-            return new_source
+        async with _db_pool.acquire() as conn:
+            async with conn.transaction():
+                new_source = await conn.fetchrow(
+                    """INSERT INTO knowledge_sources (company_id, type, name, status, config)
+                       VALUES ($1, $2, $3, 'active', $4)
+                       RETURNING id, company_id, type, name, status, config, created_at""",
+                    uuid.UUID(x_company_id), source.type, source.name, json.dumps(source.config or {})
+                )
+                
+                # Create Audit Log
+                await conn.execute(
+                    """INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id)
+                       VALUES ($1, $2, $3, $4, $5)""",
+                    uuid.UUID(x_company_id), 
+                    uuid.UUID(user_id) if user_id else None, 
+                    "KNOWLEDGE_SOURCE_CREATED", 
+                    "knowledge_source", 
+                    new_source["id"]
+                )
+                return dict(new_source)
     except Exception as e:
-        conn.rollback()
-        print("Create source error:", e)
+        logger.error("Create source error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        release_db_connection(conn)
 
 @app.get("/api/knowledge/sources")
 async def list_sources(
@@ -141,20 +183,16 @@ async def list_sources(
 ):
     x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
         
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, type, name, status, config, created_at FROM knowledge_sources WHERE company_id = %s ORDER BY name ASC",
-                (x_company_id,)
+        async with _db_pool.acquire() as conn:
+            sources = await conn.fetch(
+                "SELECT id, type, name, status, config, created_at FROM knowledge_sources WHERE company_id = $1 ORDER BY name ASC",
+                uuid.UUID(x_company_id)
             )
-            sources = cur.fetchall()
-            return sources
+            return [dict(s) for s in sources]
     except Exception as e:
-        print("List sources error:", e)
+        logger.error("List sources error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        release_db_connection(conn)
 
 async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
     # ── Security: validate file type and size ────────────────────────────────
@@ -173,18 +211,16 @@ async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
         )
     # ── End security validation ──────────────────────────────────────────────
 
-    # Sanitize filename: strip path components, keep only the base name
-    safe_filename = os.path.basename(file.filename or "unnamed") \
-                      .replace("..", "").replace("/", "").replace("\\", "")
+    safe_filename = os.path.basename(file.filename or "unnamed").replace("..", "").replace("/", "").replace("\\\\", "")
                       
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id FROM knowledge_sources WHERE id = %s AND company_id = %s",
-                (source_id, x_company_id)
+        async with _db_pool.acquire() as conn:
+            # Check source ownership
+            row = await conn.fetchrow(
+                "SELECT id FROM knowledge_sources WHERE id = $1 AND company_id = $2",
+                uuid.UUID(source_id), uuid.UUID(x_company_id)
             )
-            if not cur.fetchone():
+            if not row:
                 raise HTTPException(status_code=404, detail="Knowledge source not found or not owned by company")
 
             unique_filename = f"{source_id}_{int(time.time())}{raw_ext}"
@@ -192,44 +228,43 @@ async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
             with open(file_path, "wb") as f:
                 f.write(content)
 
-            cur.execute(
-                """INSERT INTO knowledge_documents (source_id, file_name, file_path, file_size, status)
-                   VALUES (%s, %s, %s, %s, 'uploaded')
-                   RETURNING id, source_id, file_name, file_path, file_size, status, created_at""",
-                (source_id, safe_filename, file_path, len(content))
-            )
-            document = cur.fetchone()
-            # Index plain-text chunks for tenant-scoped search (Phase 2 keyword)
-            try:
-                text = content.decode("utf-8", errors="ignore")
-            except Exception:
-                text = ""
-            if text.strip():
-                # Chunk ~1.5k chars for better retrieval; embed each chunk
-                body = text[:24000]
-                chunk_size = 1500
-                for i in range(0, len(body), chunk_size):
-                    piece = body[i : i + chunk_size].strip()
-                    if not piece:
-                        continue
-                    emb = embed_text(piece)
-                    cur.execute(
-                        """INSERT INTO knowledge_chunks (document_id, content, company_id, embedding)
-                           VALUES (%s, %s, %s, %s::vector)""",
-                        (document["id"], piece, x_company_id, vector_literal(emb)),
-                    )
-            conn.commit()
-            return document
+            async with conn.transaction():
+                document = await conn.fetchrow(
+                    """INSERT INTO knowledge_documents (source_id, file_name, file_path, file_size, status)
+                       VALUES ($1, $2, $3, $4, 'uploaded')
+                       RETURNING id, source_id, file_name, file_path, file_size, status, created_at""",
+                    uuid.UUID(source_id), safe_filename, file_path, len(content)
+                )
+                
+                try:
+                    text = content.decode("utf-8", errors="ignore")
+                except Exception:
+                    text = ""
+                
+                if text.strip():
+                    body = text[:24000]
+                    chunk_size = 1500
+                    for i in range(0, len(body), chunk_size):
+                        piece = body[i : i + chunk_size].strip()
+                        if not piece:
+                            continue
+                        chunk_row = await conn.fetchrow(
+                            """INSERT INTO knowledge_chunks (document_id, content, company_id)
+                               VALUES ($1, $2, $3) RETURNING id""",
+                            document["id"], piece, uuid.UUID(x_company_id),
+                        )
+                        chunk_id = chunk_row["id"]
+                        _embedding_queue.put_nowait({
+                            "chunk_id": chunk_id,
+                            "content": piece,
+                            "company_id": x_company_id
+                        })
+            return dict(document)
     except HTTPException:
-        conn.rollback()
         raise
     except Exception as e:
-        conn.rollback()
-        print("Upload document error:", e)
+        logger.error("upload_document_error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        release_db_connection(conn)
-
 
 @app.post("/api/knowledge/upload")
 async def upload_document(
@@ -239,7 +274,6 @@ async def upload_document(
     x_tenant_id: Optional[str] = Header(None),
 ):
     return await _store_document(source_id, file, company_id_from_headers(x_company_id, x_tenant_id))
-
 
 @app.post("/api/knowledge/sources/{source_id}/documents")
 async def upload_document_for_source(
@@ -258,36 +292,29 @@ async def list_documents(
 ):
     x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
         
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            # Verify source ownership
-            cur.execute(
-                "SELECT id FROM knowledge_sources WHERE id = %s AND company_id = %s",
-                (source_id, x_company_id)
+        async with _db_pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT id FROM knowledge_sources WHERE id = $1 AND company_id = $2",
+                uuid.UUID(source_id), uuid.UUID(x_company_id)
             )
-            if not cur.fetchone():
+            if not row:
                 raise HTTPException(status_code=404, detail="Knowledge source not found or not owned by company")
                 
-            cur.execute(
-                "SELECT id, file_name, file_size, status, created_at FROM knowledge_documents WHERE source_id = %s ORDER BY created_at DESC",
-                (source_id,)
+            documents = await conn.fetch(
+                "SELECT id, file_name, file_size, status, created_at FROM knowledge_documents WHERE source_id = $1 ORDER BY created_at DESC",
+                uuid.UUID(source_id)
             )
-            documents = cur.fetchall()
-            return documents
+            return [dict(d) for d in documents]
     except HTTPException:
         raise
     except Exception as e:
-        print("List documents error:", e)
+        logger.error("List documents error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        release_db_connection(conn)
-
 
 class SearchRequest(BaseModel):
     query: str
     limit: Optional[int] = 5
-
 
 @app.post("/api/knowledge/search")
 async def search_knowledge(
@@ -295,10 +322,6 @@ async def search_knowledge(
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    """
-    Tenant-scoped vector search (pgvector cosine distance).
-    Hard company_id filter on every path — never search across companies.
-    """
     x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
     q = (body.query or "").strip()
     if not q:
@@ -306,60 +329,74 @@ async def search_knowledge(
     limit = max(1, min(body.limit or 5, 20))
     qvec = vector_literal(embed_text(q))
 
-    conn = get_db_connection()
     try:
-        with conn.cursor() as cur:
-            # Vector path for embedded chunks
-            cur.execute(
-                """
-                SELECT kc.id AS chunk_id, kc.content, kd.file_name,
-                       ks.id AS source_id, ks.name AS source_name,
-                       (1 - (kc.embedding <=> %s::vector)) AS score
-                FROM knowledge_chunks kc
-                JOIN knowledge_documents kd ON kd.id = kc.document_id
-                JOIN knowledge_sources ks ON ks.id = kd.source_id
-                WHERE ks.company_id = %s
-                  AND kc.company_id = %s
-                  AND kc.embedding IS NOT NULL
-                ORDER BY kc.embedding <=> %s::vector
-                LIMIT %s
-                """,
-                (qvec, x_company_id, x_company_id, qvec, limit),
-            )
-            rows = cur.fetchall()
-            # Fallback: keyword for legacy chunks without embeddings
-            if not rows:
-                cur.execute(
+        rows = []
+        if QDRANT_ENABLED:
+            try:
+                qdrant_results = await qdrant_client.search("knowledge_chunks", qvec, x_company_id, limit)
+                for r in qdrant_results:
+                    p = r.get("payload", {})
+                    rows.append({
+                        "chunk_id": p.get("chunk_id"),
+                        "content": p.get("content"),
+                        "file_name": p.get("file_name", "Unknown"),
+                        "source_id": p.get("source_id", "Unknown"),
+                        "source_name": p.get("source_name", "Unknown"),
+                        "score": r.get("score")
+                    })
+            except Exception as e:
+                logger.warning(f"Qdrant search failed, falling back to pgvector: {e}")
+                
+        if not rows:
+            async with _db_pool.acquire() as conn:
+                db_rows = await conn.fetch(
                     """
                     SELECT kc.id AS chunk_id, kc.content, kd.file_name,
                            ks.id AS source_id, ks.name AS source_name,
-                           NULL::float AS score
+                           (1 - (kc.embedding <=> $1::vector)) AS score
                     FROM knowledge_chunks kc
                     JOIN knowledge_documents kd ON kd.id = kc.document_id
                     JOIN knowledge_sources ks ON ks.id = kd.source_id
-                    WHERE ks.company_id = %s
-                      AND kc.company_id = %s
-                      AND kc.content ILIKE %s
-                    ORDER BY kc.created_at DESC
-                    LIMIT %s
+                    WHERE ks.company_id = $2
+                      AND kc.company_id = $2
+                      AND kc.embedding IS NOT NULL
+                    ORDER BY kc.embedding <=> $1::vector
+                    LIMIT $3
                     """,
-                    (x_company_id, x_company_id, f"%{q}%", limit),
+                    qvec, uuid.UUID(x_company_id), limit
                 )
-                rows = cur.fetchall()
-            return {
-                "query": q,
-                "tenant_id": x_company_id,
-                "backend": embedding_backend(),
-                "mode": "vector" if rows and rows[0].get("score") is not None else "keyword_fallback",
-                "results": rows,
-                "isolation": "company_id_enforced",
-            }
+                rows = [dict(r) for r in db_rows]
+                
+                if not rows:
+                    db_rows = await conn.fetch(
+                        """
+                        SELECT kc.id AS chunk_id, kc.content, kd.file_name,
+                               ks.id AS source_id, ks.name AS source_name,
+                               NULL::float AS score
+                        FROM knowledge_chunks kc
+                        JOIN knowledge_documents kd ON kd.id = kc.document_id
+                        JOIN knowledge_sources ks ON ks.id = kd.source_id
+                        WHERE ks.company_id = $1
+                          AND kc.company_id = $1
+                          AND kc.content ILIKE $2
+                        ORDER BY kc.created_at DESC
+                        LIMIT $3
+                        """,
+                        uuid.UUID(x_company_id), f"%{q}%", limit
+                    )
+                    rows = [dict(r) for r in db_rows]
+                    
+        return {
+            "query": q,
+            "tenant_id": x_company_id,
+            "backend": "qdrant" if QDRANT_ENABLED and rows and rows[0].get("score") is not None else (embedding_backend()),
+            "mode": "vector" if rows and rows[0].get("score") is not None else "keyword_fallback",
+            "results": rows,
+            "isolation": "company_id_enforced",
+        }
     except Exception as e:
-        print("Search error:", e)
+        logger.error("search_error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
-    finally:
-        release_db_connection(conn)
-
 
 @app.get("/health")
 def health():

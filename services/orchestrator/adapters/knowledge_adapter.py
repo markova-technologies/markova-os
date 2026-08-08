@@ -12,24 +12,34 @@ class KnowledgeAdapter(KnowledgePort):
     async def query(self, company_id: str, query: str, limit: int = 3) -> str:
         if not company_id or not query:
             return ""
-        try:
-            async with httpx.AsyncClient(timeout=3.0) as client:
-                resp = await client.post(
-                    f"{KNOWLEDGE_SERVICE_URL}/api/knowledge/search",
-                    json={"query": query, "limit": limit},
-                    headers={"X-Company-ID": company_id}
-                )
-                if resp.status_code == 200:
-                    data = resp.json()
-                    results = data.get("results", [])
-                    if results:
-                        parts = [r["content"] for r in results if r.get("content")]
-                        context = "\n\n---\n\n".join(parts)
-                        print(f"📚 RAG: {len(results)} chunks injected ({len(context)} chars)")
-                        return context
-        except Exception as e:
-            print(f"⚠️ Knowledge service unavailable (degrading gracefully): {e}")
-        return ""
+        
+        from opentelemetry import trace
+        tracer = trace.get_tracer("markova.orchestrator.knowledge")
+        with tracer.start_as_current_span("knowledge_query") as span:
+            span.set_attribute("knowledge.company_id", company_id)
+            span.set_attribute("knowledge.query_length", len(query))
+            try:
+                async with httpx.AsyncClient(timeout=3.0) as client:
+                    resp = await client.post(
+                        f"{KNOWLEDGE_SERVICE_URL}/api/knowledge/search",
+                        json={"query": query, "limit": limit},
+                        headers={"X-Company-ID": company_id}
+                    )
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        results = data.get("results", [])
+                        if results:
+                            parts = [r["content"] for r in results if r.get("content")]
+                            context = "\n\n---\n\n".join(parts)
+                            span.set_attribute("knowledge.chunks_found", len(results))
+                            print(f"📚 RAG: {len(results)} chunks injected ({len(context)} chars)")
+                            return context
+                    span.set_attribute("knowledge.chunks_found", 0)
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.StatusCode.ERROR)
+                print(f"⚠️ Knowledge service unavailable (degrading gracefully): {e}")
+            return ""
 
     async def search_chunks(self, company_id: str, query: str, api_key: str) -> str:
         try:

@@ -5,6 +5,7 @@ import Header from './components/Header'
 import CommandCenter from './pages/CommandCenter'
 import OnboardingCenter from './pages/OnboardingCenter'
 import AgentStudio from './pages/AgentStudio'
+import AgentBuilder from './pages/AgentBuilder'
 import KnowledgeCenter from './pages/KnowledgeCenter'
 import IntegrationHub from './pages/IntegrationHub'
 import CallCenter from './pages/CallCenter'
@@ -199,6 +200,7 @@ function App() {
                           <Route path="onboarding" element={<OnboardingCenter />} />
                           <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
                           <Route path="agent-studio" element={<AgentStudio />} />
+                          <Route path="agent-builder" element={<AgentBuilder />} />
                           <Route path="knowledge" element={<KnowledgeCenter />} />
                           <Route path="phone-channels" element={<PhoneChannels />} />
                           <Route path="keys" element={<Keys />} />
