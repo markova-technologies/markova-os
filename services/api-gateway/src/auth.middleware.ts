@@ -176,7 +176,10 @@ export class AuthMiddleware implements NestMiddleware {
     }
 
     // 5. Inject headers downstream to be parsed by TenantGuard in services
+    // SECURITY: Always stamp x-company-id from the verified JWT/API-key context,
+    // never trust the client-supplied header — prevents cross-tenant data leaks.
     req.headers['x-tenant-id'] = tenantContext.tenantId;
+    req.headers['x-company-id'] = tenantContext.tenantId;  // override any client value
     req.headers['x-user-id'] = tenantContext.userId;
     if (tenantContext.sessionId) req.headers['x-session-id'] = tenantContext.sessionId;
     if (tenantContext.role) req.headers['x-role'] = tenantContext.role;

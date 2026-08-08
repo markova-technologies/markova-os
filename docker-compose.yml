@@ -1,9 +1,9 @@
-version: '3.8'
+﻿version: '3.8'
 
 services:
-  # ─────────────────────────────────────────────────────────────────────────────
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   # Infrastructure
-  # ─────────────────────────────────────────────────────────────────────────────
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   postgres:
     image: pgvector/pgvector:pg15
     container_name: markova-postgres
@@ -38,9 +38,20 @@ services:
       timeout: 5s
       retries: 5
 
-  # ─────────────────────────────────────────────────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: markova-qdrant
+    environment:
+      - QDRANT__SERVICE__API_KEY=${QDRANT_API_KEY:-dev-api-key}
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: always
+
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   # Core Services (Phase 0 kept set)
-  # ─────────────────────────────────────────────────────────────────────────────
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   auth-service:
     build:
       context: .
@@ -123,6 +134,8 @@ services:
       - PORT=5006
       - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
       - ALLOWED_ORIGINS=https://dashboard.markova.ai,https://admin.markova.ai,http://localhost:5173,http://localhost:3000
+      - QDRANT_URL=http://qdrant:6333
+      - QDRANT_API_KEY=${QDRANT_API_KEY:-dev-api-key}
     depends_on:
       postgres:
         condition: service_healthy
@@ -192,7 +205,7 @@ services:
       - KNOWLEDGE_SERVICE_URL=http://knowledge-service:5006
       - ORCHESTRATOR_URL=http://orchestrator:6000
       - CAPABILITY_REGISTRY_URL=http://capability-registry:5009
-      - PLANNER_SERVICE_URL=http://planner-service:5006
+      - PLANNER_SERVICE_URL=http://planner-service:5011
       - SERVICE_AUTH_SECRET=${SERVICE_AUTH_SECRET:?SERVICE_AUTH_SECRET must be set in .env}
     volumes:
       - ./openapi.yaml:/openapi.yaml:ro
@@ -202,9 +215,9 @@ services:
       - redis
     restart: always
 
-  # ─────────────────────────────────────────────────────────────────────────────
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   # Workers (kept: real connector sync only)
-  # ─────────────────────────────────────────────────────────────────────────────
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   connector-worker:
     build:
       context: ./workers/connector-worker
@@ -220,9 +233,58 @@ services:
         condition: service_healthy
     restart: always
 
-  # ─────────────────────────────────────────────────────────────────────────────
-  # Phase 1-4 Services (New Microservices — capability-registry, planner, voice, media)
-  # ─────────────────────────────────────────────────────────────────────────────
+  embedding-worker:
+    build:
+      context: ./workers/embedding-worker
+      dockerfile: Dockerfile
+    container_name: markova-embedding-worker
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-text-embedding-3-small}
+      - POLL_INTERVAL_MS=${EMBEDDING_POLL_MS:-5000}
+      - BATCH_SIZE=${EMBEDDING_BATCH_SIZE:-10}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: always
+
+  event-processor:
+    build:
+      context: ./workers/event-processor
+      dockerfile: Dockerfile
+    container_name: markova-event-processor
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  voicemail-worker:
+    build:
+      context: ./workers/voicemail-worker
+      dockerfile: Dockerfile
+    container_name: markova-voicemail-worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - FROM_EMAIL=${FROM_EMAIL:-voicemail@markova.ai}
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: always
+
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  # Phase 1-4 Services (New Microservices ΓÇö capability-registry, planner, voice, media)
+  # ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   capability-registry:
     build:
       context: .
@@ -245,9 +307,9 @@ services:
       dockerfile: services/planner-service/Dockerfile
     container_name: markova-planner-service
     ports:
-      - "5010:5006"
+      - "5011:5011"
     environment:
-      - PORT=5006
+      - PORT=5011
       - DATABASE_URL=postgresql://${POSTGRES_USER:-markova}:${POSTGRES_PASSWORD:?err}@postgres:5432/${POSTGRES_DB:-markova_db}
       - CAPABILITY_REGISTRY_URL=http://capability-registry:5009
     depends_on:
@@ -284,6 +346,7 @@ services:
     environment:
       - PORT=5008
       - ORCHESTRATOR_URL=http://orchestrator:6000
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:5173}
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET:?err}
       - REDIS_URL=redis://redis:6379
     depends_on:
@@ -304,6 +367,7 @@ services:
       - RTP_PORT=10000
       - TURN_USERNAME=${TURN_USERNAME:-markova}
       - TURN_PASSWORD=${TURN_PASSWORD:-markova123}
+      - VOICE_RUNTIME_URL=http://voice-runtime-go:5008
     restart: always
 
   coturn:
@@ -318,4 +382,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  qdrant_data:
   connector_uploads:

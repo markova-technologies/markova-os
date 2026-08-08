@@ -4,40 +4,41 @@ import api, { getOrgProfile } from '../api/client'
 import './Organization.css'
 
 const Organization = () => {
-  const [departments, setDepartments] = useState([
-    {
-      id: 'd-1',
-      name: 'Global Operations',
-      parent_id: null,
-      children: [
-        {
-          id: 'd-2',
-          name: 'Customer Support (Tier 1)',
-          parent_id: 'd-1',
-          children: []
-        },
-        {
-          id: 'd-3',
-          name: 'Technical Support (Tier 2)',
-          parent_id: 'd-1',
-          children: []
-        }
-      ]
-    }
-  ])
+  const [departments, setDepartments] = useState([])
 
   useEffect(() => {
+    // 1. Fetch Company Name
     getOrgProfile().then(({ data }) => {
       if (data && data.company_name) {
         setDepartments(prev => {
+          if (prev.length === 0) return prev;
           const newDepts = [...prev]
-          if (newDepts.length > 0) {
-            newDepts[0].name = data.company_name
-          }
+          newDepts[0].name = data.company_name
           return newDepts
         })
       }
     }).catch(console.error)
+
+    // 2. Fetch Department Tree
+    api.get('/admin/departments')
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          // Build tree from flat list
+          const deptMap = {}
+          data.forEach(d => deptMap[d.id] = { ...d, children: [] })
+          
+          const roots = []
+          data.forEach(d => {
+            if (d.parent_id && deptMap[d.parent_id]) {
+              deptMap[d.parent_id].children.push(deptMap[d.id])
+            } else {
+              roots.push(deptMap[d.id])
+            }
+          })
+          setDepartments(roots)
+        }
+      })
+      .catch(console.error)
   }, [])
 
   const renderTree = (nodes) => {

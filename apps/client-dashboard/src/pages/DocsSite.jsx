@@ -1,11 +1,13 @@
-import React from 'react'
-import DocsApp from '../../../../apps/docs/src/DocsApp'
-import '../../../../apps/docs/src/styles/tokens.css'
-import '../../../../apps/docs/src/styles/docs.css'
+import React, { useEffect } from 'react'
 
 /**
- * Full docs site embedded under /docs/* — public, no login (same gate as /pricing).
+ * Redirects to the API gateway's built-in Swagger UI docs site.
  */
-const DocsSite = () => <DocsApp base="/docs" />
+const DocsSite = () => {
+  useEffect(() => {
+    window.location.href = '/docs'
+  }, [])
+  return <div style={{ padding: '2rem', textAlign: 'center' }}>Redirecting to API Documentation...</div>
+}
 
 export default DocsSite

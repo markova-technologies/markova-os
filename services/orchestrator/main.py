@@ -1,29 +1,34 @@
-"""
+﻿"""
 Markova Orchestrator Service v2.0
-─────────────────────────────────────────────────────────────────────────────
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 Multi-tenant voice orchestration engine.
 
 Responsibilities:
   - Receive inbound call webhooks from Twilio
-  - Look up phone number → company + agent from PostgreSQL
+  - Look up phone number ΓåÆ company + agent from PostgreSQL
   - Manage conversation state in Redis
   - Route LLM/STT/TTS calls via modular adapters
   - Validate and normalize Amharic speech (homophones, garbage, LLM repair)
   - Persist call logs, transcripts, and usage metrics in PostgreSQL
   - Serve generated neural voice audio files dynamically
-─────────────────────────────────────────────────────────────────────────────
+ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 """
 
 import asyncio
+import base64
+import glob
 import hashlib
 import hmac
 import json
 import os
 import random
 import re
+import math
 import tempfile
 import time
 import uuid
+import aiosmtplib
+from email.mime.text import MIMEText
 from xml.sax.saxutils import escape as _xml_escape
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
@@ -33,6 +38,7 @@ import asyncpg  # type: ignore
 import httpx
 import redis.asyncio as aioredis  # type: ignore
 from semantic_cache import DistributedSemanticCache
+from adapters.knowledge_adapter import KnowledgeAdapter
 import crypto  # local AES-256-GCM encrypt/decrypt module
 
 import structlog
@@ -41,11 +47,45 @@ structlog.configure(
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.stdlib.add_log_level,
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
+        structlog.processors.ExceptionRenderer(),
         structlog.processors.JSONRenderer()
     ],
 )
 logger = structlog.get_logger()
+
+# OpenTelemetry Tracing
+try:
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+    from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+
+# Prometheus Metrics
+try:
+    from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+    PROMETHEUS_AVAILABLE = True
+    VOICE_CALLS_TOTAL = Counter(
+        "markova_voice_calls_total",
+        "Total inbound voice calls processed",
+        ["company_id", "status"]
+    )
+    CALL_TURN_LATENCY = Histogram(
+        "markova_call_turn_latency_seconds",
+        "End-to-end voice turn processing latency",
+        ["company_id"],
+        buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
+    )
+    ACTIVE_CALLS = Gauge(
+        "markova_active_calls",
+        "Current active voice calls"
+    )
+except ImportError:
+    PROMETHEUS_AVAILABLE = False
+
 
 semantic_cache = None
 from dotenv import load_dotenv
@@ -56,12 +96,13 @@ from fastapi.staticfiles import StaticFiles
 load_dotenv()
 
 import re as _re
+_TOOL_ID_RE = _re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
+_MAX_TOOL_PARAMS_BYTES = 8192
 
-_VALID_TWILIO_RECORDING_URL = _re.compile(
-    r'^https://(?:[a-z0-9\-]+\.)?twilio\.com/'
-    r'|^https://(?:[a-z0-9\-]+\.)?twilio\.media/',
-    _re.IGNORECASE
-)
+
+
+
+
 
 def _validate_recording_url(url: str) -> bool:
     """
@@ -70,7 +111,20 @@ def _validate_recording_url(url: str) -> bool:
     """
     if not url or len(url) > 512:
         return False
-    return bool(_VALID_TWILIO_RECORDING_URL.match(url))
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            return False
+        hostname = (parsed.hostname or "").lower()
+        return (
+            hostname.endswith(".twilio.com") or
+            hostname == "twilio.com" or
+            hostname.endswith(".twilio.media") or
+            hostname == "twilio.media"
+        )
+    except Exception:
+        return False
 
 _E164_RE = _re.compile(r'^\+[1-9]\d{6,14}$')
 # Ethiopian, International premium-rate, and special prefixes to block
@@ -90,18 +144,18 @@ def _validate_dial_target(target: str) -> bool:
         return False
     target = target.strip()
     if not _E164_RE.match(target):
-        print(f"⚠️ Dial validation failed: '{target}' is not valid E.164 format")
+        logger.error("dial_validation_failed_target", target=target)
         return False
     for prefix in _BLOCKED_PREFIXES:
         if target.startswith(prefix):
-            print(f"❌ Dial blocked: '{target}' matches premium-rate prefix '{prefix}'")
+            logger.error("dial_blocked_target_matches", target=target, prefix=prefix)
             return False
     return True
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Config
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL must be set in the environment (no default password).")
@@ -110,15 +164,50 @@ TOOL_ENGINE_URL = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
 PORT = int(os.getenv("PORT", 6000))
 AUDIO_DIR = os.getenv("AUDIO_DIR", "/app/audio")
 DATA_RESIDENCY_MODE = os.getenv("DATA_RESIDENCY_MODE", "").lower() == "true"
+# Max conversation turns kept in LLM context (system prompt always kept).
+# Older turns are dropped to prevent token blow-up on long calls.
+MAX_HISTORY_TURNS = int(os.getenv("MAX_HISTORY_TURNS", "6"))
+ENABLE_MEDIA_STREAMS = os.getenv("ENABLE_MEDIA_STREAMS", "false").lower() == "true"
+
+SYSTEM_TOOLS_PROMPT = """
+--- Agent Tools ---
+You have access to the following built-in tools. Use a tool by replying with ONLY the XML block below and NOTHING else in your response. Replace the placeholder shown in CAPS with the actual value. Do not include the angle brackets in the value.
+
+Tool 1 ΓÇö Transfer caller to a specialist agent:
+<tool_call>{"tool_id": "handoff_agent", "parameters": {"target_agent_name": "EXACT_AGENT_NAME"}}</tool_call>
+Example: <tool_call>{"tool_id": "handoff_agent", "parameters": {"target_agent_name": "Billing Support"}}</tool_call>
+
+Tool 2 ΓÇö Search the knowledge base for product or policy information:
+<tool_call>{"tool_id": "search_knowledge_base", "parameters": {"query": "CALLER_QUESTION_IN_FULL"}}</tool_call>
+Example: <tool_call>{"tool_id": "search_knowledge_base", "parameters": {"query": "What is the refund policy?"}}</tool_call>
+
+RULES:
+- Only call one tool per response.
+- If you call a tool, output ONLY the tool_call XML ΓÇö no other text.
+- Only use a tool when necessary. Do not search the knowledge base for questions you can answer directly.
+--- End Tools ---
+"""
 
 # Create audio directory if it doesn't exist
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # App State
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 db_pool: Optional[asyncpg.Pool] = None
 redis_client: Optional[aioredis.Redis] = None
+knowledge_adapter: Optional[KnowledgeAdapter] = None
+
+# Persistent HTTP clients pool ΓÇö per provider (reuses TCP connection pools)
+_http_clients: dict[str, httpx.AsyncClient] = {}
+
+def get_http_client(provider: str = "default", timeout: float = 30.0) -> httpx.AsyncClient:
+    if provider not in _http_clients or _http_clients[provider].is_closed:
+        _http_clients[provider] = httpx.AsyncClient(
+            timeout=timeout,
+            limits=httpx.Limits(max_connections=30, max_keepalive_connections=15),
+        )
+    return _http_clients[provider]
 
 
 async def cleanup_old_audio():
@@ -131,9 +220,9 @@ async def cleanup_old_audio():
                     fpath = os.path.join(AUDIO_DIR, fname)
                     if os.path.isfile(fpath) and os.path.getmtime(fpath) < (now - 7 * 86400):
                         os.unlink(fpath)
-                        print(f"🧹 Cleaned old TTS cache file: {fname}")
+                        logger.info("cleaned_old_tts_cache", fname=fname)
         except Exception as e:
-            print(f"⚠️ Audio cleanup error: {e}")
+            logger.error("audio_cleanup_error_e", e=e)
         await asyncio.sleep(86400)
 
 
@@ -142,32 +231,72 @@ async def cleanup_semantic_cache_task():
         await asyncio.sleep(3600)  # Run hourly
         try:
             if db_pool:
-                await db_pool.execute("SELECT cleanup_semantic_cache()")
-                print("🧹 Semantic cache cleanup complete")
+                deleted = await db_pool.fetchval("SELECT cleanup_semantic_cache()")
+                logger.info("semantic_cache_cleanup", deleted_rows=deleted)
         except Exception as e:
-            print(f"⚠️ Semantic cache cleanup error: {e}")
+            logger.error("semantic_cache_cleanup_error", error=str(e))
+
+
+async def persist_events_from_stream():
+    """Consume markova_events Redis stream and persist to events table."""
+    if not redis_client or not db_pool:
+        return
+    group = "event-persister"
+    stream = "markova_events"
+    try:
+        await redis_client.xgroup_create(stream, group, id="0", mkstream=True)
+    except Exception:
+        pass
+    while True:
+        try:
+            messages = await redis_client.xreadgroup(group, "orchestrator-1", 
+                {stream: ">"}, count=10, block=5000)
+            for _, entries in (messages or []):
+                for msg_id, fields in entries:
+                    await db_pool.execute(
+                        "INSERT INTO events (type, payload, source, created_at) "
+                        "VALUES ($1, $2, $3, NOW()) ON CONFLICT DO NOTHING",
+                        fields.get("type"), fields.get("payload"), fields.get("source")
+                    )
+                    await redis_client.xack(stream, group, msg_id)
+        except Exception as e:
+            logger.warning("event_persist_error", error=str(e))
+            await asyncio.sleep(5)
 
 
 # Fallback in-memory state and degraded status tracking
-_in_memory_state: dict[str, str] = {}
+# OrderedDict with LRU-style cap: evict oldest entries when > 500 active calls
+from collections import OrderedDict
+_MAX_IN_MEMORY_CALLS = 500
+_in_memory_state: OrderedDict[str, str] = OrderedDict()
 REDIS_DEGRADED: bool = False
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global db_pool, redis_client, REDIS_DEGRADED, semantic_cache
 
+    if not os.getenv("SERVICE_AUTH_SECRET"):
+        raise RuntimeError("FATAL: SERVICE_AUTH_SECRET is not set. Orchestrator will not start without it.")
+
     # Connect PostgreSQL with up to 20 attempts & exponential/bounded backoff (for Render cold starts)
     for attempt in range(20):
         try:
             db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, command_timeout=8)
-            print("✅ Orchestrator connected to PostgreSQL")
+            knowledge_adapter = KnowledgeAdapter(db_pool)
+            logger.info("orchestrator_connected_to_postgresql")
+            
+            # Run pending database migrations
+            from migrations import run_pending_migrations
+            migrations_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infrastructure", "migrations")
+            await run_pending_migrations(db_pool, migrations_dir)
+            
             break
         except Exception as e:
             wait_sec = min(2 + attempt, 10)
-            print(f"⚠️ DB attempt {attempt + 1}/20 failed: {e}. Retrying in {wait_sec}s...")
+            logger.error("db_attempt_attempt_1", attempt___1=attempt + 1, e=e, wait_sec=wait_sec)
             await asyncio.sleep(wait_sec)
     else:
-        print("❌ Orchestrator: DB connection failed permanently")
+        logger.error("orchestrator_db_connection_failed")
         raise RuntimeError("Cannot connect to PostgreSQL")
 
     # Connect Redis (degrade gracefully if unavailable without crashing voice calls)
@@ -175,17 +304,17 @@ async def lifespan(app: FastAPI):
         try:
             redis_client = aioredis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=3)
             await redis_client.ping()
-            print("✅ Orchestrator connected to Redis")
+            logger.info("orchestrator_connected_to_redis")
             REDIS_DEGRADED = False
             break
         except Exception as e:
-            print(f"⚠️ Redis attempt {attempt + 1}/5 failed: {e}. Retrying in 2s...")
+            logger.error("redis_attempt_attempt_1", attempt___1=attempt + 1, e=e)
             await asyncio.sleep(2)
     else:
-        print("❌ Orchestrator: Redis connection failed permanently. Degrading to in-memory conversation fallback.")
+        logger.error("orchestrator_redis_connection_failed")
         REDIS_DEGRADED = True
 
-    print(f"🚀 Orchestrator ready on port {PORT} (Redis Degraded: {REDIS_DEGRADED})")
+    logger.info("orchestrator_ready_on_port", PORT=PORT, REDIS_DEGRADED=REDIS_DEGRADED)
     
     # Initialize Distributed Semantic Cache
     semantic_cache = DistributedSemanticCache(
@@ -199,6 +328,11 @@ async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(cleanup_old_audio())
     semantic_cache_cleanup_task = asyncio.create_task(cleanup_semantic_cache_task())
     transcript_consumer_task = asyncio.create_task(consume_transcript_stream())
+    event_persister_task = asyncio.create_task(persist_events_from_stream())
+    
+    # Phase 10.3: Campaign Engine
+    from campaigns import process_campaigns
+    campaign_processor_task = asyncio.create_task(process_campaigns(db_pool))
 
     yield
     
@@ -206,6 +340,10 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
     semantic_cache_cleanup_task.cancel()
     transcript_consumer_task.cancel()
+    event_persister_task.cancel()
+    campaign_processor_task.cancel()
+    for client in _http_clients.values():
+        await client.aclose()
     if db_pool:
         await db_pool.close()
     if redis_client:
@@ -214,35 +352,134 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Markova Orchestrator", version="2.0.0", lifespan=lifespan)
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+def _get_rate_limit_key(request: Request):
+    company_id = request.headers.get("x-company-id") or request.headers.get("x-tenant-id")
+    return company_id if company_id else get_remote_address(request)
+
+limiter = Limiter(key_func=_get_rate_limit_key)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Phase 10.3: Campaign Engine
+from campaigns import router as campaigns_router
+app.include_router(campaigns_router)
+
+# Phase 6: Real-Time Streaming Voice
+from media_stream import router as media_stream_router
+app.include_router(media_stream_router)
+
+if OTEL_AVAILABLE:
+    try:
+        provider = TracerProvider()
+        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
+        provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+        )
+        trace.set_tracer_provider(provider)
+        FastAPIInstrumentor.instrument_app(app)
+        
+        # Add auto-instrumentations
+        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        from opentelemetry.instrumentation.redis import RedisInstrumentor
+        AsyncPGInstrumentor().instrument()
+        HTTPXClientInstrumentor().instrument()
+        RedisInstrumentor().instrument()
+        
+        logger.info("opentelemetry_tracing_initialized", endpoint=otlp_endpoint)
+    except Exception as e:
+        logger.warning("opentelemetry_init_failed", error=str(e))
+
 # Mount generated audio files directory
 app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
+
+
+@app.get("/metrics")
+async def metrics(request: Request):
+    secret = os.getenv("PROMETHEUS_SCRAPE_SECRET")
+    if secret:
+        auth = request.headers.get("Authorization", "")
+        if auth != f"Bearer {secret}":
+            return PlainTextResponse("Unauthorized", status_code=401)
+            
+    if not PROMETHEUS_AVAILABLE:
+        return PlainTextResponse("Prometheus client not installed", status_code=501)
+    return PlainTextResponse(generate_latest().decode("utf-8"), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     path = request.url.path
     if any(path.startswith(p) for p in ["/twilio", "/incoming-call", "/handle-input", "/v1/calls"]):
-        print(f"❌ UNHANDLED EXCEPTION on telephony route {path}: {exc}")
+        logger.error("unhandled_exception_on_telephony", path=path, exc=exc)
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Zeina" language="ar-EG">ይቅርታ፣ አሁን የቴክኒክ ችግር አለ። እባክዎ ቆይተው ይደውሉ።</Say>
+    <Say voice="Polly.Zeina" language="ar-EG">ßï¡ßëàßê¡ßë│ßìú ßèáßêüßèò ßï¿ßë┤ßè¡ßèÆßè¡ ßë╜ßîìßê¡ ßèáßêêßìó ßèÑßëúßè¡ßïÄ ßëåßï¡ßë░ßïì ßï¡ßï░ßïìßêëßìó</Say>
     <Say language="en-US">We are experiencing a technical issue. Please call back shortly.</Say>
     <Hangup/>
 </Response>"""
         return PlainTextResponse(content=twiml, media_type="application/xml", status_code=200)
-    print(f"❌ UNHANDLED EXCEPTION on REST route {path}: {exc}")
+    logger.error("unhandled_exception_on_rest", path=path, exc=exc)
     raise exc
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # HELPERS: DB Lookups & Writes
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+async def get_agent_by_name(company_id: str, agent_name: str) -> Optional[dict]:
+    """
+    Look up an agent by name within a specific company. Used for dynamic handoffs.
+    """
+    if not db_pool:
+        logger.error("db_pool_not_initialized_get_agent_by_name", company_id=company_id, agent_name=agent_name)
+        return None
+
+    # Input sanitization: agent_name from LLM must be sane
+    if not agent_name or not isinstance(agent_name, str) or len(agent_name) > 128:
+        logger.warning("get_agent_by_name_invalid_input", agent_name=str(agent_name)[:100])
+        return None
+    try:
+        row = await db_pool.fetchrow(
+            """
+            SELECT 
+                id as agent_id,
+                name as agent_name,
+                prompt,
+                voice_provider,
+                voice_id,
+                model_provider,
+                model_id
+            FROM agents
+            WHERE company_id = $1 AND name = $2
+            """,
+            company_id, agent_name
+        )
+        return dict(row) if row else None
+    except Exception as e:
+        logger.error("db_error_get_agent_by_name", error=str(e))
+        return None
 
 async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
     """
     Look up which company+agent owns this phone number.
     Returns full agent configuration including provider settings.
+    Caches in Redis for 5 minutes (300s) to reduce DB load on calls.
     """
+    cache_key = f"agent:phone:{phone_number}"
+    if redis_client and not REDIS_DEGRADED:
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                logger.info("agent_phone_lookup_cache_hit", phone_number=phone_number)
+                return json.loads(cached)
+        except Exception:
+            pass
+
     if not db_pool:
         raise RuntimeError("DB pool not initialized in get_agent_by_phone")
     try:
@@ -273,9 +510,15 @@ async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
         if isinstance(settings, str):
             settings = json.loads(settings)
         data["phone_settings"] = settings
+
+        if redis_client and not REDIS_DEGRADED:
+            try:
+                await redis_client.setex(cache_key, 300, json.dumps(data, default=str))
+            except Exception:
+                pass
         return data
     except Exception as e:
-        print(f"❌ Critical DB failure in get_agent_by_phone({phone_number}): {e}")
+        logger.error("critical_db_failure_in", phone_number=phone_number, e=e)
         raise e
 
 
@@ -300,7 +543,7 @@ async def get_routing_rules_for_phone(phone_number_id: str, company_id: str) -> 
                 out.extend(rules)
         return out
     except Exception as e:
-        print(f"⚠️ Failed to load routing rules from DB: {e}")
+        logger.error("failed_to_load_routing", e=e)
         return []
 
 
@@ -318,7 +561,7 @@ def decrypt_provider_config(config: dict) -> dict:
                 except Exception:
                     pass
     except Exception as e:
-        print(f"⚠️ Decryption warning: {e}")
+        logger.warning("decryption_warning_e", e=e)
     return config
 
 
@@ -335,7 +578,7 @@ def encrypt_provider_config(config: dict) -> dict:
                 out[k] = f.encrypt(v.encode()).decode()
         return out
     except Exception as e:
-        print(f"⚠️ Encryption warning: {e}")
+        logger.warning("encryption_warning_e", e=e)
         return config
 
 
@@ -365,7 +608,7 @@ async def get_provider_config(company_id: str, provider_type: str, provider_name
             cfg_dict = json.loads(config) if isinstance(config, str) else dict(config)
             return decrypt_provider_config(cfg_dict)
     except Exception as e:
-        print(f"⚠️ DB error in get_provider_config ({provider_type}/{provider_name}): {e}")
+        logger.error("db_error_in_get", provider_type=provider_type, provider_name=provider_name, e=e)
     return None
 
 
@@ -392,7 +635,7 @@ async def create_call_record(
             caller_number,
         )
     except Exception as e:
-        print(f"⚠️ Failed to insert call record in DB (proceeding with ephemeral call_id {call_id}): {e}")
+        logger.error("failed_to_insert_call", call_id=call_id, e=e)
     return str(call_id)
 
 
@@ -443,11 +686,79 @@ async def save_transcript(call_id: str, role: str, content: str):
                     uuid.UUID(call_id)
                 )
     except Exception as e:
-        print(f"⚠️ Non-fatal: Failed to save transcript for call {call_id}: {e}")
+        logger.error("non_fatal_failed_to", call_id=call_id, e=e)
+
+
+import hmac
+import hashlib
+
+async def _dispatch_developer_webhook(call_id: str):
+    """
+    Look up the developer webhook for the company associated with this call and send a signed call.completed event.
+    """
+    try:
+        # Get the call and company info
+        call = await db_pool.fetchrow(
+            "SELECT c.company_id, c.status, c.caller_number, c.turn_count, a.environment FROM calls c LEFT JOIN agents a ON c.agent_id = a.id WHERE c.id = $1",
+            uuid.UUID(call_id)
+        )
+        if not call:
+            return
+            
+        env = call["environment"] or "test"
+        
+        # Look up webhook
+        webhook = await db_pool.fetchrow(
+            "SELECT webhook_url, secret_key FROM developer_webhooks WHERE company_id = $1 AND environment = $2",
+            call["company_id"], env
+        )
+        if not webhook:
+            return
+            
+        # Get transcripts
+        transcripts = await db_pool.fetch(
+            "SELECT role, content, created_at FROM transcripts WHERE call_id = $1 ORDER BY created_at ASC",
+            uuid.UUID(call_id)
+        )
+        
+        payload = {
+            "event": "call.completed",
+            "call_id": call_id,
+            "status": call["status"],
+            "caller_number": call["caller_number"],
+            "turn_count": call["turn_count"],
+            "transcript": [dict(t) for t in transcripts]
+        }
+        
+        # We need custom serialization for datetime
+        import json
+        from datetime import datetime
+        def _json_serial(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            raise TypeError("Type %s not serializable" % type(obj))
+            
+        payload_str = json.dumps(payload, default=_json_serial)
+        
+        # Sign payload
+        signature = hmac.new(webhook["secret_key"].encode('utf-8'), payload_str.encode('utf-8'), hashlib.sha256).hexdigest()
+        
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            await client.post(
+                webhook["webhook_url"],
+                headers={
+                    "Content-Type": "application/json",
+                    "X-Markova-Signature": f"sha256={signature}"
+                },
+                content=payload_str
+            )
+            logger.info("developer_webhook_dispatched", call_id=call_id, url=webhook["webhook_url"])
+    except Exception as e:
+        logger.error("developer_webhook_dispatch_failed", call_id=call_id, e=e)
 
 
 async def end_call_record(call_id: str):
-    """Mark call as completed."""
+    """Mark call as completed and fire webhooks."""
     if not db_pool or not call_id:
         return
     try:
@@ -455,8 +766,10 @@ async def end_call_record(call_id: str):
             "UPDATE calls SET status = 'completed', end_time = NOW() WHERE id = $1",
             uuid.UUID(call_id)
         )
+        # Phase 12: Dispatch developer webhook in the background
+        asyncio.create_task(_dispatch_developer_webhook(call_id))
     except Exception as e:
-        print(f"⚠️ Non-fatal: Failed to mark call {call_id} completed: {e}")
+        logger.error("non_fatal_failed_to", call_id=call_id, e=e)
 
 
 async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0,
@@ -477,7 +790,7 @@ async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0
                 uuid.uuid4(), uuid.UUID(company_id), llm_tokens, stt_seconds, tts_characters, call_minutes
             )
         except Exception as e:
-            print(f"⚠️ Non-fatal: Failed to record usage metric in DB: {e}")
+            logger.error("non_fatal_failed_to", e=e)
     # Best-effort cache sync via tenant-service internal increment
     tenant_url = os.getenv("TENANT_SERVICE_URL", "http://tenant-service:5002")
     secret = os.getenv("SERVICE_AUTH_SECRET")
@@ -486,8 +799,8 @@ async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0
             timestamp = str(int(time.time() * 1000))
             payload = f"orchestrator:{timestamp}"
             signature = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
+            client = get_http_client("tenant", timeout=5.0)
+            await client.post(
                     f"{tenant_url}/api/tenant/usage/increment",
                     json={
                         "companyId": company_id,
@@ -500,7 +813,7 @@ async def track_usage(company_id: str, llm_tokens: int = 0, stt_seconds: int = 0
                     headers={"x-service-auth": f"Service orchestrator:{timestamp}:{signature}"},
                 )
         except Exception as e:
-            print(f"⚠️ usage cache sync skipped: {e}")
+            logger.warning("usage_cache_sync_skipped", e=e)
 
 async def publish_event(event_type: str, payload: dict, source: str = "orchestrator"):
     if not redis_client:
@@ -515,98 +828,26 @@ async def publish_event(event_type: str, payload: dict, source: str = "orchestra
     try:
         await redis_client.xadd("markova_events", event)
     except Exception as e:
-        print(f"⚠️ Failed to publish event: {e}")
+        logger.error("failed_to_publish_event", e=e)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# RAG: Knowledge Base Query
-# ─────────────────────────────────────────────────────────────────────────────
 
-KNOWLEDGE_SERVICE_URL = os.getenv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:5006")
-
-async def query_knowledge_base(company_id: str, query: str, limit: int = 3) -> str:
-    """
-    Query the knowledge-service for relevant text chunks using vector similarity.
-    
-    Args:
-        company_id: Tenant identifier — NEVER search across company boundaries
-        query: The user's spoken text (already normalized + repaired)
-        limit: Max number of chunks to return (keep low for latency)
-    
-    Returns:
-        Formatted string of context chunks to inject into LLM prompt.
-        Returns empty string on any failure — NEVER blocks the call.
-    """
-    if not company_id or not query:
-        return ""
-    try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            resp = await client.post(
-                f"{KNOWLEDGE_SERVICE_URL}/api/knowledge/search",
-                json={"query": query, "limit": limit},
-                headers={"X-Company-ID": company_id}
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                results = data.get("results", [])
-                if results:
-                    parts = [r["content"] for r in results if r.get("content")]
-                    context = "\n\n---\n\n".join(parts)
-                    print(f"📚 RAG: {len(results)} chunks injected ({len(context)} chars)")
-                    return context
-    except Exception as e:
-        print(f"⚠️ Knowledge service unavailable (degrading gracefully): {e}")
-    return ""
-
-
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # ADAPTERS: LLM & EMBEDDING
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def get_embedding(provider: str, model_id: str, text: str, api_key: str) -> list[float]:
     if provider == "openai":
-        async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={"input": text, "model": model_id or "text-embedding-3-small"}
-            )
-            resp.raise_for_status()
-            return resp.json()["data"][0]["embedding"]
+        client = get_http_client("openai_embed", timeout=10.0)
+        resp = await client.post(
+            "https://api.openai.com/v1/embeddings",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"input": text, "model": model_id or "text-embedding-3-small"}
+        )
+        resp.raise_for_status()
+        return resp.json()["data"][0]["embedding"]
     # Fallback to empty vector if not supported
     return []
-
-async def search_knowledge_chunks(company_id: str, query: str, api_key: str) -> str:
-    """Retrieve relevant chunks from vector database."""
-    try:
-        # Default to OpenAI embeddings for now
-        embedding = await get_embedding("openai", "text-embedding-3-small", query, api_key)
-        if not embedding:
-            return ""
-            
-        vector_str = f"[{','.join(map(str, embedding))}]"
-        
-        rows = await db_pool.fetch(
-            """
-            SELECT content, 1 - (embedding <=> $1::vector) AS similarity
-            FROM knowledge_chunks
-            WHERE company_id = $2
-            ORDER BY embedding <=> $1::vector
-            LIMIT 3
-            """,
-            vector_str,
-            uuid.UUID(company_id)
-        )
-        
-        # Filter chunks with good similarity
-        context_chunks = [r["content"] for r in rows if r["similarity"] > 0.70]
-        if not context_chunks:
-            return ""
-            
-        return "\n\n".join(context_chunks)
-    except Exception as e:
-        print(f"⚠️ RAG Search Failed: {e}")
-        return ""
 
 
 async def llm_complete(provider: str, model_id: str, messages: list, api_key: str) -> tuple[str, int]:
@@ -614,42 +855,59 @@ async def llm_complete(provider: str, model_id: str, messages: list, api_key: st
     Unified LLM completion adapter.
     Returns (response_text, tokens_used)
     """
-    if provider == "openai":
-        return await _openai_complete(model_id, messages, api_key)
-    elif provider == "groq":
-        return await _groq_complete(model_id, messages, api_key)
-    elif provider == "gemini":
-        return await _gemini_complete(model_id, messages, api_key)
-    else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
+    from opentelemetry import trace
+    tracer = trace.get_tracer("markova.orchestrator.llm")
+    with tracer.start_as_current_span("llm_complete") as span:
+        span.set_attribute("llm.provider", provider)
+        span.set_attribute("llm.model_id", model_id)
+        span.set_attribute("llm.message_count", len(messages))
+        try:
+            if provider == "openai":
+                result = await _openai_complete(model_id, messages, api_key)
+            elif provider == "groq":
+                result = await _groq_complete(model_id, messages, api_key)
+            elif provider == "gemini":
+                result = await _gemini_complete(model_id, messages, api_key)
+            elif provider == "vllm":
+                from services.orchestrator.vllm_adapter import VLLMAdapter
+                adapter = VLLMAdapter()
+                result = await adapter.complete(messages, model_id=model_id)
+            else:
+                raise ValueError(f"Unsupported LLM provider: {provider}")
+            span.set_attribute("llm.tokens_used", result[1])
+            return result
+        except Exception as e:
+            span.record_exception(e)
+            span.set_status(trace.StatusCode.ERROR)
+            raise
 
 
 async def _openai_complete(model_id: str, messages: list, api_key: str) -> tuple[str, int]:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model_id or "gpt-4o-mini", "messages": messages, "max_tokens": 300, "temperature": 0.7}
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"].strip()
-        tokens = data["usage"]["total_tokens"]
-        return text, tokens
+    client = get_http_client("openai", timeout=30.0)
+    resp = await client.post(
+        "https://api.openai.com/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": model_id or "gpt-4o-mini", "messages": messages, "max_tokens": 300, "temperature": 0.7}
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    text = data["choices"][0]["message"]["content"].strip()
+    tokens = data["usage"]["total_tokens"]
+    return text, tokens
 
 
 async def _groq_complete(model_id: str, messages: list, api_key: str) -> tuple[str, int]:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": model_id or "llama-3.3-70b-versatile", "messages": messages, "max_tokens": 300}
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["choices"][0]["message"]["content"].strip()
-        tokens = data.get("usage", {}).get("total_tokens", 0)
-        return text, tokens
+    client = get_http_client("groq", timeout=30.0)
+    resp = await client.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": model_id or "llama-3.3-70b-versatile", "messages": messages, "max_tokens": 300}
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    text = data["choices"][0]["message"]["content"].strip()
+    tokens = data.get("usage", {}).get("total_tokens", 0)
+    return text, tokens
 
 
 async def _gemini_complete(model_id: str, messages: list, api_key: str) -> tuple[str, int]:
@@ -663,34 +921,123 @@ async def _gemini_complete(model_id: str, messages: list, api_key: str) -> tuple
             contents.append({"role": role, "parts": [{"text": msg["content"]}]})
 
     model = model_id or "gemini-1.5-flash"
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
-            json={"contents": contents}
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
-        return text, 0  # Gemini doesn't return usage details in standard OpenAI format
+    client = get_http_client("gemini", timeout=30.0)
+    resp = await client.post(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}",
+        json={"contents": contents}
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    text = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+    prompt_chars = sum(len(m.get("content", "")) for m in messages)
+    estimated_tokens = (prompt_chars + len(text)) // 4
+    return text, estimated_tokens
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # ADAPTERS: STT
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-async def stt_transcribe(provider: str, model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
+async def preprocess_audio_for_stt(audio_bytes: bytes, input_ext: str = ".wav") -> bytes:
+    """
+    Apply telephony-grade audio pre-processing pipeline before STT.
+    Matches the proven playground pipeline from ai call center/main_natural_voice.py.
+    
+    Pipeline:
+      1. highpass=f=200      ΓÇö Remove sub-200Hz phone hiss
+      2. lowpass=f=3400      ΓÇö Remove above 3.4kHz (phone bandwidth)
+      3. afftdn=nf=-25       ΓÇö Spectral noise floor reduction
+      4. loudnorm=I=-23      ΓÇö EBU R128 loudness normalization
+      5. silenceremove       ΓÇö Trim leading silence >100ms
+      6. ar=16000, ac=1      ΓÇö 16kHz mono for Whisper compatibility
+    
+    Falls back to returning original bytes on any ffmpeg error.
+    """
+    try:
+        with tempfile.NamedTemporaryFile(suffix=input_ext, delete=False) as inp:
+            inp.write(audio_bytes)
+            inp_name = inp.name
+        out_name = inp_name.replace(input_ext, "_processed.wav")
+        
+        process = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-i", inp_name,
+            "-af", (
+                "highpass=f=200,"
+                "lowpass=f=3400,"
+                "afftdn=nf=-25,"
+                "loudnorm=I=-23:LRA=7:TP=-2,"
+                "silenceremove=start_periods=1:start_silence=0.1:start_threshold=-50dB"
+            ),
+            "-ar", "16000", "-ac", "1",
+            out_name,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        try:
+            await asyncio.wait_for(process.communicate(), timeout=8.0)
+            if process.returncode == 0 and os.path.exists(out_name):
+                with open(out_name, "rb") as f:
+                    return f.read()
+        except asyncio.TimeoutError:
+            process.kill()
+    except Exception as e:
+        logger.warning("ffmpeg_preprocess_failed", error=str(e))
+    finally:
+        for p in [inp_name, out_name]:
+            try: os.unlink(p)
+            except: pass
+    return audio_bytes  # Graceful fallback: return original
+
+
+async def get_agent_whisper_prompt(company_id: str, agent_language: str = "am") -> str:
+    """
+    Build a Whisper initial_prompt from this agent's knowledge base keywords.
+    Falls back to a generic Amharic prompt on any failure.
+    """
+    GENERIC_AM_PROMPT = (
+        "ßê░ßêïßê¥ßìó ßï░ßèòßëáßè¢ ßï╡ßîïßìì ßèÉßè¥ßìó ßïïßîï how much ßèÉßïì? discount ßèáßêê? delivery free ßèÉßïì? "
+        "ßë╡ßïòßï¢ßï¥ order ßè¡ßììßï½ ßëÑßê¡ ßëúßèòßè¡ ßïïßê╡ßë╡ßèôßìó"
+    )
+    try:
+        if not db_pool or not company_id:
+            return GENERIC_AM_PROMPT
+        rows = await db_pool.fetch(
+            """
+            SELECT DISTINCT 
+                substring(content, 1, 200) as snippet
+            FROM knowledge_chunks 
+            WHERE company_id = $1
+            ORDER BY created_at DESC
+            LIMIT 10
+            """,
+            uuid.UUID(company_id)
+        )
+        if not rows:
+            return GENERIC_AM_PROMPT
+        snippets = " ".join(r["snippet"] for r in rows)[:500]
+        return f"{GENERIC_AM_PROMPT} {snippets}"
+    except Exception as e:
+        logger.warning("whisper_prompt_build_failed", error=str(e), company_id=company_id)
+        return GENERIC_AM_PROMPT
+
+
+async def stt_transcribe(provider: str, model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am", prompt: str = None) -> str:
     """
     Unified STT transcription adapter.
     Returns transcribed text.
     """
+    audio_bytes = await preprocess_audio_for_stt(audio_bytes, 
+        input_ext=os.path.splitext(filename)[1] or ".wav")
+    filename = filename.rsplit(".", 1)[0] + "_processed.wav"
+
     if provider == "hasab":
         return await _hasab_stt(audio_bytes, filename, api_key, lang)
     elif provider == "elevenlabs":
         return await _elevenlabs_stt(audio_bytes, filename, api_key, lang)
     elif provider == "openai":
-        return await _openai_stt(model_id, audio_bytes, filename, api_key, lang)
+        return await _openai_stt(model_id, audio_bytes, filename, api_key, lang, prompt=prompt)
     elif provider == "groq":
-        return await _groq_stt(model_id, audio_bytes, filename, api_key, lang)
+        return await _groq_stt(model_id, audio_bytes, filename, api_key, lang, prompt=prompt)
     elif provider == "deepgram":
         return await _deepgram_stt(model_id, audio_bytes, api_key, lang)
     else:
@@ -700,135 +1047,123 @@ async def stt_transcribe(provider: str, model_id: str, audio_bytes: bytes, filen
 async def _hasab_stt(audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
     url = os.getenv("HASAB_API_URL", "https://api.hasab.ai/api/v1/upload-audio")
     headers = {"Authorization": f"Bearer {api_key}", "Accept": "application/json"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        files = {"audio": (filename, audio_bytes, "audio/wav")}
-        data = {"transcribe": "true", "translate": "false", "summarize": "false", "language": lang}
-        resp = await client.post(url, headers=headers, files=files, data=data)
-        if resp.status_code not in [200, 201]:
-            files_alt = {"file": (filename, audio_bytes, "audio/wav")}
-            resp = await client.post(url, headers=headers, files=files_alt, data=data)
-        resp.raise_for_status()
-        res_json = resp.json()
-        text = res_json.get("transcription") or res_json.get("text")
-        if not text and isinstance(res_json.get("result"), dict):
-            text = res_json["result"].get("transcription") or res_json["result"].get("text")
-        if not text and isinstance(res_json.get("data"), dict):
-            text = res_json["data"].get("transcription") or res_json["data"].get("text")
-        if not text and isinstance(res_json, str):
-            text = res_json
-        return str(text or "").strip()
+    client = get_http_client("hasab", timeout=30.0)
+    files = {"audio": (filename, audio_bytes, "audio/wav")}
+    data = {"transcribe": "true", "translate": "false", "summarize": "false", "language": lang}
+    resp = await client.post(url, headers=headers, files=files, data=data)
+    if resp.status_code not in [200, 201]:
+        files_alt = {"file": (filename, audio_bytes, "audio/wav")}
+        resp = await client.post(url, headers=headers, files=files_alt, data=data)
+    resp.raise_for_status()
+    res_json = resp.json()
+    text = res_json.get("transcription") or res_json.get("text")
+    if not text and isinstance(res_json.get("result"), dict):
+        text = res_json["result"].get("transcription") or res_json["result"].get("text")
+    if not text and isinstance(res_json.get("data"), dict):
+        text = res_json["data"].get("transcription") or res_json["data"].get("text")
+    if not text and isinstance(res_json, str):
+        text = res_json
+    return str(text or "").strip()
 
 
 async def _elevenlabs_stt(audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
-    async with httpx.AsyncClient(timeout=30) as client:
-        files = {"file": (filename, audio_bytes, "audio/wav")}
-        data = {"model_id": "scribe_v2", "language_code": lang}
-        resp = await client.post(
-            "https://api.elevenlabs.io/v1/speech-to-text",
-            headers={"xi-api-key": api_key},
-            files=files,
-            data=data
-        )
-        resp.raise_for_status()
-        return resp.json().get("text", "").strip()
-
-
-async def _openai_stt(model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
-    WHISPER_PROMPT = (
-        "ሰላም የጂኤም ፈርኒቸር ደንበኛ ድጋፍ ነኝ። ሶፋ ዋጋ how much ነው? discount አለ? delivery free ነው? "
-        "ወንበር price ስንት ነው? installation included ነው? "
-        "አልጋ ጠረጴዛ ካቢኔ ዋርድሮብ መደርደሪያ ቲቪ ስታንድ ኪንግ ሳይዝ ኩዊን ኤል ቅርጽ ስዊቬል "
-        "ሾሩም location Bole ቄራ Piassa ቶርሃይሎች ጉርድ ሾላ አለምገና። "
-        "ዋጋ ብር ክፍያ ቅጣፍ ባንክ ዋስትና ትዕዛዝ order furniture desk chair bed style"
+    client = get_http_client("elevenlabs_stt", timeout=30.0)
+    files = {"file": (filename, audio_bytes, "audio/wav")}
+    data = {"model_id": "scribe_v2", "language_code": lang}
+    resp = await client.post(
+        "https://api.elevenlabs.io/v1/speech-to-text",
+        headers={"xi-api-key": api_key},
+        files=files,
+        data=data
     )
-    async with httpx.AsyncClient(timeout=30) as client:
-        files = {
-            "file": (filename, audio_bytes, "audio/wav" if filename.endswith(".wav") else "audio/mpeg")
-        }
-        data = {
-            "model": model_id or "whisper-1",
-            "language": lang,
-            "prompt": WHISPER_PROMPT
-        }
-        resp = await client.post(
-            "https://api.openai.com/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            files=files,
-            data=data
-        )
-        resp.raise_for_status()
-        return resp.json()["text"]
+    resp.raise_for_status()
+    return resp.json().get("text", "").strip()
 
 
-async def _groq_stt(model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am") -> str:
-    WHISPER_PROMPT = (
-        "ሰላም የጂኤም ፈርኒቸር ደንበኛ ድጋፍ ነኝ። ሶፋ ዋጋ how much ነው? discount አለ? delivery free ነው? "
-        "ወንበር price ስንት ነው? installation included ነው? "
-        "አልጋ ጠረጴዛ ካቢኔ ዋርድሮብ መደርደሪያ ቲቪ ስታንድ ኪንግ ሳይዝ ኩዊን ኤል ቅርጽ ስዊቬል "
-        "ሾሩም location Bole ቄራ Piassa ቶርሃይሎች ጉርድ ሾላ አለምገና። "
-        "ዋጋ ብር ክፍያ ቅጣፍ ባንክ ዋስትና ትዕዛዝ order furniture desk chair bed style"
+async def _openai_stt(model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am", prompt: str = None) -> str:
+    WHISPER_PROMPT = prompt or await get_agent_whisper_prompt(None)
+    client = get_http_client("openai_stt", timeout=30.0)
+    files = {
+        "file": (filename, audio_bytes, "audio/wav" if filename.endswith(".wav") else "audio/mpeg")
+    }
+    data = {
+        "model": model_id or "whisper-1",
+        "language": lang,
+        "prompt": WHISPER_PROMPT
+    }
+    resp = await client.post(
+        "https://api.openai.com/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        files=files,
+        data=data
     )
-    async with httpx.AsyncClient(timeout=30) as client:
-        files = {
-            "file": (filename, audio_bytes, "audio/wav" if filename.endswith(".wav") else "audio/mpeg")
-        }
-        data = {
-            "model": model_id or "whisper-large-v3-turbo",
-            "language": lang,
-            "prompt": WHISPER_PROMPT
-        }
-        resp = await client.post(
-            "https://api.groq.com/openai/v1/audio/transcriptions",
-            headers={"Authorization": f"Bearer {api_key}"},
-            files=files,
-            data=data
-        )
-        resp.raise_for_status()
-        return resp.json()["text"]
+    resp.raise_for_status()
+    return resp.json()["text"]
+
+
+async def _groq_stt(model_id: str, audio_bytes: bytes, filename: str, api_key: str, lang: str = "am", prompt: str = None) -> str:
+    WHISPER_PROMPT = prompt or await get_agent_whisper_prompt(None)
+    client = get_http_client("groq_stt", timeout=30.0)
+    files = {
+        "file": (filename, audio_bytes, "audio/wav" if filename.endswith(".wav") else "audio/mpeg")
+    }
+    data = {
+        "model": model_id or "whisper-large-v3-turbo",
+        "language": lang,
+        "prompt": WHISPER_PROMPT
+    }
+    resp = await client.post(
+        "https://api.groq.com/openai/v1/audio/transcriptions",
+        headers={"Authorization": f"Bearer {api_key}"},
+        files=files,
+        data=data
+    )
+    resp.raise_for_status()
+    return resp.json()["text"]
 
 
 async def _deepgram_stt(model_id: str, audio_bytes: bytes, api_key: str, lang: str = "am") -> str:
     dg_lang = "am" if lang == "am" else "en"
-    async with httpx.AsyncClient(timeout=30) as client:
-        headers = {
-            "Authorization": f"Token {api_key}",
-            "Content-Type": "audio/wav"
-        }
-        resp = await client.post(
-            f"https://api.deepgram.com/v1/listen?model={model_id or 'nova-2'}&language={dg_lang}&smart_format=true",
-            headers=headers,
-            content=audio_bytes
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        return data["results"]["channels"][0]["alternatives"][0]["transcript"]
+    client = get_http_client("deepgram", timeout=30.0)
+    headers = {
+        "Authorization": f"Token {api_key}",
+        "Content-Type": "audio/wav"
+    }
+    resp = await client.post(
+        f"https://api.deepgram.com/v1/listen?model={model_id or 'nova-2'}&language={dg_lang}&smart_format=true",
+        headers=headers,
+        content=audio_bytes
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    return data["results"]["channels"][0]["alternatives"][0]["transcript"]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # ADAPTERS: TTS
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
-async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str) -> bytes:
+async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str, emotion: str = "NEUTRAL") -> bytes:
     """
     Unified TTS adapter with Edge TTS primary & Addis AI TTS fallback for Amharic.
     Returns audio bytes (MP3/WAV).
     """
     try:
         if provider in ["edge", "addisai", "amharic", ""] or not provider:
-            print(f"🎙️ Generating voice using primary Edge TTS ({voice_id or 'am-ET-MekdesNeural'})...")
+            logger.info("generating_voice_using_primary", voice_id_or__am_ET_MekdesNeural=voice_id or 'am-ET-MekdesNeural')
             try:
                 return await _edge_tts(voice_id or "am-ET-MekdesNeural", text)
             except Exception as err:
-                print(f"⚠️ Primary Edge TTS failed ({err}), falling back to Addis AI TTS...")
+                logger.error("primary_edge_tts_failed", err=err)
                 return await _addisai_tts(text, api_key)
         elif provider == "elevenlabs":
-            return await _elevenlabs_tts(voice_id, text, api_key)
+            return await _elevenlabs_tts(voice_id, text, api_key, emotion)
         elif provider == "openai":
             return await _openai_tts(voice_id, text, api_key)
         elif provider == "azure":
             return await _azure_tts(voice_id, text, api_key)
     except Exception as e:
-        print(f"⚠️ Primary TTS {provider} failed: {e}. Falling back to edge-tts / addisai.")
+        logger.error("primary_tts_provider_failed", provider=provider, e=e)
         
     try:
         return await _edge_tts("am-ET-MekdesNeural", text)
@@ -836,27 +1171,38 @@ async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str) 
         return await _addisai_tts(text, api_key)
 
 
-async def _elevenlabs_tts(voice_id: str, text: str, api_key: str) -> bytes:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id or '21m00Tcm4TlvDq8ikWAM'}",
-            headers={"xi-api-key": api_key, "Content-Type": "application/json"},
-            json={"text": text, "model_id": "eleven_multilingual_v2",
-                  "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}}
-        )
-        resp.raise_for_status()
-        return resp.content
+async def _elevenlabs_tts(voice_id: str, text: str, api_key: str, emotion: str = "NEUTRAL") -> bytes:
+    # Phase 10.4: Emotion-Aware Voice Modulation
+    stability = 0.5
+    similarity_boost = 0.75
+    
+    if emotion == "NEGATIVE":
+        stability = 0.8
+        similarity_boost = 0.5
+    elif emotion == "POSITIVE":
+        stability = 0.4
+        similarity_boost = 0.9
+
+    client = get_http_client("elevenlabs_tts", timeout=30.0)
+    resp = await client.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id or '21m00Tcm4TlvDq8ikWAM'}",
+        headers={"xi-api-key": api_key, "Content-Type": "application/json"},
+        json={"text": text, "model_id": "eleven_multilingual_v2",
+              "voice_settings": {"stability": stability, "similarity_boost": similarity_boost}}
+    )
+    resp.raise_for_status()
+    return resp.content
 
 
 async def _openai_tts(voice_id: str, text: str, api_key: str) -> bytes:
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            "https://api.openai.com/v1/audio/speech",
-            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"model": "tts-1", "voice": voice_id or "alloy", "input": text}
-        )
-        resp.raise_for_status()
-        return resp.content
+    client = get_http_client("openai_tts", timeout=30.0)
+    resp = await client.post(
+        "https://api.openai.com/v1/audio/speech",
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={"model": "tts-1", "voice": voice_id or "alloy", "input": text}
+    )
+    resp.raise_for_status()
+    return resp.content
 
 
 async def _azure_tts(voice_id: str, text: str, api_key: str) -> bytes:
@@ -864,18 +1210,18 @@ async def _azure_tts(voice_id: str, text: str, api_key: str) -> bytes:
     ssml = f"""<speak version="1.0" xml:lang="en-US">
         <voice name="{voice_id or 'en-US-JennyNeural'}">{text}</voice>
     </speak>"""
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(
-            f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1",
-            headers={
-                "Ocp-Apim-Subscription-Key": api_key,
-                "Content-Type": "application/ssml+xml",
-                "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3"
-            },
-            content=ssml.encode()
-        )
-        resp.raise_for_status()
-        return resp.content
+    client = get_http_client("azure_tts", timeout=30.0)
+    resp = await client.post(
+        f"https://{region}.tts.speech.microsoft.com/cognitiveservices/v1",
+        headers={
+            "Ocp-Apim-Subscription-Key": api_key,
+            "Content-Type": "application/ssml+xml",
+            "X-Microsoft-OutputFormat": "audio-16khz-128kbitrate-mono-mp3"
+        },
+        content=ssml.encode()
+    )
+    resp.raise_for_status()
+    return resp.content
 
 
 async def _edge_tts(voice_id: str, text: str) -> bytes:
@@ -889,10 +1235,8 @@ async def _edge_tts(voice_id: str, text: str) -> bytes:
         with open(tmp_name, "rb") as f:
             mp3_bytes = f.read()
         
-        # Try to convert to WAV using ffmpeg if available for better tele-compatibility
         try:
             wav_name = tmp_name.replace(".mp3", ".wav")
-            # Run ffmpeg asynchronously to avoid blocking the event loop
             process = await asyncio.create_subprocess_exec(
                 'ffmpeg', '-y', '-i', tmp_name, '-ar', '16000', '-ac', '1', wav_name,
                 stdout=asyncio.subprocess.PIPE,
@@ -915,7 +1259,6 @@ async def _edge_tts(voice_id: str, text: str) -> bytes:
                     pass
             return mp3_bytes
         except Exception as e:
-            # Fallback to returning raw MP3
             return mp3_bytes
     finally:
         if os.path.exists(tmp_name):
@@ -928,29 +1271,28 @@ async def _addisai_tts(text: str, api_key: str) -> bytes:
     url = os.getenv("ADDIS_AI_TTS_URL", "https://api.addisassistant.com/api/v1/audio")
     headers = {"X-API-Key": key, "Content-Type": "application/json"}
     payload = {"text": text, "language": "am"}
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-        resp.raise_for_status()
-        data = resp.json()
-        audio_str = data.get("audio", "")
-        if audio_str.startswith("data:"):
-            audio_str = audio_str.split(",")[1]
-        import base64
-        return base64.b64decode(audio_str)
+    client = get_http_client("addisai_tts", timeout=30.0)
+    resp = await client.post(url, headers=headers, json=payload)
+    resp.raise_for_status()
+    data = resp.json()
+    audio_str = data.get("audio", "")
+    if audio_str.startswith("data:"):
+        audio_str = audio_str.split(",")[1]
+    return base64.b64decode(audio_str)
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # SPEECH VALIDATION & NORMALIZATION (AMHARIC ENGINE)
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 # Polite rotatable retries
 POLITE_RETRY_RESPONSES = [
-    "ይቅርታ፣ አንዴ ይድገሙልኝ?",
-    "ይቅርታ፣ ግልፅ አልሆነልኝም። ደግመው ይንገሩኝ?",
-    "ይቅርታ፣ ጥያቄዎን ትንሽ እንደገና ይንገሩኝ?",
-    "እሺ፣ ይቅርታ ጎን ያሉኝ ድምፅ ብዙ ነው። እባክዎ ደግመው ይንገሩኝ?",
-    "ይቅርታ፣ በደንብ አልሰማሁዎትም። እባክዎ ቀስ ብለው ይንገሩኝ?",
-    "ይቅርታ፣ መስመሩ ትንሽ ደካማ ነው። እባክዎ ደግመው ይናገሩ?",
+    "ßï¡ßëàßê¡ßë│ßìú ßèáßèòßï┤ ßï¡ßï╡ßîêßêÖßêìßè¥?",
+    "ßï¡ßëàßê¡ßë│ßìú ßîìßêìßìà ßèáßêìßêåßèÉßêìßè¥ßê¥ßìó ßï░ßîìßêÿßïì ßï¡ßèòßîêßê⌐ßè¥?",
+    "ßï¡ßëàßê¡ßë│ßìú ßîÑßï½ßëäßïÄßèò ßë╡ßèòßê╜ ßèÑßèòßï░ßîêßèô ßï¡ßèòßîêßê⌐ßè¥?",
+    "ßèÑßê║ßìú ßï¡ßëàßê¡ßë│ ßîÄßèò ßï½ßêëßè¥ ßï╡ßê¥ßìà ßëÑßïÖ ßèÉßïìßìó ßèÑßëúßè¡ßïÄ ßï░ßîìßêÿßïì ßï¡ßèòßîêßê⌐ßè¥?",
+    "ßï¡ßëàßê¡ßë│ßìú ßëáßï░ßèòßëÑ ßèáßêìßê░ßê¢ßêüßïÄßë╡ßê¥ßìó ßèÑßëúßè¡ßïÄ ßëÇßê╡ ßëÑßêêßïì ßï¡ßèòßîêßê⌐ßè¥?",
+    "ßï¡ßëàßê¡ßë│ßìú ßêÿßê╡ßêÿßê⌐ ßë╡ßèòßê╜ ßï░ßè½ßê¢ ßèÉßïìßìó ßèÑßëúßè¡ßïÄ ßï░ßîìßêÿßïì ßï¡ßèôßîêßê⌐?",
 ]
 def get_polite_retry() -> str:
     return random.choice(POLITE_RETRY_RESPONSES)
@@ -958,16 +1300,16 @@ def get_polite_retry() -> str:
 
 # Homophone normalizer map
 AMHARIC_NORMALIZER = str.maketrans({
-    'ሐ': 'ሀ', 'ኀ': 'ሀ', 'ሑ': 'ሁ', 'ኁ': 'ሁ',
-    'ሒ': 'ሂ', 'ኂ': 'ሂ', 'ሓ': 'ሃ', 'ኃ': 'ሃ',
-    'ሔ': 'ሄ', 'ኄ': 'ሄ', 'ሕ': 'ህ', 'ኅ': 'ህ',
-    'ሖ': 'ሆ', 'ኆ': 'ሆ',
-    'ዐ': 'አ', 'ዑ': 'ኡ', 'ዒ': 'ኢ', 'ዓ': 'ኣ',
-    'ዔ': 'ኤ', 'ዕ': 'እ', 'ዖ': 'ኦ',
-    'ሠ': 'ሰ', 'ሡ': 'ሱ', 'ሢ': 'ሲ', 'ሣ': 'ሳ',
-    'ሤ': 'ሴ', 'ሥ': 'ስ', 'ሦ': 'ሶ',
-    'ፀ': 'ጸ', 'ፁ': 'ጹ', 'ፂ': 'ጺ', 'ፃ': 'ጻ',
-    'ፄ': 'ጼ', 'ፅ': 'ጽ', 'ፆ': 'ጾ',
+    'ßêÉ': 'ßêÇ', 'ßèÇ': 'ßêÇ', 'ßêæ': 'ßêü', 'ßèü': 'ßêü',
+    'ßêÆ': 'ßêé', 'ßèé': 'ßêé', 'ßêô': 'ßêâ', 'ßèâ': 'ßêâ',
+    'ßêö': 'ßêä', 'ßèä': 'ßêä', 'ßêò': 'ßêà', 'ßèà': 'ßêà',
+    'ßêû': 'ßêå', 'ßèå': 'ßêå',
+    'ßïÉ': 'ßèá', 'ßïæ': 'ßèí', 'ßïÆ': 'ßèó', 'ßïô': 'ßèú',
+    'ßïö': 'ßèñ', 'ßïò': 'ßèÑ', 'ßïû': 'ßèª',
+    'ßêá': 'ßê░', 'ßêí': 'ßê▒', 'ßêó': 'ßê▓', 'ßêú': 'ßê│',
+    'ßêñ': 'ßê┤', 'ßêÑ': 'ßê╡', 'ßêª': 'ßê╢',
+    'ßìÇ': 'ßî╕', 'ßìü': 'ßî╣', 'ßìé': 'ßî║', 'ßìâ': 'ßî╗',
+    'ßìä': 'ßî╝', 'ßìà': 'ßî╜', 'ßìå': 'ßî╛',
 })
 
 
@@ -1034,7 +1376,7 @@ def is_garbage_transcription(text: str) -> bool:
     # Hallucination keywords
     hallucination_phrases = [
         "subtitles by", "subscrib", "thank you for watching",
-        "please subscribe", "like and subscribe", "ሰብስክራይብ",
+        "please subscribe", "like and subscribe", "ßê░ßëÑßê╡ßè¡ßê½ßï¡ßëÑ",
         "feeding", "www.", "http"
     ]
     text_lower = text.lower()
@@ -1049,35 +1391,35 @@ async def repair_amharic_transcription(text: str, api_key: str) -> str:
     if not text or len(text) < 3 or not api_key:
         return text
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.post(
-                "https://api.groq.com/openai/v1/chat/completions",
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json={
-                    "model": "llama-3.1-8b-instant",
-                    "messages": [{
-                        "role": "system",
-                        "content": (
-                            "You are an Amharic text repair tool. Fix phonetic spelling mistakes in Amharic text "
-                            "produced by speech recognition. The text may contain English words mixed in. "
-                            "Only fix obvious character substitutions. Return ONLY the corrected text, nothing else."
-                        )
-                    }, {"role": "user", "content": text}],
-                    "temperature": 0.0,
-                    "max_tokens": 100
-                }
-            )
-            if resp.status_code == 200:
-                repaired = resp.json()["choices"][0]["message"]["content"].strip()
-                return repaired or text
+        client = get_http_client("phonetic_repair", timeout=5.0)
+        resp = await client.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [{
+                    "role": "system",
+                    "content": (
+                        "You are an Amharic text repair tool. Fix phonetic spelling mistakes in Amharic text "
+                        "produced by speech recognition. The text may contain English words mixed in. "
+                        "Only fix obvious character substitutions. Return ONLY the corrected text, nothing else."
+                    )
+                }, {"role": "user", "content": text}],
+                "temperature": 0.0,
+                "max_tokens": 100
+            }
+        )
+        if resp.status_code == 200:
+            repaired = resp.json()["choices"][0]["message"]["content"].strip()
+            return repaired or text
     except Exception as e:
-        print(f"⚠️ Phonetic repair failed: {e}")
+        logger.error("phonetic_repair_failed_e", e=e)
     return text
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # CONVERSATION STATE (Redis)
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 async def get_conversation_state(call_sid: str) -> dict:
     global REDIS_DEGRADED
@@ -1088,7 +1430,7 @@ async def get_conversation_state(call_sid: str) -> dict:
                 return json.loads(raw)
             return {"messages": [], "turn_count": 0, "call_id": None}
         except Exception as e:
-            print(f"⚠️ Redis read failure ({e}). Degrading to in-memory state.")
+            logger.error("redis_read_failure_e", e=e)
             REDIS_DEGRADED = True
 
     # In-memory fallback
@@ -1106,10 +1448,17 @@ async def save_conversation_state(call_sid: str, state: dict, ttl: int = 3600):
             await redis_client.setex(f"call:{call_sid}:state", ttl, serialized)
             return
         except Exception as e:
-            print(f"⚠️ Redis write failure ({e}). Degrading to in-memory state.")
+            logger.error("redis_write_failure_e", e=e)
             REDIS_DEGRADED = True
     # In-memory fallback
-    _in_memory_state[f"call:{call_sid}:state"] = serialized
+    key = f"call:{call_sid}:state"
+    # Enforce cap: evict oldest entry before inserting new one
+    if key not in _in_memory_state and len(_in_memory_state) >= _MAX_IN_MEMORY_CALLS:
+        oldest_key, _ = next(iter(_in_memory_state.items()))
+        _in_memory_state.pop(oldest_key)
+        logger.warning("in_memory_state_cap_reached_evicting_oldest", evicted_key=oldest_key)
+    _in_memory_state[key] = serialized
+    _in_memory_state.move_to_end(key)  # LRU: mark as most recently used
 
 
 async def delete_conversation_state(call_sid: str):
@@ -1122,12 +1471,12 @@ async def delete_conversation_state(call_sid: str):
     _in_memory_state.pop(f"call:{call_sid}:state", None)
 
 
-async def get_audio_url_for_text(company_id: str, provider: str, voice_id: str, text: str, api_key: str, request: Optional[Request] = None) -> Optional[str]:
+async def get_audio_url_for_text(company_id: str, provider: str, voice_id: str, text: str, api_key: str, request: Optional[Request] = None, emotion: str = "NEUTRAL") -> Optional[str]:
     """Generates audio via TTS adapter and returns the static URL to serve it, validating file size to prevent playing corrupt audio."""
     try:
         base_url = str(request.base_url).rstrip('/') if request else os.getenv("ORCHESTRATOR_PUBLIC_URL", "http://localhost:6000").rstrip('/')
         # Include company_id in cache key to prevent cross-tenant audio collisions
-        _cache_key_input = f"{company_id}_{provider}_{voice_id}_{text}"
+        _cache_key_input = f"{company_id}_{provider}_{voice_id}_{text}_{emotion}"
         text_hash = hashlib.sha256(_cache_key_input.encode('utf-8')).hexdigest()[:16]
         filename = f"tts_{text_hash}.wav"
         filepath = os.path.join(AUDIO_DIR, filename)
@@ -1136,34 +1485,124 @@ async def get_audio_url_for_text(company_id: str, provider: str, voice_id: str, 
             if os.path.getsize(filepath) > 100:
                 return f"{base_url}/audio/{filename}"
             else:
-                print(f"⚠️ Corrupted or zero-byte TTS cache file detected ({filename}). Regenerating...")
+                logger.warning("corrupted_or_zero_byte", filename=filename)
                 try:
                     os.remove(filepath)
                 except OSError:
                     pass
 
-        audio_bytes = await tts_synthesize(provider, voice_id, text, api_key)
+        audio_bytes = await tts_synthesize(provider, voice_id, text, api_key, emotion)
         if audio_bytes and len(audio_bytes) > 100:
             with open(filepath, "wb") as f:
                 f.write(audio_bytes)
             return f"{base_url}/audio/{filename}"
     except Exception as e:
-        print(f"Error generating audio URL: {e}")
+        logger.error("error_generating_audio_url", e=e)
     return None
 
 
+def split_into_sentences(text: str) -> list[str]:
+    """Split LLM response into TTS-streamable sentences (handles English & Amharic punctuation)."""
+    if not text:
+        return []
+    sentences = re.split(r'(?<=[.!?ßìóßìí])\s+', text.strip())
+    return [s.strip() for s in sentences if s.strip()]
+
+
+from metrics import (
+    active_calls_gauge,
+    llm_tokens_total,
+    turn_latency_summary,
+    redis_operations_total
+)
+
+# Phase 10
+from sentiment import analyze_sentiment
+
+async def get_sentence_audio_urls(
+    company_id: str,
+    provider: str,
+    voice_id: str,
+    text: str,
+    api_key: str,
+    request: Optional[Request] = None,
+    emotion: str = "NEUTRAL"
+) -> list[str]:
+    """Synthesize each sentence in parallel into audio cache and return list of audio URLs."""
+    sentences = split_into_sentences(text)
+    if len(sentences) <= 1:
+        url = await get_audio_url_for_text(company_id, provider, voice_id, text, api_key, request, emotion)
+        return [url] if url else []
+
+    tasks = [
+        get_audio_url_for_text(company_id, provider, voice_id, s, api_key, request, emotion)
+        for s in sentences
+    ]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    urls = []
+    for res in results:
+        if isinstance(res, str) and res:
+            urls.append(res)
+    return urls
+
+
 # Twilio Language mappings for Say and Gather
+# NOTE: Twilio <Say> does NOT support Amharic natively.
+# For Amharic agents we always serve pre-synthesized Edge TTS audio via <Play>.
+# The voice/lang fields here are used ONLY as a last-resort fallback if TTS generation fails.
 TWILIO_VOICE_MAP = {
-    "amharic": {"voice": "Polly.Zeina", "lang": "ar-EG", "stt": "am-ET"},
+    "amharic": {"voice": "Polly.Joanna", "lang": "en-US", "stt": "am-ET"},
     "english": {"voice": "Polly.Joanna", "lang": "en-US", "stt": "en-US"},
     "spanish": {"voice": "Polly.Conchita", "lang": "es-ES", "stt": "es-ES"},
     "french": {"voice": "Polly.Celine", "lang": "fr-FR", "stt": "fr-FR"}
 }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# TWILIO SECURITY: Signature Validation
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+
+
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# TTS AUDIO CACHE CLEANUP
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+
+async def cleanup_audio_cache(max_age_seconds: int = 7 * 24 * 3600):
+    """
+    Background task: delete TTS audio files older than max_age_seconds.
+    Runs every 6 hours to prevent the /app/audio directory from filling the disk.
+    Default max age: 7 days.
+    """
+    while True:
+        try:
+            await asyncio.sleep(6 * 3600)  # Wait 6 hours between runs
+            now = time.time()
+            pattern = os.path.join(AUDIO_DIR, "tts_*.wav")
+            files = glob.glob(pattern)
+            deleted = 0
+            freed_bytes = 0
+            for filepath in files:
+                try:
+                    mtime = os.path.getmtime(filepath)
+                    if (now - mtime) > max_age_seconds:
+                        size = os.path.getsize(filepath)
+                        os.unlink(filepath)
+                        deleted += 1
+                        freed_bytes += size
+                except Exception:
+                    pass
+            if deleted > 0:
+                logger.info("audio_cache_cleanup_removed", deleted=deleted, freed_bytes____1024=freed_bytes // 1024)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("audio_cache_cleanup_error", e=e)
+
+
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # WEBSOCKETS & REAL-TIME LOGS
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 class ConnectionManager:
     def __init__(self):
@@ -1200,7 +1639,7 @@ async def listen_for_logs():
             pubsub_client = aioredis.from_url(REDIS_URL, decode_responses=True)
             pubsub = pubsub_client.pubsub()
             await pubsub.psubscribe("logs:*")
-            print("✅ Redis Pub/Sub listener active on logs:*")
+            logger.info("redis_pub_sub_listener")
             
             async for message in pubsub.listen():
                 if message["type"] == "pmessage":
@@ -1211,10 +1650,10 @@ async def listen_for_logs():
                         company_id = parts[1]
                         await manager.broadcast(data, company_id)
         except asyncio.CancelledError:
-            print("🛑 Redis Pub/Sub listener stopped (cancelled).")
+            logger.info("redis_pub_sub_listener")
             break
         except Exception as e:
-            print(f"⚠️ Redis Pub/Sub listener disconnected ({e}). Reconnecting in 5s...")
+            logger.warning("redis_pub_sub_listener", e=e)
             await asyncio.sleep(5)
 
 async def broadcast_log(company_id: str, log_data: dict):
@@ -1233,7 +1672,7 @@ async def consume_transcript_stream():
     CONSUMER = f"orchestrator-{os.getenv('HOSTNAME', 'local')}"
 
     if not redis_client:
-        print("⚠️ Transcript stream consumer: Redis unavailable")
+        logger.warning("transcript_stream_consumer_redis")
         return
 
     try:
@@ -1241,7 +1680,7 @@ async def consume_transcript_stream():
     except Exception:
         pass
 
-    print(f"✅ Transcript stream consumer active: {STREAM_KEY}/{GROUP}/{CONSUMER}")
+    logger.info("transcript_stream_consumer_active", STREAM_KEY=STREAM_KEY, GROUP=GROUP, CONSUMER=CONSUMER)
     while True:
         try:
             messages = await redis_client.xreadgroup(
@@ -1256,23 +1695,23 @@ async def consume_transcript_stream():
                             await _process_stream_transcript(call_sid, transcript)
                         await redis_client.xack(STREAM_KEY, GROUP, msg_id)
                     except Exception as e:
-                        print(f"⚠️ Stream message processing error: {e}")
+                        logger.error("stream_message_processing_error", e=e)
         except asyncio.CancelledError:
-            print("🛑 Transcript stream consumer stopped.")
+            logger.info("transcript_stream_consumer_stopped")
             break
         except Exception as e:
-            print(f"⚠️ Stream consumer error ({e}). Retrying in 2s...")
+            logger.error("stream_consumer_error_e", e=e)
             await asyncio.sleep(2)
 
 
 async def _process_stream_transcript(call_sid: str, transcript: str):
-    print(f"📡 Processing stream transcript for SID={call_sid}: '{transcript}'")
+    logger.info("processing_stream_transcript_for", call_sid=call_sid, transcript=transcript)
     await _process_voice_turn(None, call_sid, transcript, mode="gather")
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # ROUTES
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 @app.websocket("/ws/flow-monitor/{company_id}")
 async def websocket_endpoint(websocket: WebSocket, company_id: str):
@@ -1290,7 +1729,7 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
     try:
         jwt_secret = os.getenv("SUPABASE_JWT_SECRET")
         if not jwt_secret:
-            print("❌ SECURITY: SUPABASE_JWT_SECRET not set. WebSocket connection rejected.")
+            logger.error("security_supabase_jwt_secret")
             await websocket.close(code=4401)
             return
         import jwt as pyjwt
@@ -1304,7 +1743,7 @@ async def websocket_endpoint(websocket: WebSocket, company_id: str):
             await websocket.close(code=4403)
             return
     except Exception as ex:
-        print(f"⚠️ WebSocket auth failure: {ex}")
+        logger.error("websocket_auth_failure_ex", ex=ex)
         await websocket.close(code=4401)
         return
 
@@ -1368,14 +1807,14 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
     welcome_text = (
         "Hello! You've reached {name}. How can I help you today?".format(name=name)
         if agent_lang == "english"
-        else "ሰላም፣ እንዴት ልረዳዎ?"
+        else "ßê░ßêïßê¥ßìú ßèÑßèòßï┤ßë╡ ßêìßê¿ßï│ßïÄ?"
     )
 
     settings = state.get("phone_settings") or {}
     consent_enabled = settings.get("ai_disclosure_enabled", True)  # Default ON for INSA compliance
     if consent_enabled:
         consent_text = settings.get("ai_disclosure_text") or (
-            "ይህ ጥሪ በሰው ሰራሽ አስተሳሰብ ስርዓት ይስተናገዳል። ቀረጻ ሊደረግ ይችላል። "
+            "ßï¡ßêà ßîÑßê¬ ßëáßê░ßïì ßê░ßê½ßê╜ ßèáßê╡ßë░ßê│ßê░ßëÑ ßê╡ßê¡ßïôßë╡ ßï¡ßê╡ßë░ßèôßîêßï│ßêìßìó ßëÇßê¿ßî╗ ßêèßï░ßê¿ßîì ßï¡ßë╜ßêïßêìßìó "
             if agent_lang == "amharic" else
             "This call is handled by an AI system and may be recorded. "
         )
@@ -1391,17 +1830,18 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
         state["company_id"], "voice", agent.get("voice_provider") or "edge"
     )
     tts_key = tts_config.get("api_key") if tts_config else ""
-    audio_url = None
+    audio_urls = []
     if agent.get("voice_provider") and agent.get("voice_id"):
-        audio_url = await get_audio_url_for_text(
+        audio_urls = await get_sentence_audio_urls(
             state["company_id"], agent["voice_provider"], agent["voice_id"], welcome_text, tts_key, request
         )
 
-    if audio_url:
+    if audio_urls:
+        play_verbs = "\n    ".join(f"<Play>{_xml_escape(u)}</Play>" for u in audio_urls)
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     {record_verbs}
-    <Play>{_xml_escape(audio_url)}</Play>
+    {play_verbs}
     <Gather input="speech" action="/twilio/respond" method="POST" speechTimeout="auto" language="{stt_code}">
         <Say voice="{voice}" language="{lang_code}">...</Say>
     </Gather>
@@ -1420,17 +1860,17 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
 async def verify_twilio_signature(request: Request) -> bool:
     """
     Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints when configured.
-    NEVER bypass in production — an unconfigured token means any attacker can
+    NEVER bypass in production ΓÇö an unconfigured token means any attacker can
     forge webhooks.
     """
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
     if not auth_token:
-        print("❌ SECURITY: TWILIO_AUTH_TOKEN not configured. Rejecting all webhooks.")
+        logger.error("security_twilio_auth_token")
         return False
 
     signature = request.headers.get("X-Twilio-Signature", "")
     if not signature:
-        print("❌ SECURITY: Missing X-Twilio-Signature header.")
+        logger.error("security_missing_x_twilio")
         return False
 
     try:
@@ -1441,16 +1881,54 @@ async def verify_twilio_signature(request: Request) -> bool:
         data_to_sign = (url + sorted_params).encode("utf-8")
         computed = base64.b64encode(hmac.new(auth_token.encode("utf-8"), data_to_sign, hashlib.sha1).digest()).decode()
         if not hmac.compare_digest(computed, signature):
-            print(f"❌ Twilio cryptographic signature check failed for {url}")
+            logger.error("twilio_cryptographic_signature_check", url=url)
             return False
     except Exception as e:
-        print(f"⚠️ Error verifying Twilio signature: {e}")
+        logger.error("error_verifying_twilio_signature", e=e)
         return False
     return True
 
 
+from fastapi import WebSocket, WebSocketDisconnect
+from media_stream_handler import MediaStreamHandler
+
+@app.websocket("/ws/media-stream/{call_sid}")
+async def media_stream_ws(websocket: WebSocket, call_sid: str):
+    """
+    Twilio Media Streams WebSocket handler.
+    Receives raw ╬╝-law audio at 20ms intervals, processes STTΓåÆLLMΓåÆTTS,
+    and streams audio back in real-time.
+    """
+    await websocket.accept()
+    company_id = websocket.query_params.get("company_id")
+    agent_id = websocket.query_params.get("agent_id")
+    
+    if not company_id or not agent_id:
+        await websocket.close(code=1008, reason="Missing company_id or agent_id")
+        return
+    
+    handler = MediaStreamHandler(
+        websocket=websocket,
+        call_sid=call_sid,
+        company_id=company_id,
+        agent_id=agent_id,
+        db_pool=db_pool,
+        redis=redis_client,
+        semantic_cache=semantic_cache,
+    )
+    try:
+        await handler.run()
+    except WebSocketDisconnect:
+        logger.info("media_stream_disconnected", call_sid=call_sid)
+    except Exception as e:
+        logger.error("media_stream_error", call_sid=call_sid, error=str(e))
+    finally:
+        await handler.cleanup()
+
+
 @app.post("/incoming-call")
 @app.post("/twilio/voice")
+@limiter.limit("30/minute")
 async def handle_inbound_call(
     request: Request,
     To: str = Form(...),
@@ -1459,12 +1937,12 @@ async def handle_inbound_call(
 ):
     """
     Twilio inbound call webhook.
-    Resolve number → optional IVR → agent gather; honor recording toggle.
+    Resolve number ΓåÆ optional IVR ΓåÆ agent gather; honor recording toggle.
     """
     if not await verify_twilio_signature(request):
         return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio cryptographic signature.")
 
-    print(f"📞 Inbound call: From={From} To={To} SID={CallSid}")
+    logger.info("inbound_call_from_from", From=From, To=To, CallSid=CallSid)
 
     agent = await get_agent_by_phone(To)
 
@@ -1486,8 +1964,39 @@ async def handle_inbound_call(
         await get_routing_rules_for_phone(phone_number_id, company_id) if phone_number_id else []
     )
 
+    # 1. Load Caller Long-Term Memory (CRM Contact)
+    crm_contact = await db_pool.fetchrow(
+        "SELECT name, email FROM crm_contacts WHERE company_id = $1 AND phone = $2 LIMIT 1",
+        uuid.UUID(company_id), From
+    )
+    caller_context = f"Caller Name: {crm_contact['name']}." if crm_contact and crm_contact.get("name") else ""
+    if crm_contact and crm_contact.get("email"):
+        caller_context += f" Email: {crm_contact['email']}."
+        
+    # Phase 10.1: Persistent Long-Term Memory (Retrieve recent past interactions)
+    try:
+        memories = await db_pool.fetch(
+            "SELECT memory_text FROM caller_memory WHERE company_id = $1 AND caller_number = $2 ORDER BY created_at DESC LIMIT 3",
+            uuid.UUID(company_id), From
+        )
+        if memories:
+            caller_context += "\nPast Interactions Memory:\n"
+            for m in memories:
+                caller_context += f"- {m['memory_text']}\n"
+    except Exception as e:
+        logger.error("failed_to_retrieve_caller_memory", error=str(e))
+
+
+    # 2. Build initial state
+    system_prompt = agent.get("prompt", "You are a helpful assistant.")
+    system_prompt += "\n" + SYSTEM_TOOLS_PROMPT
+
+    if caller_context:
+        system_prompt += f"\n\n--- Caller Context ---\n{caller_context}\nYou are talking to this known contact. Greet them by name if appropriate.\n--- End Caller Context ---"
+
+    initial_messages = [{"role": "system", "content": system_prompt}]
     state = {
-        "messages": [{"role": "system", "content": agent.get("prompt") or "You are a helpful voice agent."}],
+        "messages": initial_messages,
         "turn_count": 0,
         "call_id": call_id,
         "company_id": company_id,
@@ -1536,7 +2045,36 @@ async def handle_inbound_call(
 </Response>"""
         return PlainTextResponse(content=twiml, media_type="application/xml")
 
-    twiml = await _build_agent_gather_twiml(agent, state, request)
+    # Check for media streams fallback flag in Redis
+    fallback = False
+    if redis_client:
+        raw_fb = await redis_client.get(f"call:{CallSid}:fallback")
+        if raw_fb:
+            fallback = True
+
+    if ENABLE_MEDIA_STREAMS and not fallback:
+        # Build Media Stream TwiML
+        orchestrator_base = os.getenv("ORCHESTRATOR_BASE_URL", "")
+        # Remove https:// or http:// if present in the base URL
+        if orchestrator_base.startswith("https://"):
+            orchestrator_base = orchestrator_base[8:]
+        elif orchestrator_base.startswith("http://"):
+            orchestrator_base = orchestrator_base[7:]
+            
+        stream_url = f"wss://{orchestrator_base}/ws/media-stream/{CallSid}?company_id={company_id}&agent_id={agent_id}"
+
+        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Connect>
+        <Stream url="{stream_url}" track="inbound_track">
+            <Parameter name="call_sid" value="{CallSid}"/>
+        </Stream>
+    </Connect>
+</Response>"""
+    else:
+        # Use existing Gather TwiML
+        twiml = await _build_agent_gather_twiml(agent, state, request)
+        
     return PlainTextResponse(content=twiml, media_type="application/xml")
 
 
@@ -1592,7 +2130,7 @@ async def handle_ivr(
     if action in ("transfer", "human") or (matched and matched.get("to")):
         target = (matched or {}).get("to") or settings.get("transfer_number")
         if not _validate_dial_target(target):
-            print(f"❌ Invalid or blocked transfer target: {target}")
+            logger.error("invalid_or_blocked_transfer", target=target)
             # Fall through to agent handling instead of dialing
             target = None
         if target:
@@ -1616,6 +2154,27 @@ async def handle_ivr(
     }
     twiml = await _build_agent_gather_twiml(agent, state, request)
     return PlainTextResponse(content=twiml, media_type="application/xml")
+
+
+async def send_voicemail_email(to_email: str, recording_url: str, caller: str):
+    smtp_host = os.getenv("SMTP_HOST", "")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER", "")
+    smtp_pass = os.getenv("SMTP_PASSWORD", "")
+    if not all([smtp_host, smtp_user, smtp_pass, to_email]):
+        logger.warning("voicemail_smtp_not_configured")
+        return
+    msg = MIMEText(f"New voicemail from {caller}\n\nRecording: {recording_url}")
+    msg["Subject"] = f"New Voicemail from {caller}"
+    msg["From"] = smtp_user
+    msg["To"] = to_email
+    try:
+        await aiosmtplib.send(msg, hostname=smtp_host, port=smtp_port,
+                              username=smtp_user, password=smtp_pass, use_tls=False,
+                              start_tls=True)
+        logger.info("voicemail_email_sent", to=to_email, caller=caller)
+    except Exception as e:
+        logger.error("voicemail_email_failed", error=str(e))
 
 
 @app.post("/twilio/voicemail")
@@ -1642,17 +2201,8 @@ async def handle_voicemail(
             f"Voicemail recorded ({RecordingDuration}s). Delivery queued for {email or 'unconfigured'}.",
         )
 
-    delivery = {
-        "to": email,
-        "call_id": call_id,
-        "company_id": company_id,
-        "recording_url": RecordingUrl,
-        "caller": state.get("caller_number"),
-        "duration": RecordingDuration,
-    }
-    if email and redis_client:
-        await redis_client.lpush("voicemail:email:queue", json.dumps(delivery))
-    print(f"📧 Voicemail-to-email queued: {delivery}")
+    if email:
+        asyncio.create_task(send_voicemail_email(email, RecordingUrl, state.get("caller_number", "Unknown")))
 
     await publish_event("call.voicemail", {
         "tenantId": company_id,
@@ -1674,7 +2224,7 @@ async def handle_recording_callback(
     CallSid: str = Form(default=""),
     RecordingUrl: str = Form(default=""),
 ):
-    """Twilio recording status — attach URL to call."""
+    """Twilio recording status ΓÇö attach URL to call."""
     state = await get_conversation_state(CallSid) if CallSid else {}
     call_id = state.get("call_id")
     if call_id and RecordingUrl:
@@ -1714,7 +2264,7 @@ async def _build_transfer_context(call_id: str, target: str, reason: str = "api"
         }
         for r in rows
     ]
-    # Merge Redis live messages if present via call_sid on state keyed elsewhere — transcripts are source of truth
+    # Merge Redis live messages if present via call_sid on state keyed elsewhere ΓÇö transcripts are source of truth
     summary_parts = [t["content"] for t in transcript if t["role"] in ("user", "assistant", "agent")][-8:]
     summary = " | ".join(summary_parts) if summary_parts else "No prior dialogue captured."
 
@@ -1733,14 +2283,256 @@ async def _build_transfer_context(call_id: str, target: str, reason: str = "api"
     }
 
 
+def _generate_gateway_auth_headers(company_id: str) -> dict:
+    import hmac
+    import hashlib
+    import time
+    secret = os.getenv("SERVICE_AUTH_SECRET", "")
+    if not secret:
+        raise RuntimeError("SERVICE_AUTH_SECRET must be set ΓÇö refusing to sign with empty key")
+    ts = str(int(time.time() * 1000))
+    user_id = "00000000-0000-0000-0000-000000000000"
+    payload = f"{company_id}:{user_id}:{ts}"
+    sig = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return {
+        "x-tenant-id": company_id,
+        "x-user-id": user_id,
+        "x-gateway-timestamp": ts,
+        "x-gateway-sig": sig
+    }
+
+async def execute_tool_call(company_id: str, tool_id: str, parameters: dict, call_id: Optional[str]) -> dict:
+    url = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
+    client = get_http_client("tool_engine")
+    headers = _generate_gateway_auth_headers(company_id)
+    headers["Content-Type"] = "application/json"
+    try:
+        resp = await client.post(
+            f"{url}/api/tools/execute",
+            json={
+                "toolId": tool_id,
+                "payload": parameters,
+                "call_id": call_id
+            },
+            headers=headers
+        )
+        if resp.status_code in (200, 202):
+            return resp.json()
+        return {"error": f"Tool Execution Failed: {resp.text}"}
+    except Exception as e:
+        logger.error("tool_execution_failed", error=str(e))
+        return {"error": f"Tool Execution Failed: {str(e)}"}
+
+async def _process_ai_logic(state: dict, session_id: str, user_text: str, company_id: Optional[str], agent_lang: str) -> str:
+    if DATA_RESIDENCY_MODE:
+        state["model_provider"] = "vllm"
+        state["model_id"] = os.getenv("VLLM_MODEL_ID", "meta-llama/Llama-3.3-70B-Instruct")
+        
+    llm_config = await get_provider_config(company_id, "llm", state["model_provider"]) if company_id else {}
+    llm_key = llm_config.get("api_key") if llm_config else ""
+    if not llm_key:
+        if state.get("model_provider") == "openai":
+            llm_key = os.getenv("OPENAI_API_KEY", "")
+        elif state.get("model_provider") == "groq":
+            llm_key = os.getenv("GROQ_API_KEY", "")
+        elif state.get("model_provider") == "gemini":
+            llm_key = os.getenv("GEMINI_API_KEY", "")
+        elif state.get("model_provider") == "vllm":
+            llm_key = os.getenv("VLLM_API_KEY", "EMPTY")
+
+    if not llm_key:
+        logger.error("pre_flight_check_failed", state__model_provider=state.get('model_provider'))
+        if company_id:
+            await publish_event("system.llm.failure", {
+                "company_id": str(company_id),
+                "call_sid": session_id,
+                "provider": state.get("model_provider", "unknown"),
+                "error": "Missing or unconfigured LLM API Key."
+            })
+        err_msg = "ßï¡ßëàßê¡ßë│ßìú ßï¿ßèñßèáßï¡ ßèáßîêßêìßîìßêÄßë╡ ßëáßèáßîìßëúßëí ßèáßêìßë░ßïÿßîïßîÇßê¥ßìó" if agent_lang == "amharic" else "Sorry, the AI service is not configured properly."
+        return err_msg
+
+    sentiment = await analyze_sentiment(user_text)
+    if sentiment == "NEGATIVE":
+        state["frustration_count"] = state.get("frustration_count", 0) + 1
+    elif sentiment == "POSITIVE":
+        state["frustration_count"] = 0
+
+    call_id = state.get("call_id")
+    if call_id:
+        await save_transcript(call_id, "user", user_text)
+
+    state["messages"].append({"role": "user", "content": user_text})
+    state["turn_count"] = state.get("turn_count", 0) + 1
+
+    messages = state["messages"]
+    if len(messages) > 1 + MAX_HISTORY_TURNS * 2:
+        messages = [messages[0]] + messages[-(MAX_HISTORY_TURNS * 2):]
+        state["messages"] = messages
+        
+    messages_with_rag = messages
+
+    if state.get("frustration_count", 0) >= 3:
+        logger.info("auto_escalating_frustrated_caller", session_id=session_id, count=state.get("frustration_count"))
+        messages_with_rag.append({
+            "role": "system",
+            "content": "The caller is extremely frustrated. You MUST immediately use the handoff_agent tool to transfer them to a human agent. Say something apologetic and transfer them."
+        })
+
+    cached_hit = None
+    user_emb = None
+    if llm_key:
+        try:
+            user_emb = await get_embedding("openai", "text-embedding-3-small", user_text, llm_key)
+            if user_emb and semantic_cache:
+                cached_hit = await semantic_cache.get(user_emb, company_id=company_id, prompt_text=user_text)
+        except Exception as e:
+            logger.info("cache_lookup_exception_e", e=e)
+
+    if cached_hit:
+        ai_text, tokens_used = cached_hit[0], 0
+    else:
+        try:
+            ai_text, tokens_used = await llm_complete(
+                provider=state["model_provider"],
+                model_id=state["model_id"],
+                messages=messages_with_rag,
+                api_key=llm_key
+            )
+        except Exception as e:
+            logger.error("llm_error_e", e=e)
+            ai_text = "ßï¡ßëàßê¡ßë│ßìú ßèáßêüßèò ßêÿßê╡ßêÿßê¡ ßêïßï¡ ßë╜ßîìßê¡ ßèáßêêßìó ßëåßï¡ßë░ßïì ßï¡ßê₧ßè¡ßê⌐ßìó" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
+            tokens_used = 0
+            if company_id:
+                await publish_event("system.llm.failure", {
+                    "company_id": str(company_id),
+                    "call_sid": session_id,
+                    "provider": state.get("model_provider", "unknown"),
+                    "error": str(e)
+                })
+
+    ai_text_clean = _re.sub(r"<tool_call>.*?</tool_call>", "", ai_text, flags=_re.DOTALL).strip()
+
+    if not cached_hit and user_emb and ai_text_clean and semantic_cache:
+        await semantic_cache.set(user_emb, ai_text_clean, company_id=company_id, prompt_text=user_text)
+
+    tool_match = _re.search(r"<tool_call>(.*?)</tool_call>", ai_text, _re.DOTALL)
+    if tool_match and company_id:
+        try:
+            tool_data = json.loads(tool_match.group(1))
+            t_id = tool_data.get("tool_id")
+            if t_id and not _TOOL_ID_RE.match(str(t_id)):
+                logger.warning("tool_id_rejected_invalid_format", tool_id=str(t_id)[:100], call_id=call_id)
+                tool_data["tool_id"] = None
+                
+            t_params = tool_data.get("parameters", {})
+            if t_params and isinstance(t_params, dict):
+                if len(json.dumps(t_params).encode("utf-8")) > _MAX_TOOL_PARAMS_BYTES:
+                    logger.warning("tool_call_params_too_large", tool_id=t_id, call_id=call_id)
+                    tool_data["parameters"] = {}
+            elif not isinstance(t_params, dict):
+                tool_data["parameters"] = {}
+            tool_id = tool_data.get("tool_id")
+            params = tool_data.get("parameters", {})
+            if tool_id:
+                if tool_id == "handoff_agent":
+                    target_agent = params.get("target_agent_name", "")
+                    if not target_agent or target_agent.upper() in ("EXACT_AGENT_NAME", "INSERT_NAME_HERE", "AGENT_NAME"):
+                        logger.warning("handoff_rejected_placeholder_value", raw=target_agent, call_id=call_id)
+                        tool_result = {"status": "error", "message": "Invalid agent name provided."}
+                    else:
+                        agent = await get_agent_by_name(company_id, target_agent)
+                        if agent:
+                            state["agent_id"] = str(agent["agent_id"])
+                            state["model_id"] = agent["model_id"]
+                            state["model_provider"] = agent["model_provider"]
+                            if "voice_id" in agent:
+                                state["voice_id"] = agent.get("voice_id")
+                                state["voice_provider"] = agent.get("voice_provider")
+                            if len(state["messages"]) > 0:
+                                new_prompt = agent["prompt"] + "\n" + SYSTEM_TOOLS_PROMPT
+                                state["messages"][0] = {"role": "system", "content": new_prompt}
+                            state["turn_count"] = 0
+                            state["empty_turns"] = 0
+                            logger.info("agent_handoff_completed", from_agent=state.get("agent_name"), to_agent=target_agent, call_id=call_id)
+                            tool_result = {"status": "success", "message": f"Handoff to {target_agent} successful."}
+                        else:
+                            tool_result = {"status": "error", "message": f"Agent {target_agent} not found."}
+                elif tool_id == "search_knowledge_base":
+                    q = params.get("query", "")
+                    if not q or q.upper() in ("CALLER_QUESTION_IN_FULL", "INSERT_QUERY_HERE", "QUERY"):
+                        logger.warning("search_rejected_placeholder_value", raw=q, call_id=call_id)
+                        tool_result = {"status": "error", "message": "Invalid search query."}
+                    elif knowledge_adapter:
+                        try:
+                            rag_context = await knowledge_adapter.search_chunks(company_id, q, llm_key)
+                            if rag_context and rag_context.strip():
+                                tool_result = {
+                                    "status": "success",
+                                    "context": rag_context,
+                                    "instruction": "Use the above context to answer the caller's question. If the context does not contain the answer, say so politely."
+                                }
+                            else:
+                                tool_result = {
+                                    "status": "no_results",
+                                    "message": "No relevant information found in the knowledge base for this query."
+                                }
+                        except Exception as e:
+                            tool_result = {"status": "error", "message": str(e)}
+                    else:
+                        tool_result = {"status": "error", "message": "Knowledge base unconfigured."}
+                else:
+                    tool_result = await execute_tool_call(company_id, tool_id, params, call_id)
+                
+                if tool_id == "search_knowledge_base":
+                    if tool_result.get("status") == "success":
+                        state["messages"].append({
+                            "role": "system",
+                            "content": f"--- Knowledge Base Results ---\n{tool_result.get('context')}\n--- End Results ---\nUse the above to answer the caller. If unavailable, say so politely."
+                        })
+                    else:
+                        state["messages"].append({
+                            "role": "system",
+                            "content": "The knowledge base returned no results for this query. Respond using only your training knowledge."
+                        })
+                else:
+                    state["messages"].append({"role": "system", "content": f"Tool Execution Result for {tool_id}: {json.dumps(tool_result)}"})
+                logger.info("tool_executed", tool_id=tool_id, status=tool_result.get("status"))
+        except Exception as e:
+            logger.warning("tool_call_parse_failed", error=str(e))
+
+    if call_id:
+        await save_transcript(call_id, "assistant", ai_text_clean)
+
+    state["messages"].append({"role": "assistant", "content": ai_text_clean})
+
+    if company_id:
+        estimated_stt = max(1, len(user_text) // 15)
+        await track_usage(
+            company_id=company_id,
+            llm_tokens=tokens_used,
+            stt_seconds=estimated_stt,
+            tts_characters=len(ai_text_clean),
+            call_minutes=0
+        )
+
+    await save_conversation_state(session_id, state)
+    return ai_text_clean
+
+
 async def _process_voice_turn(request: Optional[Request], CallSid: str, user_text: str, mode: str = "gather") -> str:
     """
     Shared conversation turn processor for both Gather (streaming STT) and Record (Whisper audio STT) modes.
     Handles RAG, LLM completion, TTS, usage tracking, and TwiML generation.
     """
+    # Proceed without form_params validation in this shared method
     state = await get_conversation_state(CallSid)
     call_id = state.get("call_id")
     company_id = state.get("company_id")
+    
+    # Check if this turn is being transcribed now (streaming mode)
+    # If so, we need to apply the whisper prompt
+    whisper_prompt = await get_agent_whisper_prompt(company_id) if company_id else None
 
     if not company_id:
         return """<?xml version="1.0" encoding="UTF-8"?>
@@ -1773,8 +2565,8 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
         
         # Break infinite silence loops after 3 attempts
         if empty_count >= 3:
-            print(f"🔇 3 consecutive empty/garbage inputs for SID={CallSid}. Ending call gracefully.")
-            bye_msg = "ይቅርታ፣ ድምፅዎ በደንብ አልተሰማንም። እባክዎ መስመሩ ሲሻሻል ደግመው ይደውሉልን።" if agent_lang == "amharic" else "We are having trouble hearing you clearly. Please call back when you have a better connection. Goodbye."
+            logger.info("3_consecutive_empty_garbage", CallSid=CallSid)
+            bye_msg = "ßï¡ßëàßê¡ßë│ßìú ßï╡ßê¥ßìàßïÄ ßëáßï░ßèòßëÑ ßèáßêìßë░ßê░ßê¢ßèòßê¥ßìó ßèÑßëúßè¡ßïÄ ßêÿßê╡ßêÿßê⌐ ßê▓ßê╗ßê╗ßêì ßï░ßîìßêÿßïì ßï¡ßï░ßïìßêëßêìßèòßìó" if agent_lang == "amharic" else "We are having trouble hearing you clearly. Please call back when you have a better connection. Goodbye."
             tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
             tts_key = tts_config.get("api_key") if tts_config else ""
             audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], bye_msg, tts_key, request)
@@ -1795,7 +2587,7 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
 </Response>"""
 
         retry_msg = get_polite_retry() if agent_lang == "amharic" else "I didn't catch that. Could you please repeat?"
-        print(f"🔇 Garbage/Empty input (attempt {empty_count}/3). Prompting retry: {retry_msg}")
+        logger.info("garbage_empty_input_attempt", empty_count=empty_count, retry_msg=retry_msg)
         
         # Get TTS configs
         tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
@@ -1836,115 +2628,12 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
     if state.get("empty_turns", 0) > 0:
         state["empty_turns"] = 0
 
-    llm_config = await get_provider_config(company_id, "llm", state["model_provider"])
-    llm_key = llm_config.get("api_key") if llm_config else ""
-    if not llm_key:
-        if state["model_provider"] == "openai":
-            llm_key = os.getenv("OPENAI_API_KEY", "")
-        elif state["model_provider"] == "groq":
-            llm_key = os.getenv("GROQ_API_KEY", "")
-        elif state["model_provider"] == "gemini":
-            llm_key = os.getenv("GEMINI_API_KEY", "")
-
-    # Pre-flight check: do not execute request if LLM key is entirely missing
-    if not llm_key:
-        print(f"❌ Pre-flight check failed: Missing API Key for provider '{state['model_provider']}'")
-        if company_id:
-            await publish_event("system.llm.failure", {
-                "company_id": str(company_id),
-                "call_sid": CallSid,
-                "provider": state["model_provider"],
-                "error": "Missing or unconfigured LLM API Key."
-            })
-        err_speech = "ይቅርታ፣ የኤአይ አገልግሎት በአግባቡ አልተዘጋጀም።" if agent_lang == "amharic" else "Sorry, the AI voice service is not configured properly."
-        return f'<?xml version="1.0" encoding="UTF-8"?><Response><Say>{_xml_escape(err_speech)}</Say><Hangup/></Response>'
-
-    # Run phonetic repair
-    if agent_lang == "amharic":
-        user_text = await repair_amharic_transcription(user_text, llm_key)
-
-    # Save user transcript in database
-    if call_id:
-        await save_transcript(call_id, "user", user_text)
-
-    # Append to messages history
-    state["messages"].append({"role": "user", "content": user_text})
-    state["turn_count"] += 1
-
-    # === RAG: Query knowledge base and inject context ===
-    rag_context = await query_knowledge_base(company_id, user_text)
-    if not rag_context and company_id and llm_key:
-        rag_context = await search_knowledge_chunks(company_id, user_text, llm_key)
-    
-    messages_for_llm = list(state["messages"])
-    if rag_context:
-        messages_for_llm.insert(len(messages_for_llm) - 1, {
-            "role": "system",
-            "content": (
-                "The following is relevant knowledge from this company's knowledge base. "
-                "Use it to answer the customer's question accurately:\n\n"
-                f"{rag_context}"
-            )
-        })
-
-    # Check Semantic Cache before invoking LLM
-    cached_hit = None
-    user_emb = None
-    if llm_key:
-        try:
-            user_emb = await get_embedding("openai", "text-embedding-3-small", user_text, llm_key)
-            if user_emb and semantic_cache:
-                cached_hit = await semantic_cache.get(user_emb, company_id=company_id, prompt_text=user_text)
-        except Exception as e:
-            print(f"Cache lookup exception: {e}")
-
-    if cached_hit:
-        ai_text, tokens_used = cached_hit[0], 0
-    else:
-        # Generate AI response
-        try:
-            ai_text, tokens_used = await llm_complete(
-                provider=state["model_provider"],
-                model_id=state["model_id"],
-                messages=messages_for_llm,
-                api_key=llm_key
-            )
-            if user_emb and ai_text and semantic_cache:
-                await semantic_cache.set(user_emb, ai_text, company_id=company_id, prompt_text=user_text)
-        except Exception as e:
-            print(f"❌ LLM error: {e}")
-            ai_text = "ይቅርታ፣ አሁን መስመር ላይ ችግር አለ። ቆይተው ይደውሉ።" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
-            tokens_used = 0
-            if company_id:
-                await publish_event("system.llm.failure", {
-                    "company_id": str(company_id),
-                    "call_sid": CallSid,
-                    "provider": state.get("model_provider", "unknown"),
-                    "error": str(e)
-                })
-
-    # Save AI transcript in database
-    if call_id:
-        await save_transcript(call_id, "assistant", ai_text)
-
-    # Append to messages history
-    state["messages"].append({"role": "assistant", "content": ai_text})
-
-    # Track usage in Postgres
-    if company_id:
-        estimated_stt = max(1, len(user_text) // 15)
-        await track_usage(
-            company_id=company_id,
-            llm_tokens=tokens_used,
-            stt_seconds=estimated_stt,
-            tts_characters=len(ai_text),
-            call_minutes=0
-        )
-
-    await save_conversation_state(CallSid, state)
+    ai_text = await _process_ai_logic(state, CallSid, user_text, company_id, agent_lang)
+    # The state is updated and saved within _process_ai_logic
+    state = await get_conversation_state(CallSid)
 
     # Check for end-of-conversation signals
-    goodbye_signals = ["goodbye", "bye", "thank you bye", "that's all", "አመሰግናለሁ", "ቻው"]
+    goodbye_signals = ["goodbye", "bye", "thank you bye", "that's all", "ßèáßêÿßê░ßîìßèôßêêßêü", "ßë╗ßïì"]
     is_goodbye = any(signal in user_text.lower() for signal in goodbye_signals)
 
     # Generate Response Audio Url
@@ -1960,7 +2649,9 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
         elif state["voice_provider"] in ["addisai", "edge"]:
             tts_key = os.getenv("ADDIS_AI_TTS_KEY", "")
 
-    audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], ai_text, tts_key, request)
+    # Determine emotion to pass to TTS
+    emotion = "NEGATIVE" if state.get("frustration_count", 0) > 0 else "NEUTRAL"
+    audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], ai_text, tts_key, request, emotion)
 
     if is_goodbye or state["turn_count"] >= 20:
         if audio_url:
@@ -2016,6 +2707,7 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
 
 @app.post("/handle-input")
 @app.post("/twilio/respond")
+@limiter.limit("120/minute")
 async def handle_speech_response(
     request: Request,
     CallSid: str = Form(...),
@@ -2024,13 +2716,18 @@ async def handle_speech_response(
 ):
     """
     Twilio speech recognition result webhook (Gather path).
+    Protected by Twilio HMAC-SHA1 cryptographic signature.
     """
-    print(f"🗣️ SID={CallSid} Speech='{SpeechResult}' Confidence={Confidence}")
+    if not await verify_twilio_signature(request):
+        logger.error("security_twilio_sig_rejected_on_respond", CallSid=CallSid)
+        return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio signature.")
+    logger.info("sid_callsid_speech_speechresult", CallSid=CallSid, SpeechResult=SpeechResult, Confidence=Confidence)
     twiml_content = await _process_voice_turn(request, CallSid, SpeechResult.strip(), mode="gather")
     return PlainTextResponse(content=twiml_content, media_type="application/xml")
 
 
 @app.post("/twilio/respond-audio")
+@limiter.limit("60/minute")
 async def handle_audio_response(
     request: Request,
     CallSid: str = Form(...),
@@ -2041,25 +2738,29 @@ async def handle_audio_response(
     New endpoint for direct Whisper STT path.
     Replaces Twilio Gather speech recognition with Groq Whisper for maximum Amharic accuracy.
     """
-    print(f"🎙️ SID={CallSid} Audio RecordingUrl='{RecordingUrl}' Duration={RecordingDuration}")
+    if not await verify_twilio_signature(request):
+        logger.error("security_twilio_sig_rejected_on_respond_audio", CallSid=CallSid)
+        return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio signature.")
+    logger.info("sid_callsid_audio_recordingurl", CallSid=CallSid, RecordingUrl=RecordingUrl, RecordingDuration=RecordingDuration)
     state = await get_conversation_state(CallSid)
     company_id = state.get("company_id")
     
     user_text = ""
     # SSRF Guard: validate recording URL before fetching
     if RecordingUrl and not _validate_recording_url(RecordingUrl):
-        print(f"❌ SSRF guard triggered: rejected recording URL '{RecordingUrl}'")
-        RecordingUrl = ""   # Treat as empty — proceed with blank transcript
+        logger.error("ssrf_guard_triggered_rejected", RecordingUrl=RecordingUrl)
+        RecordingUrl = ""   # Treat as empty ΓÇö proceed with blank transcript
 
     if RecordingUrl and company_id:
         twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
         twilio_auth_token = os.getenv("TWILIO_AUTH_TOKEN", "")
         auth = (twilio_account_sid, twilio_auth_token) if twilio_account_sid and twilio_auth_token else None
         try:
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(f"{RecordingUrl}.wav", auth=auth)
-                if resp.status_code == 200:
-                    audio_bytes = resp.content
+            client = get_http_client("twilio_audio", timeout=15.0)
+            resp = await client.get(f"{RecordingUrl}.wav", auth=auth)
+            if resp.status_code == 200:
+                    audio_bytes = await preprocess_audio_for_stt(resp.content, ".wav")
+                    whisper_prompt = await get_agent_whisper_prompt(company_id) if company_id else None
                     # 1. Primary: Hasab AI STT (Winner of 2026 Amharic benchmark)
                     hasab_config = await get_provider_config(company_id, "stt", "hasab")
                     hasab_key = (hasab_config or {}).get("api_key") or os.getenv("HASAB_API_KEY", "")
@@ -2068,18 +2769,18 @@ async def handle_audio_response(
                         if hasab_key:
                             try:
                                 user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
-                                print("✅ Transcribed via Primary STT (Hasab AI in DATA_RESIDENCY_MODE)")
+                                logger.info("transcribed_via_primary_stt")
                             except Exception as h_err:
-                                print(f"❌ Hasab AI STT failed in DATA_RESIDENCY_MODE: {h_err}")
+                                logger.error("hasab_ai_stt_failed", h_err=h_err)
                         else:
-                            print("❌ DATA_RESIDENCY_MODE=true but no Hasab AI key configured! Blocking foreign fallback.")
+                            logger.error("data_residency_mode_true")
                     else:
                         if hasab_key:
                             try:
                                 user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
-                                print("✅ Transcribed via Primary STT (Hasab AI)")
+                                logger.info("transcribed_via_primary_stt")
                             except Exception as h_err:
-                                print(f"⚠️ Hasab AI STT failed ({h_err}), falling back to ElevenLabs...")
+                                logger.error("hasab_ai_stt_failed", h_err=h_err)
                         
                         # 2. Fallback: ElevenLabs Scribe v2
                         if not user_text:
@@ -2088,23 +2789,23 @@ async def handle_audio_response(
                             if el_key:
                                 try:
                                     user_text = await _elevenlabs_stt(audio_bytes, "audio.wav", el_key, "am")
-                                    print("✅ Transcribed via Fallback STT (ElevenLabs)")
+                                    logger.info("transcribed_via_fallback_stt")
                                 except Exception as e_err:
-                                    print(f"⚠️ ElevenLabs STT failed ({e_err}), falling back to Groq Whisper...")
+                                    logger.error("elevenlabs_stt_failed_e", e_err=e_err)
 
                         # 3. Emergency Fallback: Groq Whisper / OpenAI
                         if not user_text:
                             stt_config = await get_provider_config(company_id, "stt", "groq")
                             stt_key = (stt_config or {}).get("api_key") or os.getenv("GROQ_API_KEY", "")
                             if stt_key:
-                                user_text = await _groq_stt("whisper-large-v3-turbo", audio_bytes, "audio.wav", stt_key, "am")
-                                print("✅ Transcribed via Emergency Fallback STT (Groq Whisper)")
+                                user_text = await _groq_stt("whisper-large-v3-turbo", audio_bytes, "audio.wav", stt_key, "am", prompt=whisper_prompt)
+                                logger.info("transcribed_via_emergency_fallback")
                             else:
                                 openai_key = os.getenv("OPENAI_API_KEY", "")
                                 if openai_key:
-                                    user_text = await _openai_stt("whisper-1", audio_bytes, "audio.wav", openai_key, "am")
+                                    user_text = await _openai_stt("whisper-1", audio_bytes, "audio.wav", openai_key, "am", prompt=whisper_prompt)
         except Exception as ex:
-            print(f"❌ Audio download or STT cascade failed: {ex}")
+            logger.error("audio_download_or_stt", ex=ex)
 
         if not user_text and company_id:
             await publish_event("system.stt.cascade_failure", {
@@ -2117,14 +2818,67 @@ async def handle_audio_response(
     return PlainTextResponse(content=twiml_content, media_type="application/xml")
 
 
+# Phase 10.5: Multi-Modal Document Understanding
+from vision import analyze_document
+
+@app.post("/twilio/messaging")
+async def handle_incoming_message(
+    request: Request,
+    From: str = Form(...),
+    Body: Optional[str] = Form(None),
+    NumMedia: int = Form(0),
+):
+    """Handles incoming SMS/MMS/WhatsApp. Injects documents into active calls."""
+    logger.info("incoming_message", From=From, Body=Body, NumMedia=NumMedia)
+    
+    # Check if this user is currently in a call
+    active_state_key = None
+    active_state = None
+    for k, v in _in_memory_state.items():
+        try:
+            state = json.loads(v)
+            # Twilio numbers often come in E.164, match loosely
+            from_num = state.get("from_number", "")
+            if from_num and (from_num == From or From.endswith(from_num.lstrip("+"))):
+                active_state_key = k
+                active_state = state
+                break
+        except Exception:
+            pass
+            
+    if not active_state:
+        # Not in a call. Return empty response.
+        return PlainTextResponse(content="<Response></Response>", media_type="application/xml")
+
+    # If media is attached
+    if NumMedia > 0:
+        form_data = await request.form()
+        media_url = form_data.get("MediaUrl0")
+        mime_type = form_data.get("MediaContentType0", "")
+        
+        if media_url:
+            openai_key = os.getenv("OPENAI_API_KEY")
+            if openai_key:
+                analysis = await analyze_document(media_url, mime_type, openai_key)
+                if analysis:
+                    active_state["messages"].append({
+                        "role": "system",
+                        "content": f"The caller just sent an image/document via SMS during the call. Here is its contents/analysis:\n{analysis}\nAcknowledge this in your next response."
+                    })
+                    # Save state back
+                    _in_memory_state[active_state_key] = json.dumps(active_state)
+                    
+    return PlainTextResponse(content="<Response></Response>", media_type="application/xml")
+
+
 @app.post("/twilio/status")
 async def handle_call_status(
     CallSid: str = Form(...),
     CallStatus: str = Form(...),
     CallDuration: Optional[str] = Form(None),
 ):
-    """Twilio call status callback — cleanup on call end and track usage minutes."""
-    print(f"📊 Call status: SID={CallSid} Status={CallStatus} Duration={CallDuration}")
+    """Twilio call status callback ΓÇö cleanup on call end and track usage minutes."""
+    logger.info("call_status_sid_callsid", CallSid=CallSid, CallStatus=CallStatus, CallDuration=CallDuration)
 
     if CallStatus in ["completed", "failed", "canceled", "busy", "no-answer"]:
         state = await get_conversation_state(CallSid)
@@ -2147,22 +2901,108 @@ async def handle_call_status(
                     minutes = max(1, (duration_sec + 59) // 60)
                     await track_usage(company_id=company_id, call_minutes=minutes)
                 except Exception as ex:
-                    print(f"Error logging duration: {ex}")
+                    logger.error("error_logging_duration_ex", ex=ex)
+
+            # Generate long-term memory summary for returning callers
+            if state.get("messages") and len(state["messages"]) > 2:
+                # We do this asynchronously so it doesn't block Twilio's webhook response
+                asyncio.create_task(_generate_and_save_call_summary(
+                    company_id, call_id, state["messages"], state.get("caller_number", "Unknown")
+                ))
 
         await delete_conversation_state(CallSid)
 
     return {"status": "ok"}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# Long-Term Memory Summary Generator
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+async def _generate_and_save_call_summary(company_id: str, call_id: str, messages: list, caller_number: str):
+    """Generates a brief summary of the call and saves it as a CRM interaction."""
+    try:
+        # Check if we have an LLM key available (using OpenAI fallback for system tasks)
+        llm_key = os.getenv("OPENAI_API_KEY")
+        if not llm_key:
+            return
+            
+        transcript_text = "\n".join([f"{m['role']}: {m['content']}" for m in messages if m['role'] != 'system'])
+        prompt = f"Summarize this call transcript in 1-2 sentences for a CRM note. Focus on caller intent and outcome:\n\n{transcript_text}"
+        
+        summary, _ = await llm_complete("openai", "gpt-4o-mini", [{"role": "user", "content": prompt}], llm_key)
+        
+        # Save to audit_logs as a long-term memory entry
+        await db_pool.execute(
+            """INSERT INTO audit_logs (company_id, action, details, entity_type, entity_id) 
+               VALUES ($1, 'CALL_SUMMARY', $2, 'call', $3)""",
+            uuid.UUID(company_id), json.dumps({"caller": caller_number, "summary": summary}), uuid.UUID(call_id)
+        )
+        
+        # Phase 10: Persistent Long-Term Memory (Embed summary and store in pgvector)
+        try:
+            embedding = await get_embedding("openai", "text-embedding-3-small", summary, llm_key)
+            if embedding:
+                vector_str = f"[{','.join(map(str, embedding))}]"
+                await db_pool.execute(
+                    """INSERT INTO caller_memory (company_id, caller_number, memory_text, embedding) 
+                       VALUES ($1, $2, $3, $4::vector)""",
+                    uuid.UUID(company_id), caller_number, summary, vector_str
+                )
+        except Exception as emb_err:
+            logger.error("failed_to_store_caller_memory", error=str(emb_err))
+            
+
+    except Exception as e:
+        logger.error("failed_to_generate_call", e=e)
+
+
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 # Internal API: For dashboard call logs, transcripts, and stats
-# ─────────────────────────────────────────────────────────────────────────────
+# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 
 def _tenant_id(request: Request) -> str:
+    import time, hmac, hashlib
+    jwt_secret = os.getenv("SUPABASE_JWT_SECRET", "")
     company_id = request.headers.get("x-company-id") or request.headers.get("x-tenant-id")
     if not company_id:
-        raise HTTPException(status_code=401, detail="Company ID header required")
-    return company_id
+        raise HTTPException(status_code=401, detail="x-company-id header required")
+
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer ") and jwt_secret:
+        token = auth_header[7:]
+        try:
+            claims = _pyjwt.decode(token, jwt_secret, algorithms=["HS256"], audience="authenticated")
+            jwt_company = claims.get("company_id") or claims.get("app_metadata", {}).get("company_id")
+            if jwt_company and str(jwt_company) != str(company_id):
+                raise HTTPException(status_code=403, detail="Company ID mismatch")
+            return company_id
+        except _pyjwt.ExpiredSignatureError:
+            raise HTTPException(status_code=401, detail="JWT expired")
+        except _pyjwt.InvalidAudienceError:
+            raise HTTPException(status_code=401, detail="JWT audience mismatch ΓÇö token not issued for this service")
+        except _pyjwt.InvalidTokenError as e:
+            raise HTTPException(status_code=401, detail=f"Invalid JWT: {e}")
+
+    service_secret = os.getenv("SERVICE_AUTH_SECRET", "")
+    gateway_sig = request.headers.get("x-gateway-sig", "")
+    gateway_ts = request.headers.get("x-gateway-timestamp", "")
+    if gateway_sig and gateway_ts and service_secret:
+        try:
+            ts_ms = int(gateway_ts)
+            now_ms = int(time.time() * 1000)
+            if abs(now_ms - ts_ms) > 300_000:
+                raise HTTPException(status_code=401, detail="Gateway timestamp expired")
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid gateway timestamp format")
+
+        user_id = request.headers.get("x-user-id", "")
+        expected_payload = f"{company_id}:{user_id}:{gateway_ts}"
+        expected_sig = hmac.new(service_secret.encode(), expected_payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_sig, gateway_sig):
+            raise HTTPException(status_code=403, detail="Invalid internal gateway signature")
+        return company_id
+
+    raise HTTPException(status_code=401, detail="Authentication required (JWT or Gateway Sig)")
 
 
 def _serialize_call(r) -> dict:
@@ -2181,6 +3021,7 @@ def _serialize_call(r) -> dict:
 
 @app.get("/api/calls")
 @app.get("/v1/calls")
+@limiter.limit("60/minute")
 async def list_calls(request: Request, agent_id: Optional[str] = None, status: Optional[str] = None):
     company_id = _tenant_id(request)
     clauses = ["c.company_id = $1"]
@@ -2208,16 +3049,17 @@ async def list_calls(request: Request, agent_id: Optional[str] = None, status: O
 
 
 @app.post("/v1/calls")
+@limiter.limit("30/minute")
 async def create_outbound_call(request: Request):
     """
     Place an outbound call (or sandbox simulated call).
-    Sandbox (x-markova-env=test or body.sandbox=true): no Twilio spend — records a simulated call.
+    Sandbox (x-markova-env=test or body.sandbox=true): no Twilio spend ΓÇö records a simulated call.
     """
     company_id = _tenant_id(request)
     body = await request.json()
     agent_id = body.get("agent_id")
     to_number = body.get("to_number")
-    sandbox = body.get("sandbox") is True or (request.headers.get("x-markova-env") or "test") == "test"
+    sandbox = body.get("sandbox") is True or request.headers.get("x-markova-env") == "test"
 
     if not agent_id or not to_number:
         raise HTTPException(status_code=400, detail="agent_id and to_number are required")
@@ -2239,7 +3081,7 @@ async def create_outbound_call(request: Request):
             """,
             call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
         )
-        agent_line = f"Hello — this is a sandbox test from agent {agent['name']}."
+        agent_line = f"Hello ΓÇö this is a sandbox test from agent {agent['name']}."
         await db_pool.execute(
             """
             INSERT INTO transcripts (call_id, role, content)
@@ -2249,7 +3091,7 @@ async def create_outbound_call(request: Request):
             f"Sandbox test call to {to_number} (no live telephony).",
             agent_line,
         )
-        # Meter sandbox activity (visible on /v1/usage; billed=false — no telephony spend)
+        # Meter sandbox activity (visible on /v1/usage; billed=false ΓÇö no telephony spend)
         await track_usage(
             company_id=company_id,
             call_minutes=1,
@@ -2463,11 +3305,9 @@ async def get_transfer_context(call_id: str, request: Request):
 
 
 @app.get("/api/stats")
+@limiter.limit("30/minute")
 async def get_stats(request: Request):
-    company_id = request.headers.get("x-company-id")
-    if not company_id:
-        raise HTTPException(status_code=400, detail="Company ID header required")
-
+    company_id = _tenant_id(request)
     company_uuid = uuid.UUID(company_id)
     
     # Call stats
@@ -2499,3 +3339,153 @@ async def get_stats(request: Request):
         "total_tokens": usage["total_tokens"] if usage else 0,
         "total_minutes": usage["total_minutes"] if usage else 0,
     }
+
+
+@app.get("/admin/audit/verify-chain")
+async def verify_audit_chain(request: Request, company_id: Optional[str] = None):
+    """
+    Verify the integrity of the audit log chain.
+    Returns: number of entries checked, first broken link (if any).
+    Only accessible via internal service auth (x-gateway-sig).
+    """
+    # Service-to-service auth only
+    service_secret = os.getenv("SERVICE_AUTH_SECRET", "")
+    sig = request.headers.get("x-gateway-sig", "")
+    if not sig or sig != service_secret:
+        raise HTTPException(status_code=403, detail="Service auth required")
+    
+    rows = await db_pool.fetch(
+        """
+        SELECT id, chain_hash, prev_entry_id, created_at
+        FROM audit_logs
+        WHERE ($1::uuid IS NULL OR company_id = $1)
+        ORDER BY created_at ASC
+        """,
+        uuid.UUID(company_id) if company_id else None
+    )
+    
+    broken_at = None
+    for i, row in enumerate(rows):
+        if i == 0:
+            continue  # Skip genesis entry
+        prev = rows[i - 1]
+        if row["prev_entry_id"] != prev["id"]:
+            broken_at = str(row["id"])
+            break
+    
+    return {
+        "entries_verified": len(rows),
+        "chain_intact": broken_at is None,
+        "broken_at": broken_at,
+    }
+
+
+@app.post("/v1/billing/portal")
+@limiter.limit("5/minute")
+async def create_billing_portal_session(request: Request):
+    """
+    Creates a Stripe Customer Portal session for the tenant to manage subscriptions.
+    """
+    company_id = _tenant_id(request)
+    
+    # 1. Look up stripe_customer_id
+    row = await db_pool.fetchrow(
+        "SELECT stripe_customer_id FROM companies WHERE id = $1",
+        uuid.UUID(company_id)
+    )
+    if not row or not row["stripe_customer_id"]:
+        raise HTTPException(status_code=400, detail="Company does not have an active Stripe integration.")
+        
+    stripe_customer_id = row["stripe_customer_id"]
+    stripe_key = os.getenv("STRIPE_SECRET_KEY")
+    if not stripe_key:
+        raise HTTPException(status_code=503, detail="Stripe is not configured on this server.")
+        
+    return_url = os.getenv("DASHBOARD_URL", "http://localhost:5173/settings")
+    
+    # 2. Call Stripe API to create portal session
+    try:
+        client = get_http_client("stripe", timeout=10.0)
+        resp = await client.post(
+            "https://api.stripe.com/v1/billing_portal/sessions",
+            auth=(stripe_key, ""),
+            data={
+                "customer": stripe_customer_id,
+                "return_url": return_url
+            }
+        )
+        resp.raise_for_status()
+        session_url = resp.json()["url"]
+        return {"url": session_url}
+    except Exception as e:
+        logger.error("stripe_portal_error", error=str(e))
+        raise HTTPException(status_code=502, detail="Failed to create billing portal session.")
+
+@app.post("/twilio/message")
+@limiter.limit("60/minute")
+async def handle_twilio_message(
+    request: Request,
+    To: str = Form(...),
+    From: str = Form(...),
+    Body: str = Form(...),
+    MessageSid: str = Form(...)
+):
+    """
+    Twilio SMS and WhatsApp Webhook.
+    Reuses the core AI RAG/Tool logic used for voice.
+    """
+    if not await verify_twilio_signature(request):
+        return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio signature.")
+
+    logger.info("inbound_message", From=From, To=To, MessageSid=MessageSid, Body=Body)
+    
+    agent = await get_agent_by_phone(To)
+    if not agent:
+        return PlainTextResponse(content="<Response></Response>", media_type="application/xml")
+
+    company_id = str(agent["company_id"])
+    session_id = From  # Use caller phone number as persistent session ID
+
+    state = await get_conversation_state(session_id)
+    
+    if not state or not state.get("call_id"):
+        # Initialize new conversation state for messaging
+        call_id = str(uuid.uuid4())
+        await db_pool.execute(
+            """
+            INSERT INTO calls (id, company_id, agent_id, caller_number, status, start_time)
+            VALUES (, , , , NOW(), NOW())
+            """,
+            uuid.UUID(call_id), uuid.UUID(company_id), uuid.UUID(str(agent["agent_id"])), From
+        )
+        
+        system_prompt = agent["prompt"] + "\n" + SYSTEM_TOOLS_PROMPT
+        state = {
+            "messages": [{"role": "system", "content": system_prompt}],
+            "turn_count": 0,
+            "call_id": call_id,
+            "company_id": company_id,
+            "agent_id": str(agent["agent_id"]),
+            "agent_name": agent["name"],
+            "model_id": agent["model_id"],
+            "model_provider": agent["model_provider"],
+            "voice_provider": agent["voice_provider"],
+            "voice_id": agent["voice_id"]
+        }
+        await save_conversation_state(session_id, state)
+
+    agent_lang = "amharic"
+    for msg in state["messages"]:
+        if msg["role"] == "system" and "english" in msg["content"].lower():
+            agent_lang = "english"
+            break
+
+    # Process AI turn without STT/TTS overhead
+    ai_text = await _process_ai_logic(state, session_id, Body.strip(), company_id, agent_lang)
+
+    # Return Twilio Messaging XML
+    twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Message>{_xml_escape(ai_text)}</Message>
+</Response>"""
+    return PlainTextResponse(content=twiml, media_type="application/xml")

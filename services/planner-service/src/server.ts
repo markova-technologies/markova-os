@@ -10,7 +10,7 @@ dotenv.config();
 const app = express();
 app.use(express.json());
 
-const PORT = process.env.PORT || 5006;
+const PORT = process.env.PORT || 5011;
 const CAPABILITY_REGISTRY_URL = process.env.CAPABILITY_REGISTRY_URL || 'http://capability-registry:5009';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

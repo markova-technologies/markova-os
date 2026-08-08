@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Phone, 
@@ -254,7 +254,7 @@ const CallCenter = () => {
                   )}
                 </div>
                 <div className="ci-meta">
-                  <span className={`ci-sentiment sentiment-${call.sentiment || 'neutral'}`}>ΓùÅ</span>
+                  <span className={`ci-sentiment sentiment-${call.sentiment || 'neutral'}`}>╬ô├╣├à</span>
                   <span className="ci-agent"><Bot size={12} /> {call.agent}</span>
                   <span>{call.duration}</span>
                 </div>
@@ -288,11 +288,11 @@ const CallCenter = () => {
                   <div className="dh-badges">
                     {selectedCall.status === 'live' ? (
                       <div className="dh-badge badge-live">
-                        <div className="dot" style={{ animation: 'pulseRed 1.5s infinite' }}></div> Live Call ΓÇó {selectedCall.duration}
+                        <div className="dot" style={{ animation: 'pulseRed 1.5s infinite' }}></div> Live Call ╬ô├ç├│ {selectedCall.duration}
                       </div>
                     ) : (
                       <div className="dh-badge badge-completed">
-                        Completed ΓÇó {selectedCall.duration}
+                        Completed ╬ô├ç├│ {selectedCall.duration}
                       </div>
                     )}
                     <div className="dh-badge" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)' }}>

@@ -23,30 +23,11 @@ import {
 import api, { listTeams, createTeam, getCommander, listAgents, createAgent, updateAgent, getAgentVersions, rollbackAgent, listKnowledgeSources, listTools, getAgentAnalytics } from '../api/client'
 import './AgentStudio.css'
 
-const mockTeams = [
-  { id: 'commander', name: 'Commander Agent', icon: ShieldAlert, count: 1, isCommander: true },
-  { id: 'sales', name: 'Sales Team', icon: TrendingUp, count: 3 },
-  { id: 'support', name: 'Support Team', icon: HeadphonesIcon, count: 4 },
-  { id: 'ops', name: 'Operations Team', icon: Settings, count: 2 },
-  { id: 'marketing', name: 'Marketing Team', icon: Briefcase, count: 1 },
-  { id: 'hr', name: 'HR Team', icon: Users, count: 1 },
-]
-
-const mockAgents = {
-  'commander': [
-    { id: 'cmd-1', name: 'Global Router', prompt: 'Receives incoming calls, understands intent, and routes to the correct team.', status: 'active', isCommander: true }
-  ],
-  'sales': [
-    { id: 'sales-1', name: 'Inbound Qualifier', prompt: 'Answers pricing questions and qualifies leads.', status: 'active' },
-    { id: 'sales-2', name: 'Outbound Closer', prompt: 'Follows up with warm leads and abandoned carts.', status: 'inactive' },
-    { id: 'sales-3', name: 'Booking Agent', prompt: 'Schedules demos on Google Calendar.', status: 'active' }
-  ]
-}
-
 const AgentStudio = () => {
-  const [teams, setTeams] = useState(mockTeams)
-  const [agents, setAgents] = useState(mockAgents)
-  const [activeTeam, setActiveTeam] = useState('sales')
+  const [teams, setTeams] = useState([])
+  const [agents, setAgents] = useState({})
+  const [activeTeam, setActiveTeam] = useState(null)
+  const [loading, setLoading] = useState(true)
   const [editingAgent, setEditingAgent] = useState(null)
   const [builderTab, setBuilderTab] = useState('prompt')
   const [isTestAgentOpen, setIsTestAgentOpen] = useState(false)
@@ -221,22 +202,29 @@ const AgentStudio = () => {
 
   useEffect(() => {
     const fetchData = async () => {
+      setLoading(true)
       try {
         const [teamsRes, agentsRes] = await Promise.all([
           listTeams().catch(() => ({ data: [] })),
           listAgents().catch(() => ({ data: [] }))
         ]);
         
+        let fetchedTeams = []
         if (teamsRes.data && teamsRes.data.length > 0) {
-          const mappedTeams = teamsRes.data.map(t => ({
+          fetchedTeams = teamsRes.data.map(t => ({
             id: t.id,
             name: t.name,
             icon: Users,
             count: 0,
             isCommander: t.type === 'commander'
           }));
-          setTeams([...mockTeams.filter(mt => mt.id === 'commander'), ...mappedTeams]);
+        } else {
+          fetchedTeams = [
+            { id: 'commander', name: 'Commander Agent', icon: ShieldAlert, count: 1, isCommander: true },
+            { id: 'sales', name: 'Sales Team', icon: TrendingUp, count: 0 }
+          ]
         }
+        setTeams(fetchedTeams);
         
         if (agentsRes.data && agentsRes.data.length > 0) {
           const mappedAgents = {};
@@ -248,6 +236,33 @@ const AgentStudio = () => {
               name: a.name,
               prompt: a.prompt || '',
               status: 'active',
+              voice_provider: a.voice_provider,
+              voice_id: a.voice_id,
+              model_provider: a.model_provider,
+              model_id: a.model_id
+            });
+          });
+          setAgents(mappedAgents);
+          
+          // Update team counts
+          setTeams(prev => prev.map(t => ({
+            ...t,
+            count: (mappedAgents[t.id] || []).length
+          })))
+        }
+        
+        if (!activeTeam && fetchedTeams.length > 0) {
+          setActiveTeam(fetchedTeams[0].id)
+        }
+      } catch (err) {
+        console.error("Failed to load agent data:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    
+    fetchData()
+  }, [])
               isCommander: false
             });
           });

@@ -14,7 +14,7 @@ export class AppController {
   private connectorHubUrl = process.env.CONNECTOR_HUB_URL || 'http://connector-hub:5005';
   private knowledgeServiceUrl = process.env.KNOWLEDGE_SERVICE_URL || 'http://knowledge-service:5006';
   private capabilityRegistryUrl = process.env.CAPABILITY_REGISTRY_URL || 'http://capability-registry:5009';
-  private plannerServiceUrl = process.env.PLANNER_SERVICE_URL || 'http://planner-service:5006';
+  private plannerServiceUrl = process.env.PLANNER_SERVICE_URL || 'http://planner-service:5011';
 
   // ── Legacy /api/* ──────────────────────────────────────────────────────────
 
@@ -188,6 +188,27 @@ export class AppController {
   @All('v1/plans*')
   proxyPlansV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.plannerServiceUrl, req, res);
+  }
+
+  @All('v1/stats*')
+  proxyStatsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res, (url) =>
+      url.replace(/^\/v1\/stats/, '/api/stats'),
+    );
+  }
+
+  @All('v1/notifications*')
+  proxyNotificationsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res, (url) =>
+      url.replace(/^\/v1\/notifications/, '/api/tenant/notifications'),
+    );
+  }
+
+  @All('v1/governance*')
+  proxyGovernanceV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.tenantServiceUrl, req, res, (url) =>
+      url.replace(/^\/v1\/governance/, '/api/tenant/governance'),
+    );
   }
 
   // ── Telephony webhooks (public) ────────────────────────────────────────────
