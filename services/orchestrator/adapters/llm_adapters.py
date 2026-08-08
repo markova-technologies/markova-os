@@ -6,14 +6,33 @@ class UnifiedLLM(LLMPort):
     Unified LLM completion adapter dispatcher.
     """
     async def complete(self, provider: str, model_id: str, messages: list, api_key: str) -> tuple[str, int]:
-        if provider == "openai":
-            return await self._openai_complete(model_id, messages, api_key)
-        elif provider == "groq":
-            return await self._groq_complete(model_id, messages, api_key)
-        elif provider == "gemini":
-            return await self._gemini_complete(model_id, messages, api_key)
-        else:
-            raise ValueError(f"Unsupported LLM provider: {provider}")
+        from opentelemetry import trace
+        tracer = trace.get_tracer("markova.orchestrator.llm")
+        with tracer.start_as_current_span("llm_complete") as span:
+            span.set_attribute("llm.provider", provider)
+            span.set_attribute("llm.model_id", model_id)
+            span.set_attribute("llm.message_count", len(messages))
+            try:
+                from services.orchestrator.circuit_breaker import llm_breaker
+                if provider == "openai":
+                    result = await llm_breaker.call(self._openai_complete, model_id, messages, api_key)
+                elif provider == "groq":
+                    result = await llm_breaker.call(self._groq_complete, model_id, messages, api_key)
+                elif provider == "gemini":
+                    result = await llm_breaker.call(self._gemini_complete, model_id, messages, api_key)
+                elif provider == "vllm":
+                    from services.orchestrator.vllm_adapter import VLLMAdapter
+                    adapter = VLLMAdapter()
+                    result = await llm_breaker.call(adapter.complete, messages, model_id=model_id)
+                else:
+                    raise ValueError(f"Unsupported LLM provider: {provider}")
+                
+                span.set_attribute("llm.tokens_used", result[1])
+                return result
+            except Exception as e:
+                span.record_exception(e)
+                span.set_status(trace.StatusCode.ERROR)
+                raise
 
     async def _openai_complete(self, model_id: str, messages: list, api_key: str) -> tuple[str, int]:
         async with httpx.AsyncClient(timeout=30) as client:

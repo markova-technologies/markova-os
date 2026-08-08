@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"encoding/json"
@@ -50,7 +50,7 @@ func handleWebRTCOffer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	peerConnection.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
-		log.Printf("≡ƒÄÖ∩╕Å WebRTC track arrived: ID=%s, Codec=%s", track.ID(), track.Codec().MimeType)
+		log.Printf("🎙️ WebRTC track arrived: ID=%s, Codec=%s", track.ID(), track.Codec().MimeType)
 		buf := make([]byte, 1500)
 		for {
 			n, _, err := track.Read(buf)
@@ -107,7 +107,7 @@ type RTPHeader struct {
 
 const (
 	rtpMinHeaderSize   = 12
-	vadEnergyThreshold = 500.0 // G.711 ╬╝-law RMS energy threshold for voice activity
+	vadEnergyThreshold = 500.0 // G.711 μ-law RMS energy threshold for voice activity
 	forwardURLEnvKey   = "VOICE_RUNTIME_URL"
 )
 
@@ -142,7 +142,7 @@ func parseRTPHeader(buf []byte) (*RTPHeader, []byte, error) {
 	// Skip past the fixed header + optional CSRC list (4 bytes per CSRC)
 	headerSize := rtpMinHeaderSize + int(h.CSRCCount)*4
 
-	// Skip optional header extension (RFC 3550 ┬º5.3.1)
+	// Skip optional header extension (RFC 3550 §5.3.1)
 	if h.Extension {
 		if len(buf) < headerSize+4 {
 			return nil, nil, fmt.Errorf("packet truncated in extension header")
@@ -168,7 +168,7 @@ func parseRTPHeader(buf []byte) (*RTPHeader, []byte, error) {
 	return h, payload, nil
 }
 
-// mulawDecode decodes a single G.711 ╬╝-law (PCMU) byte to 16-bit linear PCM.
+// mulawDecode decodes a single G.711 μ-law (PCMU) byte to 16-bit linear PCM.
 // Based on ITU-T G.711 specification.
 func mulawDecode(b byte) int16 {
 	b = ^b
@@ -183,7 +183,7 @@ func mulawDecode(b byte) int16 {
 	return sample
 }
 
-// computeEnergy calculates the RMS energy of a G.711 ╬╝-law audio payload.
+// computeEnergy calculates the RMS energy of a G.711 μ-law audio payload.
 // Used for Voice Activity Detection (VAD).
 func computeEnergy(payload []byte) float64 {
 	if len(payload) == 0 {
@@ -206,7 +206,7 @@ func forwardAudioFrame(payload []byte, ssrc uint32, seqNum uint16, forwardURL st
 
 	req, err := http.NewRequest("POST", forwardURL+"/v1/rtp/frame", bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("ΓÜá∩╕Å  forwardAudioFrame: failed to build request: %v", err)
+		log.Printf("⚠️  forwardAudioFrame: failed to build request: %v", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
@@ -246,14 +246,14 @@ func main() {
 
 	// Increase socket receive buffer to handle burst RTP traffic (2 MB)
 	if err := conn.SetReadBuffer(2 * 1024 * 1024); err != nil {
-		log.Printf("ΓÜá∩╕Å  Could not set UDP read buffer size: %v", err)
+		log.Printf("⚠️  Could not set UDP read buffer size: %v", err)
 	}
 
-	log.Printf("≡ƒÄÖ∩╕Å  Go Native RTP Media Server listening on UDP port %s", port)
+	log.Printf("🎙️  Go Native RTP Media Server listening on UDP port %s", port)
 	if forwardURL != "" {
-		log.Printf("≡ƒôí Forwarding voice frames to: %s/v1/rtp/frame", forwardURL)
+		log.Printf("📡 Forwarding voice frames to: %s/v1/rtp/frame", forwardURL)
 	} else {
-		log.Printf("ΓÜá∩╕Å  %s not set ΓÇö VAD active, forwarding disabled", forwardURLEnvKey)
+		log.Printf("⚠️  %s not set — VAD active, forwarding disabled", forwardURLEnvKey)
 	}
 
 	// Background stats reporter (every 30s)
@@ -261,7 +261,7 @@ func main() {
 		ticker := time.NewTicker(30 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			log.Printf("≡ƒôè RTP Stats ΓÇö received: %d | voice: %d | silence: %d",
+			log.Printf("📊 RTP Stats — received: %d | voice: %d | silence: %d",
 				atomic.LoadUint64(&packetsReceived),
 				atomic.LoadUint64(&voiceFrames),
 				atomic.LoadUint64(&silenceFrames),
@@ -284,11 +284,11 @@ func main() {
 		// Parse RTP header to extract audio payload
 		header, payload, parseErr := parseRTPHeader(buf[:n])
 		if parseErr != nil {
-			log.Printf("ΓÜá∩╕Å  Invalid RTP packet from %s: %v", src, parseErr)
+			log.Printf("⚠️  Invalid RTP packet from %s: %v", src, parseErr)
 			continue
 		}
 
-		// VAD: compute RMS energy on ╬╝-law payload to detect voice activity
+		// VAD: compute RMS energy on μ-law payload to detect voice activity
 		energy := computeEnergy(payload)
 		isVoice := energy >= vadEnergyThreshold
 
@@ -322,7 +322,7 @@ func main() {
 	})
 	http.HandleFunc("/v1/webrtc/offer", handleWebRTCOffer)
 
-	log.Printf("ΓÜí Media Server WebRTC/DTLS-SRTP signaling server listening on HTTP port %s", httpPort)
+	log.Printf("⚡ Media Server WebRTC/DTLS-SRTP signaling server listening on HTTP port %s", httpPort)
 	if err := http.ListenAndServe(":"+httpPort, nil); err != nil {
 		log.Fatalf("HTTP server failed: %v", err)
 	}

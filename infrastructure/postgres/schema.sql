@@ -381,58 +381,13 @@ CREATE TABLE IF NOT EXISTS subscriptions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 -- Roles & Permissions
-CREATE TABLE IF NOT EXISTS roles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    name VARCHAR(100) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(company_id, name)
-);
 
-CREATE TABLE IF NOT EXISTS permissions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    action VARCHAR(255) NOT NULL UNIQUE, -- e.g. 'billing:read', 'agents:write'
-    description TEXT
-);
 
-CREATE TABLE IF NOT EXISTS role_permissions (
-    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
-    permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,
-    PRIMARY KEY (role_id, permission_id)
-);
 
-CREATE TABLE IF NOT EXISTS user_roles (
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
-    PRIMARY KEY (user_id, role_id)
-);
 
 -- Sessions
-CREATE TABLE IF NOT EXISTS sessions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    device_info JSONB, -- { browser, os, device_type }
-    ip_address INET,
-    is_trusted BOOLEAN DEFAULT false,
-    last_active_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
-    revoked_at TIMESTAMP,
-    refresh_token VARCHAR(255),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 -- Secrets Vault
-CREATE TABLE IF NOT EXISTS secret_vault (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    key_name VARCHAR(255) NOT NULL,
-    encrypted_value TEXT NOT NULL,
-    iv TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(company_id, key_name)
-);
 
 -- Enable RLS on all tenant tables
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
@@ -513,13 +468,6 @@ CREATE POLICY tenant_isolation_knowledge_documents ON knowledge_documents USING 
 -- Migration 002: Organization Hierarchy
 
 -- Departments
-CREATE TABLE IF NOT EXISTS departments (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    parent_department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
-    name VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 -- Add department_id to users
 ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id);
@@ -547,135 +495,42 @@ ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS trace_id VARCHAR(100);
 ALTER TABLE audit_logs ADD COLUMN IF NOT EXISTS session_id UUID;
 
 -- Approval Queue
-CREATE TABLE IF NOT EXISTS approval_queue (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    requester_id UUID, -- could be user or agent
-    requester_type VARCHAR(50) NOT NULL, -- 'user' or 'agent'
-    action VARCHAR(255) NOT NULL,
-    context JSONB NOT NULL,
-    reason TEXT,
-    status VARCHAR(50) DEFAULT 'pending', -- pending, approved, denied, executed, expired
-    approver_id UUID REFERENCES users(id),
-    decision_reason TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 ALTER TABLE approval_queue ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_approval_queue ON approval_queue USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 -- Agent Hierarchy
-CREATE TABLE IF NOT EXISTS agent_hierarchy (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    parent_agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
-    child_agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
-    delegation_rules JSONB,
-    UNIQUE(parent_agent_id, child_agent_id)
-);
 
 ALTER TABLE agent_hierarchy ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_agent_hierarchy ON agent_hierarchy USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 -- Agent Tasks
-CREATE TABLE IF NOT EXISTS agent_tasks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    commander_id UUID REFERENCES agents(id),
-    executor_id UUID REFERENCES agents(id),
-    task_type VARCHAR(100) NOT NULL,
-    status VARCHAR(50) DEFAULT 'planning', -- planning, delegated, executing, validating, approved, completed, rejected
-    input JSONB,
-    output JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP
-);
 
 ALTER TABLE agent_tasks ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_agent_tasks ON agent_tasks USING (company_id = current_setting('app.current_tenant', true)::uuid);
 -- Migration 004: Revenue & Billing Engine
 
-CREATE TABLE IF NOT EXISTS ai_cost_logs (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
-    trace_id VARCHAR(100),
-    model_name VARCHAR(100) NOT NULL,
-    provider VARCHAR(100) NOT NULL,
-    prompt_tokens INTEGER DEFAULT 0,
-    completion_tokens INTEGER DEFAULT 0,
-    total_tokens INTEGER DEFAULT 0,
-    cost_usd NUMERIC(10, 6) DEFAULT 0,
-    markup_usd NUMERIC(10, 6) DEFAULT 0,
-    final_billed_usd NUMERIC(10, 6) DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 ALTER TABLE ai_cost_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_ai_cost_logs ON ai_cost_logs USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
-CREATE TABLE IF NOT EXISTS feature_flags (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    feature_name VARCHAR(100) NOT NULL,
-    is_enabled BOOLEAN DEFAULT false,
-    UNIQUE(company_id, feature_name)
-);
 
 ALTER TABLE feature_flags ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_feature_flags ON feature_flags USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
-CREATE TABLE IF NOT EXISTS usage_limits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    resource_type VARCHAR(100) NOT NULL, -- e.g., 'minutes', 'agents', 'storage_mb'
-    current_usage NUMERIC(15, 4) DEFAULT 0,
-    max_limit NUMERIC(15, 4) DEFAULT 0, -- 0 means unlimited
-    reset_date TIMESTAMP,
-    UNIQUE(company_id, resource_type)
-);
 
 ALTER TABLE usage_limits ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_usage_limits ON usage_limits USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
-CREATE TABLE IF NOT EXISTS billing_line_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    description VARCHAR(255) NOT NULL,
-    amount_usd NUMERIC(10, 4) NOT NULL,
-    type VARCHAR(50) NOT NULL, -- 'subscription', 'usage', 'overage'
-    status VARCHAR(50) DEFAULT 'unbilled', -- 'unbilled', 'invoiced', 'paid'
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 ALTER TABLE billing_line_items ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_billing_line_items ON billing_line_items USING (company_id = current_setting('app.current_tenant', true)::uuid);
 -- Migration 005: Enterprise Identity
 
-CREATE TABLE IF NOT EXISTS sso_connections (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    provider VARCHAR(100) NOT NULL, -- e.g., 'saml', 'google_workspace', 'azure_ad'
-    idp_entity_id VARCHAR(255),
-    sso_url VARCHAR(255),
-    certificate TEXT,
-    is_active BOOLEAN DEFAULT false,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(company_id)
-);
 
 ALTER TABLE sso_connections ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_sso_connections ON sso_connections USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
-CREATE TABLE IF NOT EXISTS scim_tokens (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    token_hash VARCHAR(255) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP,
-    UNIQUE(company_id)
-);
 
 ALTER TABLE scim_tokens ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_scim_tokens ON scim_tokens USING (company_id = current_setting('app.current_tenant', true)::uuid);
@@ -719,15 +574,6 @@ INSERT INTO roles (name, description) VALUES
 ON CONFLICT (name) DO NOTHING;
 
 -- Migration 008: Planner Service — Agent Plans
-CREATE TABLE IF NOT EXISTS agent_plans (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    goal TEXT NOT NULL,
-    tasks JSONB NOT NULL DEFAULT '[]'::jsonb,
-    status VARCHAR(50) DEFAULT 'pending',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    completed_at TIMESTAMP
-);
 
 ALTER TABLE agent_plans ENABLE ROW LEVEL SECURITY;
 CREATE POLICY tenant_isolation_agent_plans ON agent_plans
@@ -748,3 +594,4 @@ CREATE INDEX IF NOT EXISTS idx_usage_metrics_company_time ON usage_metrics (comp
 
 -- Knowledge chunks: vector search pre-filter by company
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc ON knowledge_chunks (document_id);
+

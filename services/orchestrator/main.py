@@ -1,17 +1,17 @@
-﻿"""
+"""
 Markova Orchestrator Service v2.0
-ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+─────────────────────────────────────────────────────────────────────────────
 Multi-tenant voice orchestration engine.
 
 Responsibilities:
   - Receive inbound call webhooks from Twilio
-  - Look up phone number ΓåÆ company + agent from PostgreSQL
+  - Look up phone number → company + agent from PostgreSQL
   - Manage conversation state in Redis
   - Route LLM/STT/TTS calls via modular adapters
   - Validate and normalize Amharic speech (homophones, garbage, LLM repair)
   - Persist call logs, transcripts, and usage metrics in PostgreSQL
   - Serve generated neural voice audio files dynamically
-ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+─────────────────────────────────────────────────────────────────────────────
 """
 
 import asyncio
@@ -153,9 +153,9 @@ def _validate_dial_target(target: str) -> bool:
     return True
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # Config
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL must be set in the environment (no default password).")
@@ -173,17 +173,17 @@ SYSTEM_TOOLS_PROMPT = """
 --- Agent Tools ---
 You have access to the following built-in tools. Use a tool by replying with ONLY the XML block below and NOTHING else in your response. Replace the placeholder shown in CAPS with the actual value. Do not include the angle brackets in the value.
 
-Tool 1 ΓÇö Transfer caller to a specialist agent:
+Tool 1 — Transfer caller to a specialist agent:
 <tool_call>{"tool_id": "handoff_agent", "parameters": {"target_agent_name": "EXACT_AGENT_NAME"}}</tool_call>
 Example: <tool_call>{"tool_id": "handoff_agent", "parameters": {"target_agent_name": "Billing Support"}}</tool_call>
 
-Tool 2 ΓÇö Search the knowledge base for product or policy information:
+Tool 2 — Search the knowledge base for product or policy information:
 <tool_call>{"tool_id": "search_knowledge_base", "parameters": {"query": "CALLER_QUESTION_IN_FULL"}}</tool_call>
 Example: <tool_call>{"tool_id": "search_knowledge_base", "parameters": {"query": "What is the refund policy?"}}</tool_call>
 
 RULES:
 - Only call one tool per response.
-- If you call a tool, output ONLY the tool_call XML ΓÇö no other text.
+- If you call a tool, output ONLY the tool_call XML — no other text.
 - Only use a tool when necessary. Do not search the knowledge base for questions you can answer directly.
 --- End Tools ---
 """
@@ -191,14 +191,14 @@ RULES:
 # Create audio directory if it doesn't exist
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # App State
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 db_pool: Optional[asyncpg.Pool] = None
 redis_client: Optional[aioredis.Redis] = None
 knowledge_adapter: Optional[KnowledgeAdapter] = None
 
-# Persistent HTTP clients pool ΓÇö per provider (reuses TCP connection pools)
+# Persistent HTTP clients pool — per provider (reuses TCP connection pools)
 _http_clients: dict[str, httpx.AsyncClient] = {}
 
 def get_http_client(provider: str = "default", timeout: float = 30.0) -> httpx.AsyncClient:
@@ -418,7 +418,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         logger.error("unhandled_exception_on_telephony", path=path, exc=exc)
         twiml = """<?xml version="1.0" encoding="UTF-8"?>
 <Response>
-    <Say voice="Polly.Zeina" language="ar-EG">ßï¡ßëàßê¡ßë│ßìú ßèáßêüßèò ßï¿ßë┤ßè¡ßèÆßè¡ ßë╜ßîìßê¡ ßèáßêêßìó ßèÑßëúßè¡ßïÄ ßëåßï¡ßë░ßïì ßï¡ßï░ßïìßêëßìó</Say>
+    <Say voice="Polly.Zeina" language="ar-EG">ይቅርታ፣ አሁን የቴክኒክ ችግር አለ። እባክዎ ቆይተው ይደውሉ።</Say>
     <Say language="en-US">We are experiencing a technical issue. Please call back shortly.</Say>
     <Hangup/>
 </Response>"""
@@ -427,9 +427,9 @@ async def global_exception_handler(request: Request, exc: Exception):
     raise exc
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # HELPERS: DB Lookups & Writes
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_agent_by_name(company_id: str, agent_name: str) -> Optional[dict]:
     """
@@ -832,9 +832,9 @@ async def publish_event(event_type: str, payload: dict, source: str = "orchestra
 
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # ADAPTERS: LLM & EMBEDDING
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_embedding(provider: str, model_id: str, text: str, api_key: str) -> list[float]:
     if provider == "openai":
@@ -934,9 +934,9 @@ async def _gemini_complete(model_id: str, messages: list, api_key: str) -> tuple
     return text, estimated_tokens
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # ADAPTERS: STT
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def preprocess_audio_for_stt(audio_bytes: bytes, input_ext: str = ".wav") -> bytes:
     """
@@ -944,12 +944,12 @@ async def preprocess_audio_for_stt(audio_bytes: bytes, input_ext: str = ".wav") 
     Matches the proven playground pipeline from ai call center/main_natural_voice.py.
     
     Pipeline:
-      1. highpass=f=200      ΓÇö Remove sub-200Hz phone hiss
-      2. lowpass=f=3400      ΓÇö Remove above 3.4kHz (phone bandwidth)
-      3. afftdn=nf=-25       ΓÇö Spectral noise floor reduction
-      4. loudnorm=I=-23      ΓÇö EBU R128 loudness normalization
-      5. silenceremove       ΓÇö Trim leading silence >100ms
-      6. ar=16000, ac=1      ΓÇö 16kHz mono for Whisper compatibility
+      1. highpass=f=200      — Remove sub-200Hz phone hiss
+      2. lowpass=f=3400      — Remove above 3.4kHz (phone bandwidth)
+      3. afftdn=nf=-25       — Spectral noise floor reduction
+      4. loudnorm=I=-23      — EBU R128 loudness normalization
+      5. silenceremove       — Trim leading silence >100ms
+      6. ar=16000, ac=1      — 16kHz mono for Whisper compatibility
     
     Falls back to returning original bytes on any ffmpeg error.
     """
@@ -995,8 +995,8 @@ async def get_agent_whisper_prompt(company_id: str, agent_language: str = "am") 
     Falls back to a generic Amharic prompt on any failure.
     """
     GENERIC_AM_PROMPT = (
-        "ßê░ßêïßê¥ßìó ßï░ßèòßëáßè¢ ßï╡ßîïßìì ßèÉßè¥ßìó ßïïßîï how much ßèÉßïì? discount ßèáßêê? delivery free ßèÉßïì? "
-        "ßë╡ßïòßï¢ßï¥ order ßè¡ßììßï½ ßëÑßê¡ ßëúßèòßè¡ ßïïßê╡ßë╡ßèôßìó"
+        "ሰላም። ደንበኛ ድጋፍ ነኝ። ዋጋ how much ነው? discount አለ? delivery free ነው? "
+        "ትዕዛዝ order ክፍያ ብር ባንክ ዋስትና።"
     )
     try:
         if not db_pool or not company_id:
@@ -1139,9 +1139,9 @@ async def _deepgram_stt(model_id: str, audio_bytes: bytes, api_key: str, lang: s
     return data["results"]["channels"][0]["alternatives"][0]["transcript"]
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # ADAPTERS: TTS
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def tts_synthesize(provider: str, voice_id: str, text: str, api_key: str, emotion: str = "NEUTRAL") -> bytes:
     """
@@ -1281,18 +1281,18 @@ async def _addisai_tts(text: str, api_key: str) -> bytes:
     return base64.b64decode(audio_str)
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # SPEECH VALIDATION & NORMALIZATION (AMHARIC ENGINE)
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 # Polite rotatable retries
 POLITE_RETRY_RESPONSES = [
-    "ßï¡ßëàßê¡ßë│ßìú ßèáßèòßï┤ ßï¡ßï╡ßîêßêÖßêìßè¥?",
-    "ßï¡ßëàßê¡ßë│ßìú ßîìßêìßìà ßèáßêìßêåßèÉßêìßè¥ßê¥ßìó ßï░ßîìßêÿßïì ßï¡ßèòßîêßê⌐ßè¥?",
-    "ßï¡ßëàßê¡ßë│ßìú ßîÑßï½ßëäßïÄßèò ßë╡ßèòßê╜ ßèÑßèòßï░ßîêßèô ßï¡ßèòßîêßê⌐ßè¥?",
-    "ßèÑßê║ßìú ßï¡ßëàßê¡ßë│ ßîÄßèò ßï½ßêëßè¥ ßï╡ßê¥ßìà ßëÑßïÖ ßèÉßïìßìó ßèÑßëúßè¡ßïÄ ßï░ßîìßêÿßïì ßï¡ßèòßîêßê⌐ßè¥?",
-    "ßï¡ßëàßê¡ßë│ßìú ßëáßï░ßèòßëÑ ßèáßêìßê░ßê¢ßêüßïÄßë╡ßê¥ßìó ßèÑßëúßè¡ßïÄ ßëÇßê╡ ßëÑßêêßïì ßï¡ßèòßîêßê⌐ßè¥?",
-    "ßï¡ßëàßê¡ßë│ßìú ßêÿßê╡ßêÿßê⌐ ßë╡ßèòßê╜ ßï░ßè½ßê¢ ßèÉßïìßìó ßèÑßëúßè¡ßïÄ ßï░ßîìßêÿßïì ßï¡ßèôßîêßê⌐?",
+    "ይቅርታ፣ አንዴ ይድገሙልኝ?",
+    "ይቅርታ፣ ግልፅ አልሆነልኝም። ደግመው ይንገሩኝ?",
+    "ይቅርታ፣ ጥያቄዎን ትንሽ እንደገና ይንገሩኝ?",
+    "እሺ፣ ይቅርታ ጎን ያሉኝ ድምፅ ብዙ ነው። እባክዎ ደግመው ይንገሩኝ?",
+    "ይቅርታ፣ በደንብ አልሰማሁዎትም። እባክዎ ቀስ ብለው ይንገሩኝ?",
+    "ይቅርታ፣ መስመሩ ትንሽ ደካማ ነው። እባክዎ ደግመው ይናገሩ?",
 ]
 def get_polite_retry() -> str:
     return random.choice(POLITE_RETRY_RESPONSES)
@@ -1300,16 +1300,16 @@ def get_polite_retry() -> str:
 
 # Homophone normalizer map
 AMHARIC_NORMALIZER = str.maketrans({
-    'ßêÉ': 'ßêÇ', 'ßèÇ': 'ßêÇ', 'ßêæ': 'ßêü', 'ßèü': 'ßêü',
-    'ßêÆ': 'ßêé', 'ßèé': 'ßêé', 'ßêô': 'ßêâ', 'ßèâ': 'ßêâ',
-    'ßêö': 'ßêä', 'ßèä': 'ßêä', 'ßêò': 'ßêà', 'ßèà': 'ßêà',
-    'ßêû': 'ßêå', 'ßèå': 'ßêå',
-    'ßïÉ': 'ßèá', 'ßïæ': 'ßèí', 'ßïÆ': 'ßèó', 'ßïô': 'ßèú',
-    'ßïö': 'ßèñ', 'ßïò': 'ßèÑ', 'ßïû': 'ßèª',
-    'ßêá': 'ßê░', 'ßêí': 'ßê▒', 'ßêó': 'ßê▓', 'ßêú': 'ßê│',
-    'ßêñ': 'ßê┤', 'ßêÑ': 'ßê╡', 'ßêª': 'ßê╢',
-    'ßìÇ': 'ßî╕', 'ßìü': 'ßî╣', 'ßìé': 'ßî║', 'ßìâ': 'ßî╗',
-    'ßìä': 'ßî╝', 'ßìà': 'ßî╜', 'ßìå': 'ßî╛',
+    'ሐ': 'ሀ', 'ኀ': 'ሀ', 'ሑ': 'ሁ', 'ኁ': 'ሁ',
+    'ሒ': 'ሂ', 'ኂ': 'ሂ', 'ሓ': 'ሃ', 'ኃ': 'ሃ',
+    'ሔ': 'ሄ', 'ኄ': 'ሄ', 'ሕ': 'ህ', 'ኅ': 'ህ',
+    'ሖ': 'ሆ', 'ኆ': 'ሆ',
+    'ዐ': 'አ', 'ዑ': 'ኡ', 'ዒ': 'ኢ', 'ዓ': 'ኣ',
+    'ዔ': 'ኤ', 'ዕ': 'እ', 'ዖ': 'ኦ',
+    'ሠ': 'ሰ', 'ሡ': 'ሱ', 'ሢ': 'ሲ', 'ሣ': 'ሳ',
+    'ሤ': 'ሴ', 'ሥ': 'ስ', 'ሦ': 'ሶ',
+    'ፀ': 'ጸ', 'ፁ': 'ጹ', 'ፂ': 'ጺ', 'ፃ': 'ጻ',
+    'ፄ': 'ጼ', 'ፅ': 'ጽ', 'ፆ': 'ጾ',
 })
 
 
@@ -1376,7 +1376,7 @@ def is_garbage_transcription(text: str) -> bool:
     # Hallucination keywords
     hallucination_phrases = [
         "subtitles by", "subscrib", "thank you for watching",
-        "please subscribe", "like and subscribe", "ßê░ßëÑßê╡ßè¡ßê½ßï¡ßëÑ",
+        "please subscribe", "like and subscribe", "ሰብስክራይብ",
         "feeding", "www.", "http"
     ]
     text_lower = text.lower()
@@ -1417,9 +1417,9 @@ async def repair_amharic_transcription(text: str, api_key: str) -> str:
     return text
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # CONVERSATION STATE (Redis)
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def get_conversation_state(call_sid: str) -> dict:
     global REDIS_DEGRADED
@@ -1505,7 +1505,7 @@ def split_into_sentences(text: str) -> list[str]:
     """Split LLM response into TTS-streamable sentences (handles English & Amharic punctuation)."""
     if not text:
         return []
-    sentences = re.split(r'(?<=[.!?ßìóßìí])\s+', text.strip())
+    sentences = re.split(r'(?<=[.!?።፡])\s+', text.strip())
     return [s.strip() for s in sentences if s.strip()]
 
 
@@ -1558,15 +1558,15 @@ TWILIO_VOICE_MAP = {
 }
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # TWILIO SECURITY: Signature Validation
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # TTS AUDIO CACHE CLEANUP
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 async def cleanup_audio_cache(max_age_seconds: int = 7 * 24 * 3600):
     """
@@ -1600,9 +1600,9 @@ async def cleanup_audio_cache(max_age_seconds: int = 7 * 24 * 3600):
             logger.error("audio_cache_cleanup_error", e=e)
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # WEBSOCKETS & REAL-TIME LOGS
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 class ConnectionManager:
     def __init__(self):
@@ -1709,9 +1709,9 @@ async def _process_stream_transcript(call_sid: str, transcript: str):
     await _process_voice_turn(None, call_sid, transcript, mode="gather")
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # ROUTES
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws/flow-monitor/{company_id}")
 async def websocket_endpoint(websocket: WebSocket, company_id: str):
@@ -1807,14 +1807,14 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
     welcome_text = (
         "Hello! You've reached {name}. How can I help you today?".format(name=name)
         if agent_lang == "english"
-        else "ßê░ßêïßê¥ßìú ßèÑßèòßï┤ßë╡ ßêìßê¿ßï│ßïÄ?"
+        else "ሰላም፣ እንዴት ልረዳዎ?"
     )
 
     settings = state.get("phone_settings") or {}
     consent_enabled = settings.get("ai_disclosure_enabled", True)  # Default ON for INSA compliance
     if consent_enabled:
         consent_text = settings.get("ai_disclosure_text") or (
-            "ßï¡ßêà ßîÑßê¬ ßëáßê░ßïì ßê░ßê½ßê╜ ßèáßê╡ßë░ßê│ßê░ßëÑ ßê╡ßê¡ßïôßë╡ ßï¡ßê╡ßë░ßèôßîêßï│ßêìßìó ßëÇßê¿ßî╗ ßêèßï░ßê¿ßîì ßï¡ßë╜ßêïßêìßìó "
+            "ይህ ጥሪ በሰው ሰራሽ አስተሳሰብ ስርዓት ይስተናገዳል። ቀረጻ ሊደረግ ይችላል። "
             if agent_lang == "amharic" else
             "This call is handled by an AI system and may be recorded. "
         )
@@ -1860,7 +1860,7 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
 async def verify_twilio_signature(request: Request) -> bool:
     """
     Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints when configured.
-    NEVER bypass in production ΓÇö an unconfigured token means any attacker can
+    NEVER bypass in production — an unconfigured token means any attacker can
     forge webhooks.
     """
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
@@ -1896,7 +1896,7 @@ from media_stream_handler import MediaStreamHandler
 async def media_stream_ws(websocket: WebSocket, call_sid: str):
     """
     Twilio Media Streams WebSocket handler.
-    Receives raw ╬╝-law audio at 20ms intervals, processes STTΓåÆLLMΓåÆTTS,
+    Receives raw μ-law audio at 20ms intervals, processes STT→LLM→TTS,
     and streams audio back in real-time.
     """
     await websocket.accept()
@@ -1937,7 +1937,7 @@ async def handle_inbound_call(
 ):
     """
     Twilio inbound call webhook.
-    Resolve number ΓåÆ optional IVR ΓåÆ agent gather; honor recording toggle.
+    Resolve number → optional IVR → agent gather; honor recording toggle.
     """
     if not await verify_twilio_signature(request):
         return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio cryptographic signature.")
@@ -2224,7 +2224,7 @@ async def handle_recording_callback(
     CallSid: str = Form(default=""),
     RecordingUrl: str = Form(default=""),
 ):
-    """Twilio recording status ΓÇö attach URL to call."""
+    """Twilio recording status — attach URL to call."""
     state = await get_conversation_state(CallSid) if CallSid else {}
     call_id = state.get("call_id")
     if call_id and RecordingUrl:
@@ -2264,7 +2264,7 @@ async def _build_transfer_context(call_id: str, target: str, reason: str = "api"
         }
         for r in rows
     ]
-    # Merge Redis live messages if present via call_sid on state keyed elsewhere ΓÇö transcripts are source of truth
+    # Merge Redis live messages if present via call_sid on state keyed elsewhere — transcripts are source of truth
     summary_parts = [t["content"] for t in transcript if t["role"] in ("user", "assistant", "agent")][-8:]
     summary = " | ".join(summary_parts) if summary_parts else "No prior dialogue captured."
 
@@ -2289,7 +2289,7 @@ def _generate_gateway_auth_headers(company_id: str) -> dict:
     import time
     secret = os.getenv("SERVICE_AUTH_SECRET", "")
     if not secret:
-        raise RuntimeError("SERVICE_AUTH_SECRET must be set ΓÇö refusing to sign with empty key")
+        raise RuntimeError("SERVICE_AUTH_SECRET must be set — refusing to sign with empty key")
     ts = str(int(time.time() * 1000))
     user_id = "00000000-0000-0000-0000-000000000000"
     payload = f"{company_id}:{user_id}:{ts}"
@@ -2349,7 +2349,7 @@ async def _process_ai_logic(state: dict, session_id: str, user_text: str, compan
                 "provider": state.get("model_provider", "unknown"),
                 "error": "Missing or unconfigured LLM API Key."
             })
-        err_msg = "ßï¡ßëàßê¡ßë│ßìú ßï¿ßèñßèáßï¡ ßèáßîêßêìßîìßêÄßë╡ ßëáßèáßîìßëúßëí ßèáßêìßë░ßïÿßîïßîÇßê¥ßìó" if agent_lang == "amharic" else "Sorry, the AI service is not configured properly."
+        err_msg = "ይቅርታ፣ የኤአይ አገልግሎት በአግባቡ አልተዘጋጀም።" if agent_lang == "amharic" else "Sorry, the AI service is not configured properly."
         return err_msg
 
     sentiment = await analyze_sentiment(user_text)
@@ -2401,7 +2401,7 @@ async def _process_ai_logic(state: dict, session_id: str, user_text: str, compan
             )
         except Exception as e:
             logger.error("llm_error_e", e=e)
-            ai_text = "ßï¡ßëàßê¡ßë│ßìú ßèáßêüßèò ßêÿßê╡ßêÿßê¡ ßêïßï¡ ßë╜ßîìßê¡ ßèáßêêßìó ßëåßï¡ßë░ßïì ßï¡ßê₧ßè¡ßê⌐ßìó" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
+            ai_text = "ይቅርታ፣ አሁን መስመር ላይ ችግር አለ። ቆይተው ይሞክሩ።" if agent_lang == "amharic" else "I'm having trouble processing your request right now. Please try again."
             tokens_used = 0
             if company_id:
                 await publish_event("system.llm.failure", {
@@ -2566,7 +2566,7 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
         # Break infinite silence loops after 3 attempts
         if empty_count >= 3:
             logger.info("3_consecutive_empty_garbage", CallSid=CallSid)
-            bye_msg = "ßï¡ßëàßê¡ßë│ßìú ßï╡ßê¥ßìàßïÄ ßëáßï░ßèòßëÑ ßèáßêìßë░ßê░ßê¢ßèòßê¥ßìó ßèÑßëúßè¡ßïÄ ßêÿßê╡ßêÿßê⌐ ßê▓ßê╗ßê╗ßêì ßï░ßîìßêÿßïì ßï¡ßï░ßïìßêëßêìßèòßìó" if agent_lang == "amharic" else "We are having trouble hearing you clearly. Please call back when you have a better connection. Goodbye."
+            bye_msg = "ይቅርታ፣ ድምፅዎ በደንብ አልተሰማንም። እባክዎ መስመሩ ሲሻሻል ደግመው ይደውሉልን።" if agent_lang == "amharic" else "We are having trouble hearing you clearly. Please call back when you have a better connection. Goodbye."
             tts_config = await get_provider_config(company_id, "voice", state["voice_provider"])
             tts_key = tts_config.get("api_key") if tts_config else ""
             audio_url = await get_audio_url_for_text(company_id, state["voice_provider"], state["voice_id"], bye_msg, tts_key, request)
@@ -2633,7 +2633,7 @@ async def _process_voice_turn(request: Optional[Request], CallSid: str, user_tex
     state = await get_conversation_state(CallSid)
 
     # Check for end-of-conversation signals
-    goodbye_signals = ["goodbye", "bye", "thank you bye", "that's all", "ßèáßêÿßê░ßîìßèôßêêßêü", "ßë╗ßïì"]
+    goodbye_signals = ["goodbye", "bye", "thank you bye", "that's all", "አመሰግናለሁ", "ቻው"]
     is_goodbye = any(signal in user_text.lower() for signal in goodbye_signals)
 
     # Generate Response Audio Url
@@ -2749,7 +2749,7 @@ async def handle_audio_response(
     # SSRF Guard: validate recording URL before fetching
     if RecordingUrl and not _validate_recording_url(RecordingUrl):
         logger.error("ssrf_guard_triggered_rejected", RecordingUrl=RecordingUrl)
-        RecordingUrl = ""   # Treat as empty ΓÇö proceed with blank transcript
+        RecordingUrl = ""   # Treat as empty — proceed with blank transcript
 
     if RecordingUrl and company_id:
         twilio_account_sid = os.getenv("TWILIO_ACCOUNT_SID", "")
@@ -2877,7 +2877,7 @@ async def handle_call_status(
     CallStatus: str = Form(...),
     CallDuration: Optional[str] = Form(None),
 ):
-    """Twilio call status callback ΓÇö cleanup on call end and track usage minutes."""
+    """Twilio call status callback — cleanup on call end and track usage minutes."""
     logger.info("call_status_sid_callsid", CallSid=CallSid, CallStatus=CallStatus, CallDuration=CallDuration)
 
     if CallStatus in ["completed", "failed", "canceled", "busy", "no-answer"]:
@@ -2915,9 +2915,9 @@ async def handle_call_status(
     return {"status": "ok"}
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # Long-Term Memory Summary Generator
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 async def _generate_and_save_call_summary(company_id: str, call_id: str, messages: list, caller_number: str):
     """Generates a brief summary of the call and saves it as a CRM interaction."""
     try:
@@ -2956,9 +2956,9 @@ async def _generate_and_save_call_summary(company_id: str, call_id: str, message
         logger.error("failed_to_generate_call", e=e)
 
 
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 # Internal API: For dashboard call logs, transcripts, and stats
-# ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+# ─────────────────────────────────────────────────────────────────────────────
 
 def _tenant_id(request: Request) -> str:
     import time, hmac, hashlib
@@ -2979,7 +2979,7 @@ def _tenant_id(request: Request) -> str:
         except _pyjwt.ExpiredSignatureError:
             raise HTTPException(status_code=401, detail="JWT expired")
         except _pyjwt.InvalidAudienceError:
-            raise HTTPException(status_code=401, detail="JWT audience mismatch ΓÇö token not issued for this service")
+            raise HTTPException(status_code=401, detail="JWT audience mismatch — token not issued for this service")
         except _pyjwt.InvalidTokenError as e:
             raise HTTPException(status_code=401, detail=f"Invalid JWT: {e}")
 
@@ -3053,7 +3053,7 @@ async def list_calls(request: Request, agent_id: Optional[str] = None, status: O
 async def create_outbound_call(request: Request):
     """
     Place an outbound call (or sandbox simulated call).
-    Sandbox (x-markova-env=test or body.sandbox=true): no Twilio spend ΓÇö records a simulated call.
+    Sandbox (x-markova-env=test or body.sandbox=true): no Twilio spend — records a simulated call.
     """
     company_id = _tenant_id(request)
     body = await request.json()
@@ -3081,7 +3081,7 @@ async def create_outbound_call(request: Request):
             """,
             call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
         )
-        agent_line = f"Hello ΓÇö this is a sandbox test from agent {agent['name']}."
+        agent_line = f"Hello — this is a sandbox test from agent {agent['name']}."
         await db_pool.execute(
             """
             INSERT INTO transcripts (call_id, role, content)
@@ -3091,7 +3091,7 @@ async def create_outbound_call(request: Request):
             f"Sandbox test call to {to_number} (no live telephony).",
             agent_line,
         )
-        # Meter sandbox activity (visible on /v1/usage; billed=false ΓÇö no telephony spend)
+        # Meter sandbox activity (visible on /v1/usage; billed=false — no telephony spend)
         await track_usage(
             company_id=company_id,
             call_minutes=1,

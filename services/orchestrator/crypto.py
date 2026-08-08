@@ -15,8 +15,10 @@ KEY_LENGTH = 32
 def get_master_key() -> str:
     key = os.getenv("ENCRYPTION_KEY")
     if not key:
-        print("⚠️ ENCRYPTION_KEY environment variable not set. Using fallback key for development.")
-        return "fallback_insecure_dev_key_only!"
+        raise RuntimeError(
+            "ENCRYPTION_KEY environment variable is required and was not set. "
+            "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+        )
     return key
 
 def decrypt(encrypted_data_b64: str, master_key: str = None) -> str:
@@ -92,3 +94,46 @@ def encrypt(text: str, master_key: str = None) -> str:
     
     payload = salt + iv + auth_tag + ciphertext
     return base64.b64encode(payload).decode('utf-8')
+
+
+from datetime import datetime
+from cryptography.fernet import Fernet
+
+def get_current_key_id() -> str:
+    """Key ID is YYYYMM — rotates monthly."""
+    return datetime.utcnow().strftime("%Y%m")
+
+def get_fernet_key(key_id: str = "") -> Fernet:
+    """
+    Derives a Fernet key from ENCRYPTION_KEY + key_id.
+    Monthly rotation: each month gets a different derived key.
+    """
+    master_key = get_master_key()
+    key_id = key_id or get_current_key_id()
+    # Derive 32-byte key using HKDF-SHA256 (PBKDF2 since it's already here)
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=32,
+        salt=key_id.encode('utf-8'),
+        iterations=100000,
+        backend=default_backend()
+    )
+    derived = kdf.derive(master_key.encode('utf-8'))
+    fernet_key = base64.urlsafe_b64encode(derived)
+    return Fernet(fernet_key)
+
+def encrypt_recording_url(url: str) -> tuple[str, str]:
+    """Encrypt a recording URL. Returns (ciphertext, key_id)."""
+    if not url:
+        return url, ""
+    key_id = get_current_key_id()
+    f = get_fernet_key(key_id)
+    ciphertext = f.encrypt(url.encode()).decode()
+    return ciphertext, key_id
+
+def decrypt_recording_url(ciphertext: str, key_id: str) -> str:
+    """Decrypt a recording URL using the correct key version."""
+    if not ciphertext or not key_id:
+        return ciphertext
+    f = get_fernet_key(key_id)
+    return f.decrypt(ciphertext.encode()).decode()

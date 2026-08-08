@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: markova-redis
+  namespace: markova-production
+  labels:
+    app: redis
+spec:
+  serviceName: "redis-headless"
+  replicas: 3
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7.2-alpine
+        command:
+          - "sh"
+          - "-c"
+          - |
+            if [ "$HOSTNAME" = "markova-redis-0" ]; then
+              redis-server --requirepass $REDIS_PASSWORD --masterauth $REDIS_PASSWORD
+            else
+              redis-server --requirepass $REDIS_PASSWORD --masterauth $REDIS_PASSWORD --replicaof markova-redis-0.redis-headless.markova-production.svc.cluster.local 6379
+            fi
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: REDIS_PASSWORD
+        ports:
+        - containerPort: 6379
+          name: redis
+        resources:
+          limits:
+            memory: "4Gi"
+            cpu: "1000m"
+          requests:
+            memory: "1Gi"
+            cpu: "250m"
+      - name: sentinel
+        image: redis:7.2-alpine
+        command:
+          - "sh"
+          - "-c"
+          - |
+            cat <<EOF > /tmp/sentinel.conf
+            port 26379
+            sentinel monitor mymaster markova-redis-0.redis-headless.markova-production.svc.cluster.local 6379 2
+            sentinel auth-pass mymaster $REDIS_PASSWORD
+            sentinel down-after-milliseconds mymaster 5000
+            sentinel failover-timeout mymaster 60000
+            EOF
+            redis-sentinel /tmp/sentinel.conf
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: orchestrator-secrets
+              key: REDIS_PASSWORD
+        ports:
+        - containerPort: 26379
+          name: sentinel
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: markova-production
+spec:
+  clusterIP: None
+  ports:
+  - port: 6379
+    name: redis
+  - port: 26379
+    name: sentinel
+  selector:
+    app: redis

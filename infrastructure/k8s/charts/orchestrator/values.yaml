@@ -1,0 +1,37 @@
+image:
+  repository: markova/orchestrator
+  pullPolicy: IfNotPresent
+  tag: "v2.0.0"
+
+replicaCount: 2
+
+service:
+  type: ClusterIP
+  port: 6000
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  metrics:
+    - type: Pods
+      pods:
+        metric:
+          name: markova_call_turn_latency_ms_p95
+        target:
+          type: AverageValue
+          averageValue: "400"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1024Mi
+
+env:
+  - name: PORT
+    value: "6000"
+  - name: DATA_RESIDENCY_MODE
+    value: "true"

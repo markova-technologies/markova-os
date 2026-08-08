@@ -9,6 +9,9 @@ from typing import Optional, Tuple
 
 import redis.asyncio as aioredis
 import asyncpg
+import structlog
+
+logger = structlog.get_logger()
 
 
 class DistributedSemanticCache:
@@ -33,8 +36,10 @@ class DistributedSemanticCache:
         self._hot_ttl = hot_ttl_seconds
         self._cold_ttl_hours = cold_ttl_hours
 
-    def _prompt_hash(self, text: str) -> str:
-        return hashlib.md5(text.encode("utf-8")).hexdigest()
+    def _prompt_hash(self, text: str, company_id: str = "") -> str:
+        """Hash includes company_id to prevent cross-tenant pgvector collisions."""
+        combined = f"{company_id}:{text}".encode("utf-8")
+        return hashlib.sha256(combined).hexdigest()
 
     async def get(
         self, embedding: list[float], company_id: str, prompt_text: str = ""
@@ -47,13 +52,13 @@ class DistributedSemanticCache:
         # Tier 1: Redis exact hash lookup (zero embedding cost)
         if prompt_text and self._redis:
             try:
-                cache_key = f"sc:{company_id}:{self._prompt_hash(prompt_text)}"
+                cache_key = f"sc:{company_id}:{self._prompt_hash(prompt_text, company_id)}"
                 hit = await self._redis.get(cache_key)
                 if hit:
-                    print(f"🎯 Semantic Cache TIER-1 HIT (exact match)")
+                    logger.info("semantic_cache_tier1_hit", company_id=company_id)
                     return json.loads(hit)["response"], 1.0
             except Exception as e:
-                print(f"⚠️ Redis cache read skipped: {e}")
+                logger.warning("semantic_cache_redis_read_skipped", error=str(e))
 
         # Tier 2: pgvector cosine similarity search
         if self._pool and embedding:
@@ -73,13 +78,13 @@ class DistributedSemanticCache:
                     company_id
                 )
                 if row and row["similarity"] >= self.threshold:
-                    print(f"🎯 Semantic Cache TIER-2 HIT! (Similarity: {row['similarity']:.4f})")
+                    logger.info("semantic_cache_tier2_hit", similarity=row["similarity"], company_id=company_id)
                     # Promote to hot tier for next request
                     if prompt_text and self._redis:
                         await self._promote_to_hot(company_id, prompt_text, row["response_text"])
                     return row["response_text"], row["similarity"]
             except Exception as e:
-                print(f"⚠️ pgvector cache read skipped: {e}")
+                logger.warning("semantic_cache_pgvector_read_skipped", error=str(e))
 
         return None
 
@@ -91,7 +96,11 @@ class DistributedSemanticCache:
         prompt_text: str = "",
     ) -> None:
         """Cache response. Never raises — cache writes are best-effort."""
-        if not embedding or not response:
+        if not embedding or not response or not company_id:
+            return
+            
+        # Never cache on empty prompt — sha256("") collision risk across tenants
+        if not prompt_text or not prompt_text.strip():
             return
 
         # Write to Tier 2: pgvector (durable, cross-replica)
@@ -99,7 +108,7 @@ class DistributedSemanticCache:
             try:
                 from datetime import datetime, timedelta, timezone
                 vector_str = f"[{','.join(map(str, embedding))}]"
-                prompt_hash = self._prompt_hash(prompt_text) if prompt_text else ""
+                prompt_hash = self._prompt_hash(prompt_text, company_id) if prompt_text else f"empty:{company_id}"
                 expires_at = datetime.now(timezone.utc) + timedelta(hours=self._cold_ttl_hours)
 
                 await self._pool.execute(
@@ -114,9 +123,9 @@ class DistributedSemanticCache:
                     """,
                     company_id, prompt_hash, vector_str, response, expires_at
                 )
-                print("💾 Semantic cache written to pgvector (distributed)")
+                logger.info("semantic_cache_written_pgvector", company_id=company_id)
             except Exception as e:
-                print(f"⚠️ pgvector cache write skipped: {e}")
+                logger.warning("semantic_cache_pgvector_write_skipped", error=str(e))
 
         # Write to Tier 1: Redis hot cache (fast reads)
         if prompt_text and self._redis:
@@ -124,11 +133,11 @@ class DistributedSemanticCache:
 
     async def _promote_to_hot(self, company_id: str, prompt_text: str, response: str):
         try:
-            cache_key = f"sc:{company_id}:{self._prompt_hash(prompt_text)}"
+            cache_key = f"sc:{company_id}:{self._prompt_hash(prompt_text, company_id)}"
             await self._redis.setex(
                 cache_key,
                 self._hot_ttl,
                 json.dumps({"response": response, "ts": time.time()})
             )
         except Exception as e:
-            print(f"⚠️ Redis hot cache write skipped: {e}")
+            logger.warning("semantic_cache_redis_hot_write_skipped", error=str(e))
