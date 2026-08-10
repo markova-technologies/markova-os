@@ -13,3 +13,6 @@ At the start of **EVERY** new session or conversation in this workspace, before 
 - **API Gateway**: `services/api-gateway/` (NestJS TypeScript)
 - **Database & Auth**: Supabase Auth (HS256 JWT validation + Postgres database triggers for automatic user provisioning in `public.users` and `public.companies`).
 - **Deployment**: Backend services deployed on Render, frontend dashboard connected via `VITE_SUPABASE_URL` and `VITE_API_URL`.
+
+## ?? Errors, Bugs & Learnings Log
+Before starting new work, you MUST review errors_and_learnings.md in this directory to learn from previous mistakes and avoid repeating faults, especially performance/INP and React rendering issues.

@@ -23,10 +23,14 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
+      // The notifications panel uses a full-screen overlay (onClick) to close, 
+      // but in case it needs global fallback, only dispatch if currently true
+      if (showNotifications && notificationsRef.current && !notificationsRef.current.contains(event.target)) {
         setShowNotifications(false);
       }
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+      
+      // Prevent redundant state setter if userMenu is already closed (fixes INP)
+      if (showUserMenu && userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setShowUserMenu(false);
       }
     };
