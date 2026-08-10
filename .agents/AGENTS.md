@@ -16,3 +16,6 @@ At the start of **EVERY** new session or conversation in this workspace, before 
 
 ## ?? Errors, Bugs & Learnings Log
 Before starting new work, you MUST review errors_and_learnings.md in this directory to learn from previous mistakes and avoid repeating faults, especially performance/INP and React rendering issues.
+
+## ?? MANDATORY LOGGING RULE
+Whenever you resolve any problem, error, bug, or failure (no matter how small), you MUST immediately append a new entry to `errors_and_learnings.md` documenting what went wrong, how it happened, and the lesson learned. Do this before concluding your response.
