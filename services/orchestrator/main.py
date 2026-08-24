@@ -3341,6 +3341,7 @@ async def get_stats(request: Request):
     }
 
 
+
 @app.get("/admin/audit/verify-chain")
 async def verify_audit_chain(request: Request, company_id: Optional[str] = None):
     """
@@ -3489,3 +3490,65 @@ async def handle_twilio_message(
     <Message>{_xml_escape(ai_text)}</Message>
 </Response>"""
     return PlainTextResponse(content=twiml, media_type="application/xml")
+
+@app.get("/api/capabilities")
+async def list_registered_capabilities():
+    """List all registered system and tenant capabilities from the kernel."""
+    try:
+        from capability_kernel import global_capability_registry
+        caps = global_capability_registry.list_capabilities()
+        return {
+            "status": "active",
+            "capabilities": [c.model_dump() if hasattr(c, "model_dump") else c.dict() for c in caps],
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e), "capabilities": []}
+
+
+@app.get("/api/crew/status")
+async def get_crew_status():
+    """Get status and registered agents in the CrewEngine workflow layer."""
+    try:
+        from crew_engine.agents.receptionist import receptionist_agent
+        from crew_engine.agents.sales import sales_agent
+        from crew_engine.agents.support import support_agent
+        return {
+            "engine": "CrewEngine v2.4",
+            "execution_mode": "dual_path_hybrid",
+            "agents": [
+                {"name": receptionist_agent.name, "role": receptionist_agent.role, "goal": receptionist_agent.goal},
+                {"name": sales_agent.name, "role": sales_agent.role, "goal": sales_agent.goal},
+                {"name": support_agent.name, "role": support_agent.role, "goal": support_agent.goal},
+            ],
+            "flows": ["MarkovaCallFlow", "MarkovaOnboardingFlow"],
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/crew/test-flow")
+async def test_crew_flow(request: Request):
+    """Test execution of MarkovaCallFlow for a given transcript."""
+    body = await request.json()
+    transcript = body.get("transcript", "")
+    tenant_id = body.get("tenant_id", "default-test")
+    
+    try:
+        from crew_engine.flows.call_flow import MarkovaCallFlow, CallState
+        flow = MarkovaCallFlow(
+            initial_state=CallState(
+                call_id=f"test_{int(time.time())}",
+                tenant_id=tenant_id,
+                transcript=transcript,
+            )
+        )
+        flow.classify_caller_intent()
+        response = flow.execute_specialist_agent()
+        return {
+            "status": "SUCCESS",
+            "intent": flow.state.intent,
+            "response": response,
+        }
+    except Exception as e:
+        return {"status": "FAILED", "error": str(e)}
+

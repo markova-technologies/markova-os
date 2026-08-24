@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
@@ -25,7 +24,6 @@ import api, { listTeams, createTeam, getCommander, listAgents, createAgent, upda
 import './AgentStudio.css'
 
 const AgentStudio = () => {
-  const navigate = useNavigate()
   const [teams, setTeams] = useState([])
   const [agents, setAgents] = useState({})
   const [activeTeam, setActiveTeam] = useState(null)
@@ -266,7 +264,6 @@ const AgentStudio = () => {
     fetchData()
   }, [])
 
-
   useEffect(() => {
     if (editingAgent && !editingAgent.isNew) {
       const fetchTabData = async () => {
@@ -452,9 +449,6 @@ const AgentStudio = () => {
             <p>{editingAgent.isCommander ? 'Commander Agent Configuration' : 'Agent Configuration'}</p>
           </div>
           <div className="builder-actions">
-            <button className="btn btn-secondary" onClick={() => navigate('/app/agent-builder')}>
-              <Settings size={16} /> Open Visual Builder
-            </button>
             <button className="btn btn-secondary" onClick={handleTestVoice}>
               <Play size={16} /> Test Agent
             </button>
