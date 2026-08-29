@@ -1,0 +1,6 @@
+[submodule "research-repos/Agent-Reach"]
+	path = research-repos/Agent-Reach
+	url = https://github.com/Panniantong/Agent-Reach.git
+[submodule "research-repos/OpenCLI"]
+	path = research-repos/OpenCLI
+	url = https://github.com/jackwener/OpenCLI.git
