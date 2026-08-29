@@ -25,7 +25,15 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 - **How it Happened:** The service upgraded to \@opentelemetry/resources\ version 2.x, which removed the \Resource\ class constructor from its public API. The code was still trying to instantiate \
 ew Resource({ ... })\, which crashed Node.js.
 - **Lesson Learned:** When debugging \TypeError\ constructor issues in dependencies, aggressively check the package versions in \package.json\ and consult the \
-pm\ registry or package source code. OpenTelemetry v2 requires using the \esourceFromAttributes()\ factory function instead of \
+pm\ registry or package source code. OpenTelemetry v2 requires using the \esourceFromAttributes()\ factory function instead of \
 ew Resource()\.
 
 ---
+
+### [2026-08-29] Git Push Hanging on Bloated Zip Archive (>100MB Hard Limit)
+- **Error/Fault:** `git push origin main` stalled indefinitely on `POST git-receive-pack` when attempting to push 348 MB with over 15,000 files.
+- **How it Happened:** A local research directory (`research-repos/`) contained `crewAI.zip` (187.8 MB) and uncompressed doc trees. Staging all files inadvertently committed a single binary file greater than GitHub's 100 MB limit, causing GitHub's receive-pack hook to hang/reject the HTTP payload without a clear immediate error.
+- **Lesson Learned:** 
+  1. Always add `*.zip`, build archives, and raw research dumps to `.gitignore` before bulk staging.
+  2. Treat third-party repositories as git submodules rather than committing raw directory contents.
+  3. Verify object and payload sizes before pushing large batches to remote git servers.
