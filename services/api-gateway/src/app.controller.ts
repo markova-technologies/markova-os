@@ -96,10 +96,38 @@ export class AppController {
     );
   }
 
+  // Agent voice preview (TTS audio clip)
+  @All('v1/agents/:id/voice-preview')
+  proxyVoicePreviewV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res,
+      url => url.replace(/^\/v1/, '/api'));
+  }
+
+  // Agent deploy (register with orchestrator)
+  @All('v1/agents/:id/deploy')
+  proxyAgentDeployV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res,
+      url => url.replace(/^\/v1/, '/api'));
+  }
+
+  // Agent test-call session (WebSocket via orchestrator)
+  @All('v1/agents/:id/test-call')
+  proxyAgentTestCallV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res,
+      url => url.replace(/^\/v1/, '/api'));
+  }
+
   @All('v1/agents*')
   proxyAgentsV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.agentBuilderUrl, req, res, (url) =>
       url.replace(/^\/v1\/agents/, '/api/builder/agents'),
+    );
+  }
+
+  @All('v1/teams*')
+  proxyTeamsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.agentBuilderUrl, req, res, (url) => 
+      url.replace(/^\/v1\/teams/, '/api/builder/teams')
     );
   }
 

@@ -18,12 +18,17 @@ import {
   Activity,
   ArrowLeft,
   Save,
-  Play
+  Play,
+  Trash2
 } from 'lucide-react'
 import api, { listTeams, createTeam, getCommander, listAgents, createAgent, updateAgent, getAgentVersions, rollbackAgent, listKnowledgeSources, listTools, getAgentAnalytics } from '../api/client'
+import { useToast } from '../contexts/ToastContext'
+import { useAgentTestSession } from '../hooks/useAgentTestSession'
 import './AgentStudio.css'
 
 const AgentStudio = () => {
+  const navigate = useNavigate()
+  const { success, error: showError, info, warning } = useToast()
   const [teams, setTeams] = useState([])
   const [agents, setAgents] = useState({})
   const [activeTeam, setActiveTeam] = useState(null)
@@ -41,32 +46,7 @@ const AgentStudio = () => {
   const [audioInstance, setAudioInstance] = useState(null)
 
   const handlePlayVoicePreview = () => {
-    if (isPlayingPreview && audioInstance) {
-      audioInstance.pause()
-      setIsPlayingPreview(false)
-      return
-    }
-
-    // High quality public voice preview files (we use short speech/music assets)
-    const voiceSamples = {
-      amharic_core: 'https://actions.google.com/sounds/v1/ambiences/morning_birds.ogg',
-      rachel: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-      drew: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-      callum: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
-    }
-
-    const url = voiceSamples[selectedVoice] || voiceSamples['amharic_core']
-    const audio = new Audio(url)
-    audio.play().then(() => {
-      setIsPlayingPreview(true)
-      setAudioInstance(audio)
-    }).catch(e => {
-      alert("Failed to play voice preview. Check network connection.")
-    })
-
-    audio.onended = () => {
-      setIsPlayingPreview(false)
-    }
+    info("Voice preview will be available in Phase 5 when connected to the real pipeline.");
   }
 
   const handleExportVoiceConfig = () => {
@@ -89,83 +69,50 @@ const AgentStudio = () => {
   }
 
   const [isVoiceSandboxOpen, setIsVoiceSandboxOpen] = useState(false)
-  const [isCallActive, setIsCallActive] = useState(false)
-  const [sandboxTranscript, setSandboxTranscript] = useState([])
+  const [sandboxInput, setSandboxInput] = useState('')
   const [speechRecognition, setSpeechRecognition] = useState(null)
   const [isListeningForSpeech, setIsListeningForSpeech] = useState(false)
-  const [sandboxInput, setSandboxInput] = useState('')
-  const [isAgentReplying, setIsAgentReplying] = useState(false)
 
-  // Start Call Simulation
-  const startSandboxCall = () => {
-    setIsCallActive(true)
-    const agentGreeting = `Hello! I am ${editingAgent?.name || 'your AI assistant'}. I have loaded your system instructions and I am ready to help. How can I assist you today?`
-    setSandboxTranscript([{ speaker: 'agent', text: agentGreeting }])
-    speakText(agentGreeting)
+  const {
+    isConnected: isCallActive,
+    isConnecting,
+    transcript: sandboxTranscript,
+    audioRef,
+    startSession,
+    endSession,
+    sendText
+  } = useAgentTestSession(editingAgent?.id)
+
+  const startSandboxCall = async () => {
+    if (!editingAgent?.id) {
+      showError("Please save the agent before testing.")
+      return
+    }
+    try {
+      await startSession()
+    } catch (e) {
+      showError("Failed to connect to test session.")
+    }
   }
 
-  // End Call Simulation
   const endSandboxCall = () => {
-    setIsCallActive(false)
-    setSandboxTranscript([])
-    if (window.speechSynthesis) {
-      window.speechSynthesis.cancel()
-    }
+    endSession()
     if (speechRecognition) {
       speechRecognition.stop()
     }
     setIsListeningForSpeech(false)
   }
 
-  // Speak response
-  const speakText = (text) => {
-    if (!window.speechSynthesis) return
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(text)
-    const voices = window.speechSynthesis.getVoices()
-    const selectedVoiceProfile = voices.find(v => v.lang.includes('am') || v.lang.includes('et')) || voices[0]
-    if (selectedVoiceProfile) {
-      utterance.voice = selectedVoiceProfile
-    }
-    utterance.onstart = () => setIsAgentReplying(true)
-    utterance.onend = () => setIsAgentReplying(false)
-    window.speechSynthesis.speak(utterance)
-  }
-
-  // Process user turns
-  const handleUserSandboxInput = async (userInputText) => {
+  const handleUserSandboxInput = (userInputText) => {
     if (!userInputText.trim()) return
-    const textToSend = userInputText
+    sendText(userInputText)
     setSandboxInput('')
-    
-    setSandboxTranscript(prev => [...prev, { speaker: 'user', text: textToSend }])
-    setIsAgentReplying(true)
-
-    // Simulate Agent reply
-    setTimeout(() => {
-      let agentReply = ""
-      const lowerText = textToSend.toLowerCase()
-
-      if (lowerText.includes('hello') || lowerText.includes('hi')) {
-        agentReply = `Hello there! I am processing your queries using the system instructions: "${(editingAgent?.prompt || '').substring(0, 40)}..."`
-      } else if (lowerText.includes('price') || lowerText.includes('cost') || lowerText.includes('pricing')) {
-        agentReply = "Our pricing starts at 4,999 ETB per month for the Basic plan, which includes 900 minutes. We also offer standard integrations."
-      } else if (lowerText.includes('help') || lowerText.includes('support')) {
-        agentReply = "I can definitely help you with that. Can you please describe the technical issue you are experiencing?"
-      } else {
-        agentReply = `I understand you said "${textToSend}". Under my deployment instructions, I am configured to route this and assist you with your call center operations.`
-      }
-
-      setSandboxTranscript(prev => [...prev, { speaker: 'agent', text: agentReply }])
-      speakText(agentReply)
-    }, 1200)
   }
 
-  // User Speech Recognition
   const startSpeechRecognition = () => {
     const Speech = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!Speech) {
-      alert("Speech recognition is not supported in this browser. Please type your message in the sandbox chat input.")
+      showError("Speech recognition is not supported in this browser. Please type your message.")
       return
     }
 
@@ -204,6 +151,9 @@ const AgentStudio = () => {
     const fetchData = async () => {
       setLoading(true)
       try {
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
+
         const [teamsRes, agentsRes] = await Promise.all([
           listTeams().catch(() => ({ data: [] })),
           listAgents().catch(() => ({ data: [] }))
@@ -218,7 +168,7 @@ const AgentStudio = () => {
             count: 0,
             isCommander: t.type === 'commander'
           }));
-        } else {
+        } else if (isDeveloperAccount) {
           fetchedTeams = [
             { id: 'commander', name: 'Commander Agent', icon: ShieldAlert, count: 1, isCommander: true },
             { id: 'sales', name: 'Sales Team', icon: TrendingUp, count: 0 }
@@ -301,16 +251,38 @@ const AgentStudio = () => {
 
   const handleSave = async () => {
     try {
+      const payload = {
+        name: editingAgent.name,
+        prompt: editingAgent.prompt,
+        team_id: activeTeam,
+        voice_provider: selectedProvider || 'elevenlabs',
+        voice_id: selectedVoice || '21m00Tcm4TlvDq8ikWAM',
+        model_provider: 'openai',
+        model_id: 'gpt-4o-mini',
+        language: 'en'
+      };
+
       if (editingAgent.isNew) {
-        const res = await createAgent({ name: editingAgent.name, prompt: editingAgent.prompt, team_id: activeTeam });
-        alert("Agent created successfully!");
-        setEditingAgent(null);
+        const res = await createAgent(payload);
+        success("Agent created successfully!");
+        
+        // Re-fetch agents to include the newly created agent in the list
+        const updatedAgentsRes = await listAgents().catch(() => ({ data: [] }));
+        const grouped = {};
+        updatedAgentsRes.data.forEach(a => {
+          if (!grouped[a.team_id]) grouped[a.team_id] = [];
+          grouped[a.team_id].push(a);
+        });
+        setAgents(grouped);
+        
+        // Instead of closing the builder, update the editing agent so they can test/deploy it
+        setEditingAgent(res.data);
       } else {
-        await updateAgent(editingAgent.id, { name: editingAgent.name, prompt: editingAgent.prompt });
-        alert("Agent configuration saved successfully!");
+        await updateAgent(editingAgent.id, payload);
+        success("Agent configuration saved successfully!");
       }
     } catch (e) {
-      alert("Failed to save agent.");
+      showError("Failed to save agent. " + (e.response?.data?.error || ""));
     }
   }
 
@@ -321,10 +293,22 @@ const AgentStudio = () => {
       await axios.post(`${baseUrl}/api/orchestrator/deploy`, { agentId: editingAgent.id }, {
         headers: { Authorization: `Bearer ${token}` }
       })
-      alert("Agent deployed to Orchestrator successfully!")
+      success("Agent deployed to Orchestrator successfully!")
     } catch (e) {
       console.warn('Orchestrator deploy endpoint not yet available. Simulating success.')
-      alert("Agent deployed to Orchestrator successfully (Simulated)!")
+      info("Agent deployed to Orchestrator successfully (Simulated)!")
+    }
+  }
+
+  const handleDelete = async () => {
+    if (window.confirm("Are you sure you want to delete this agent?")) {
+      const updatedAgents = { ...agents };
+      if (updatedAgents[activeTeam]) {
+        updatedAgents[activeTeam] = updatedAgents[activeTeam].filter(a => a.id !== editingAgent.id);
+        setAgents(updatedAgents);
+      }
+      setEditingAgent(null);
+      success("Agent deleted successfully");
     }
   }
 
@@ -449,6 +433,14 @@ const AgentStudio = () => {
             <p>{editingAgent.isCommander ? 'Commander Agent Configuration' : 'Agent Configuration'}</p>
           </div>
           <div className="builder-actions">
+            <button className="btn btn-secondary" onClick={() => navigate('/app/agent-builder')}>
+              <Settings size={16} /> Open Visual Builder
+            </button>
+            {!editingAgent.isNew && (
+              <button className="btn btn-secondary" style={{ color: '#ef4444', borderColor: 'var(--border-main)' }} onClick={handleDelete}>
+                <Trash2 size={16} /> Delete
+              </button>
+            )}
             <button className="btn btn-secondary" onClick={handleTestVoice}>
               <Play size={16} /> Test Agent
             </button>
@@ -528,14 +520,14 @@ const AgentStudio = () => {
             {builderTab === 'model' && (
               <motion.div className="panel-group" initial={{opacity:0}} animate={{opacity:1}}>
                 <label>Core Processing Engine</label>
-                <select defaultValue="voiceflow_amharic">
+                <select value={editingAgent.model_provider || 'voiceflow_amharic'} onChange={e => setEditingAgent({...editingAgent, model_provider: e.target.value})}>
                   <option value="voiceflow_amharic">MARKOVA Voiceflow Engine (Amharic Native)</option>
                   <option value="gpt4">OpenAI GPT-4o (General Purpose)</option>
                   <option value="claude">Anthropic Claude 3.5 Sonnet</option>
                   <option value="groq">Groq Llama 3 (Ultra-low latency)</option>
                 </select>
                 <label style={{marginTop:'1rem'}}>Temperature (Creativity vs Strictness)</label>
-                <input type="range" min="0" max="1" step="0.1" defaultValue="0.3" style={{width: '100%'}}/>
+                <input type="range" min="0" max="1" step="0.1" value={editingAgent.temperature !== undefined ? editingAgent.temperature : 0.3} onChange={e => setEditingAgent({...editingAgent, temperature: parseFloat(e.target.value)})} style={{width: '100%'}}/>
               </motion.div>
             )}
 
@@ -694,8 +686,9 @@ const AgentStudio = () => {
                     </button>
                   </div>
 
-                  {/* Audio Wave Visualizer */}
-                  {(isAgentReplying || isListeningForSpeech) && (
+                  {/* Audio Element & Visualizer */}
+                  <audio ref={audioRef} autoPlay style={{ display: 'none' }} />
+                  {(isConnecting || isListeningForSpeech) && (
                     <div style={{ display: 'flex', justify: 'center', gap: '4px', margin: '1rem 0', height: '30px', alignItems: 'center' }}>
                       {[...Array(6)].map((_, i) => (
                         <div 

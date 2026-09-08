@@ -332,8 +332,18 @@ export const listChannels = () =>
     api.get('/connectors').catch(() => ({ data: [] })),
   ]).then(([nums, connectors]) => ({
     data: [
-      ...(nums.data || []).map((n) => ({ ...n, channelType: 'voice' })),
-      ...(connectors.data || []).map((c) => ({ ...c, channelType: 'messaging' })),
+      ...(nums.data || []).map((n) => ({ 
+        ...n, 
+        channelType: 'voice',
+        status: n.status || 'active',
+        messagesHandled: n.messagesHandled || 0
+      })),
+      ...(connectors.data || []).map((c) => ({ 
+        ...c, 
+        channelType: 'messaging',
+        status: c.status || 'active',
+        messagesHandled: c.messagesHandled || 0
+      })),
     ],
   }));
 export const createChannel = (data) => {
@@ -343,6 +353,8 @@ export const createChannel = (data) => {
   return api.post('/connectors', data);
 };
 export const updateChannel = (id, data) => api.put(`/numbers/${id}`, data);
+export const deleteChannel = (id, type) =>
+  type === 'voice' ? api.delete(`/numbers/${id}`) : api.delete(`/connectors/${id}`);
 // SIP / bot connection tests — gateway may or may not implement these yet
 export const testSipConnection = (config) =>
   api.post('/numbers/search', { country: config.country || 'ET' }).catch(() => ({ data: { ok: true } }));
@@ -406,7 +418,17 @@ export const getGovernanceSummary = async () => {
 export default api;
 
 
-export const listTeams = () => Promise.resolve({ data: [] });
-export const createTeam = (data) => Promise.resolve({ data });
+export const listTeams = () => api.get('/teams');
+export const createTeam = (data) => api.post('/teams', data);
+export const deleteTeam = (id) => api.delete(`/teams/${id}`);
+
 export const getCommander = () => Promise.resolve({ data: {} });
 export const getAgentAnalytics = (id) => Promise.resolve({ data: { totalCalls: 120, avgDuration: '2m 14s', successRate: '92%' } });
+
+// ---------- Agent Sandbox & Deployment ----------
+export const getAgentVoicePreview = (id, text) =>
+  api.get(`/agents/${id}/voice-preview`, { params: { text }, responseType: 'blob' });
+
+export const deployAgent = (id) => api.post(`/agents/${id}/deploy`);
+
+export const startAgentTestSession = (id) => api.post(`/agents/${id}/test-call`);

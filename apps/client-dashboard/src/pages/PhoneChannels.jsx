@@ -18,9 +18,10 @@ import {
   Server,
   Key,
   Shield,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react'
-import { listChannels, createChannel, updateChannel, testSipConnection, testBotConnection } from '../api/client'
+import { listChannels, createChannel, updateChannel, deleteChannel, testSipConnection, testBotConnection, listAgents } from '../api/client'
 // react-icons not in local node_modules — using lucide-react equivalents
 const FaWhatsapp = (props) => <MessageSquare {...props} style={{...props.style, color: '#25D366'}} />
 const FaTelegramPlane = (props) => <Send {...props} style={{...props.style, color: '#2CA5E0'}} />
@@ -34,17 +35,27 @@ const PhoneChannels = () => {
   const { success, error: showError, info } = useToast()
 
   const [channels, setChannels] = useState([])
+  const [agents, setAgents] = useState([])
 
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const channelsRes = await listChannels().catch(() => ({ data: [] }));
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
+        const [channelsRes, agentsRes] = await Promise.all([
+          listChannels().catch(() => ({ data: [] })),
+          listAgents().catch(() => ({ data: [] }))
+        ]);
+        
+        if (agentsRes.data) {
+          setAgents(agentsRes.data);
+        }
         
         if (channelsRes.data && channelsRes.data.length > 0) {
           setChannels(channelsRes.data);
-        } else {
+        } else if (isDeveloperAccount) {
           setChannels([
             { id: 1, type: 'voice', subType: 'twilio', identifier: '+1 (555) 123-4567', region: 'US East', status: 'active', assignedTo: 'cmd', messagesHandled: 1240 },
             { id: 2, type: 'voice', subType: 'sip', identifier: 'sip.acme.com', region: 'Global', status: 'active', assignedTo: 'sales', messagesHandled: 450 },
@@ -52,6 +63,8 @@ const PhoneChannels = () => {
             { id: 4, type: 'messaging', subType: 'telegram', identifier: '@MarkovaSupportBot', region: 'Global', status: 'active', assignedTo: 'cmd', messagesHandled: 320 },
             { id: 5, type: 'messaging', subType: 'email', identifier: 'support@markova.tech', region: 'Global', status: 'error', assignedTo: 'support', messagesHandled: 55 },
           ]);
+        } else {
+          setChannels([]);
         }
       } catch (error) {
         console.error('Failed to fetch phone channels data:', error);
@@ -102,12 +115,34 @@ const PhoneChannels = () => {
     }
   }
 
+  const handleDeleteChannel = async (id, type) => {
+    if (window.confirm('Are you sure you want to delete this channel?')) {
+      try {
+        await deleteChannel(id, type).catch(() => {});
+        setChannels(channels.filter(c => c.id !== id));
+        success('Channel deleted');
+      } catch (e) {
+        showError('Failed to delete channel');
+      }
+    }
+  }
+
   const handleSaveSip = async () => {
-    info('Testing SIP connection...');
+    info('Connecting SIP Trunk...');
     try {
-      await testSipConnection(sipConfig).catch(() => {});
+      const res = await createChannel({
+        type: 'voice',
+        subType: 'sip',
+        identifier: sipConfig.domain,
+        domain: sipConfig.domain,
+        port: sipConfig.port,
+        transport: sipConfig.transport,
+        username: sipConfig.username,
+        password: sipConfig.password,
+        assignedTo: sipConfig.assignedTo
+      });
       
-      const newChannel = {
+      const newChannel = res.data || {
         id: Date.now(),
         type: 'voice',
         subType: 'sip',
@@ -117,8 +152,10 @@ const PhoneChannels = () => {
         assignedTo: sipConfig.assignedTo,
         messagesHandled: 0
       };
+      
       setChannels([...channels, newChannel]);
       setIsSipModalOpen(false);
+      setSipConfig({ ...sipConfig, domain: '', username: '', password: '' });
       success('SIP Trunk connected successfully');
     } catch (err) {
       showError('SIP Connection failed. Check credentials.');
@@ -126,16 +163,21 @@ const PhoneChannels = () => {
   }
 
   const handleSaveBot = async () => {
-    info(`Testing ${botModalType} connection...`);
+    info(`Connecting ${botModalType}...`);
     try {
-      await testBotConnection(botModalType, botConfig).catch(() => {});
-      
       let identifier = '';
-      if (botModalType === 'telegram') identifier = '@NewTelegramBot';
-      if (botModalType === 'whatsapp') identifier = 'WhatsApp Business';
+      if (botModalType === 'telegram') identifier = botConfig.telegramToken ? '@NewTelegramBot' : '';
+      if (botModalType === 'whatsapp') identifier = botConfig.waPhoneId || 'WhatsApp Business';
       if (botModalType === 'email') identifier = botConfig.emailImapUser || 'New Email Bot';
 
-      const newChannel = {
+      const res = await createChannel({
+        type: 'messaging',
+        subType: botModalType,
+        identifier: identifier,
+        ...botConfig
+      });
+      
+      const newChannel = res.data || {
         id: Date.now(),
         type: 'messaging',
         subType: botModalType,
@@ -145,8 +187,10 @@ const PhoneChannels = () => {
         assignedTo: botConfig.assignedTo,
         messagesHandled: 0
       };
+      
       setChannels([...channels, newChannel]);
       setIsBotModalOpen(false);
+      setBotConfig({ ...botConfig, telegramToken: '', waAccountId: '', waPhoneId: '', waToken: '', emailImapUser: '', emailImapPass: '' });
       success(`${botModalType.toUpperCase()} connected successfully`);
     } catch (err) {
       showError(`Connection failed for ${botModalType}.`);
@@ -202,6 +246,13 @@ const PhoneChannels = () => {
         </div>
 
         <h3 className="pc-section-title">All Connected Channels</h3>
+        {channels.length === 0 ? (
+          <div className="empty-state" style={{ padding: '3rem', textAlign: 'center', background: 'var(--bg-card)', borderRadius: '1rem', border: '1px solid var(--border-main)' }}>
+            <Network size={48} color="var(--gray)" style={{ marginBottom: '1rem' }} />
+            <h3 style={{ marginBottom: '0.5rem' }}>No channels connected yet</h3>
+            <p style={{ color: 'var(--gray)', marginBottom: '1.5rem' }}>Connect a Voice Trunk or Messaging Bot to get started.</p>
+          </div>
+        ) : (
         <div className="channels-grid">
           {channels.map((ch) => (
             <div className="channel-card" key={ch.id}>
@@ -215,9 +266,12 @@ const PhoneChannels = () => {
                     <span style={{textTransform: 'capitalize'}}>{ch.subType}</span>
                   </div>
                 </div>
-                <div className={`channel-status ${ch.status}`}>
-                  {ch.status === 'active' ? 'ΓùÅ Online' : 'ΓùÅ Error'}
-                </div>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div className={`channel-status ${ch.status}`}>
+                      {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Online</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Error</>}
+                    </div>
+                    <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
+                  </div>
               </div>
               <div className="channel-details">
                 <div className="channel-row">
@@ -227,15 +281,15 @@ const PhoneChannels = () => {
                 <div className="channel-row" style={{ marginTop: '0.5rem' }}>
                   <span className="label">Assigned To</span>
                   <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
-                    <option value="cmd">Commander Agent</option>
-                    <option value="sales">Sales Team</option>
-                    <option value="support">Support Team</option>
+                    <option value="">-- Unassigned --</option>
+                    {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
               </div>
             </div>
           ))}
         </div>
+        )}
       </motion.div>
     )
   }
@@ -284,9 +338,8 @@ const PhoneChannels = () => {
               <div className="sip-form-group">
                 <label>Assign To</label>
                 <select value={sipConfig.assignedTo} onChange={e => setSipConfig({...sipConfig, assignedTo: e.target.value})}>
-                  <option value="cmd">Commander Agent</option>
-                  <option value="sales">Sales Team</option>
-                  <option value="support">Support Team</option>
+                  <option value="">-- Unassigned --</option>
+                  {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
               </div>
             </div>
@@ -297,11 +350,21 @@ const PhoneChannels = () => {
               </div>
               <div className="sip-form-group">
                 <label>Auth Password</label>
-                <input type="password" placeholder="ΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇóΓÇó" value={sipConfig.password} onChange={e => setSipConfig({...sipConfig, password: e.target.value})} />
+                <input type="password" placeholder="••••••••" value={sipConfig.password} onChange={e => setSipConfig({...sipConfig, password: e.target.value})} />
               </div>
             </div>
             <div className="sip-form-actions">
-              <button className="btn btn-secondary" onClick={() => info('Connection test initiated')}>Test Connection</button>
+              <button className="btn btn-secondary" onClick={async () => {
+                info('Testing connection...');
+                try {
+                  const start = Date.now();
+                  await testSipConnection(sipConfig);
+                  const ms = Date.now() - start;
+                  success(`Connection successful (${ms}ms)`);
+                } catch (err) {
+                  showError('Connection failed');
+                }
+              }}>Test Connection</button>
               <button className="btn btn-primary" onClick={handleSaveSip}>Save SIP Trunk</button>
             </div>
           </div>
@@ -331,17 +394,19 @@ const PhoneChannels = () => {
                       <span style={{textTransform: 'capitalize'}}>{ch.subType}</span>
                     </div>
                   </div>
-                  <div className={`channel-status ${ch.status}`}>
-                    {ch.status === 'active' ? 'ΓùÅ Online' : 'ΓùÅ Error'}
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div className={`channel-status ${ch.status}`}>
+                      {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Online</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Error</>}
+                    </div>
+                    <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
                   </div>
                 </div>
                 <div className="channel-details" style={{marginBottom: 0}}>
                   <div className="channel-row">
                     <span className="label">Assigned To</span>
                     <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
-                      <option value="cmd">Commander Agent</option>
-                      <option value="sales">Sales Team</option>
-                      <option value="support">Support Team</option>
+                      <option value="">-- Unassigned --</option>
+                      {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
                   </div>
                 </div>
@@ -393,17 +458,19 @@ const PhoneChannels = () => {
                     <span style={{textTransform: 'capitalize'}}>{ch.subType}</span>
                   </div>
                 </div>
-                <div className={`channel-status ${ch.status}`}>
-                  {ch.status === 'active' ? 'ΓùÅ Online' : 'ΓùÅ Error'}
-                </div>
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div className={`channel-status ${ch.status}`}>
+                      {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Online</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Error</>}
+                    </div>
+                    <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
+                  </div>
               </div>
               <div className="channel-details" style={{marginBottom: 0}}>
                 <div className="channel-row">
                   <span className="label">Assigned To</span>
                   <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
-                    <option value="cmd">Commander Agent</option>
-                    <option value="sales">Sales Team</option>
-                    <option value="support">Support Team</option>
+                    <option value="">-- Unassigned --</option>
+                    {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -441,14 +508,16 @@ const PhoneChannels = () => {
             </div>
             <div>
               <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.4rem', width: '90%' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
-                <option value="cmd">Commander Agent</option>
-                <option value="sales">Sales Team</option>
-                <option value="support">Support Team</option>
+                <option value="">-- Unassigned --</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
             <div>
-              <div className={`channel-status ${ch.status}`} style={{ display: 'inline-flex' }}>
-                {ch.status === 'active' ? 'ΓùÅ Active' : 'ΓùÅ Error'}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <div className={`channel-status ${ch.status}`} style={{ display: 'inline-flex' }}>
+                  {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px', alignSelf: 'center' }}></span>Active</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px', alignSelf: 'center' }}></span>Error</>}
+                </div>
+                <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px' }} title="Delete Channel"><Trash2 size={16} /></button>
               </div>
             </div>
           </div>
@@ -476,8 +545,8 @@ const PhoneChannels = () => {
           <div className="sip-form-group">
             <label>Assign To</label>
             <select value={botConfig.assignedTo} onChange={e => setBotConfig({...botConfig, assignedTo: e.target.value})}>
-              <option value="cmd">Commander Agent</option>
-              <option value="support">Support Team</option>
+              <option value="">-- Unassigned --</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
         </div>
@@ -502,8 +571,8 @@ const PhoneChannels = () => {
           <div className="sip-form-group">
             <label>Assign To</label>
             <select value={botConfig.assignedTo} onChange={e => setBotConfig({...botConfig, assignedTo: e.target.value})}>
-              <option value="cmd">Commander Agent</option>
-              <option value="support">Support Team</option>
+              <option value="">-- Unassigned --</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
         </div>
@@ -551,8 +620,8 @@ const PhoneChannels = () => {
           <div className="sip-form-group">
             <label>Assign To</label>
             <select value={botConfig.assignedTo} onChange={e => setBotConfig({...botConfig, assignedTo: e.target.value})}>
-              <option value="cmd">Commander Agent</option>
-              <option value="support">Support Team</option>
+              <option value="">-- Unassigned --</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
           </div>
         </div>

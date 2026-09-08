@@ -18,11 +18,13 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react'
+import { useToast } from '../contexts/ToastContext'
 import './Settings.css'
 import api from '../api/client'
 
 const Settings = () => {
   const location = useLocation()
+  const { success, error: showError } = useToast()
   const [activeTab, setActiveTab] = useState(location.state?.tab || 'profile')
   
   useEffect(() => {
@@ -93,17 +95,26 @@ const Settings = () => {
   const [isLoadingProviders, setIsLoadingProviders] = useState(false)
   const [showKeys, setShowKeys] = useState({})
 
-  // Load saved profile from localStorage
+  // Load saved profile from API or localStorage
   useEffect(() => {
-    const saved = localStorage.getItem('companyProfile')
-    if (saved) {
+    const fetchProfileAndSettings = async () => {
       try {
-        setProfile(JSON.parse(saved))
+        const res = await api.get('/tenant/profile').catch(() => null)
+        if (res && res.data) {
+          if (res.data.profile) setProfile(res.data.profile)
+          if (res.data.settings) setSettings(res.data.settings)
+        } else {
+          const savedProfile = localStorage.getItem('companyProfile')
+          if (savedProfile) setProfile(JSON.parse(savedProfile))
+          const savedSettings = localStorage.getItem('companySettings')
+          if (savedSettings) setSettings(JSON.parse(savedSettings))
+        }
       } catch (e) {
-        console.error('Failed to parse company profile:', e)
+        console.error('Failed to load profile and settings:', e)
       }
     }
     
+    fetchProfileAndSettings()
     fetchProviders()
     fetchUsers()
   }, [])
@@ -161,11 +172,15 @@ const Settings = () => {
 
   const handleSave = async () => {
     setIsSaving(true)
-    // Save profile to localStorage (in real app, send to backend)
-    localStorage.setItem('companyProfile', JSON.stringify(profile))
     
-    // Save providers
     try {
+      // Save profile & settings to API
+      await api.post('/tenant/profile', { profile, settings }).catch(()=>{})
+      // Fallback local storage
+      localStorage.setItem('companyProfile', JSON.stringify(profile))
+      localStorage.setItem('companySettings', JSON.stringify(settings))
+      
+      // Save providers
       if (providers.twilio_sid && providers.twilio_token) {
         await api.post('/tenant/providers', { provider: 'twilio', credentials: { sid: providers.twilio_sid, token: providers.twilio_token } }).catch(()=>{})
       }
@@ -178,13 +193,15 @@ const Settings = () => {
       if (providers.elevenlabs_key) {
         await api.post('/tenant/providers', { provider: 'elevenlabs', credentials: { api_key: providers.elevenlabs_key } }).catch(()=>{})
       }
+      
+      success('Settings saved successfully')
     } catch (e) {
       console.error(e)
+      showError('Failed to save settings')
     }
 
     await new Promise(resolve => setTimeout(resolve, 500))
     setIsSaving(false)
-    console.log('Settings saved:', { settings, profile, providers })
   }
 
   const handleReset = () => {

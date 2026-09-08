@@ -3491,6 +3491,7 @@ async def handle_twilio_message(
 </Response>"""
     return PlainTextResponse(content=twiml, media_type="application/xml")
 
+<<<<<<< HEAD
 @app.get("/api/capabilities")
 async def list_registered_capabilities():
     """List all registered system and tenant capabilities from the kernel."""
@@ -3551,4 +3552,142 @@ async def test_crew_flow(request: Request):
         }
     except Exception as e:
         return {"status": "FAILED", "error": str(e)}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# PHASE 4: AGENT STUDIO TESTING & DEPLOYMENT
+# ─────────────────────────────────────────────────────────────────────────────
+
+from voice_session import VoiceSession
+from agent_registry import AgentRegistry
+
+agent_registry = None
+
+@app.on_event("startup")
+async def startup_registry():
+    global agent_registry
+    if db_pool and redis_client:
+        agent_registry = AgentRegistry(redis_client, db_pool)
+        await agent_registry.load_all()
+
+@app.post("/api/agents/{agent_id}/deploy")
+@app.post("/v1/agents/{agent_id}/deploy")
+async def deploy_agent(agent_id: str, request: Request):
+    company_id = _tenant_id(request)
+    body = await request.json()
+    
+    if not agent_registry:
+        raise HTTPException(status_code=503, detail="Agent Registry not ready")
+        
+    await agent_registry.deploy(agent_id, body)
+    return {"status": "success", "message": "Agent deployed"}
+
+@app.post("/api/agents/{agent_id}/voice-preview")
+@app.post("/v1/agents/{agent_id}/voice-preview")
+async def preview_voice(agent_id: str, request: Request):
+    company_id = _tenant_id(request)
+    body = await request.json()
+    
+    text = body.get("text", "Hello, this is a test.")
+    voice_provider = body.get("voice_provider", "edge")
+    voice_id = body.get("voice_id", "en-US-JennyNeural")
+    
+    tts_config = await get_provider_config(company_id, "voice", voice_provider)
+    tts_key = tts_config.get("api_key") if tts_config else ""
+    
+    # In Edge TTS case, key is empty string which is fine
+    if voice_provider == "edge":
+        import edge_tts
+        import tempfile
+        import os
+        
+        try:
+            communicate = edge_tts.Communicate(text, voice_id)
+            with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+                temp_path = f.name
+            await communicate.save(temp_path)
+            
+            with open(temp_path, "rb") as f:
+                audio_bytes = f.read()
+            os.unlink(temp_path)
+            from fastapi.responses import Response
+            return Response(content=audio_bytes, media_type="audio/mpeg")
+        except Exception as e:
+            logger.error(f"Edge TTS preview failed: {e}")
+            raise HTTPException(status_code=500, detail="TTS Failed")
+            
+    audio_url = await get_audio_url_for_text(company_id, voice_provider, voice_id, text, tts_key, request)
+    if not audio_url:
+        raise HTTPException(status_code=500, detail="Voice synthesis failed")
+        
+    return {"url": audio_url}
+
+test_sessions = {}
+
+@app.post("/api/agents/{agent_id}/test-call")
+@app.post("/v1/agents/{agent_id}/test-call")
+async def create_test_call(agent_id: str, request: Request):
+    company_id = _tenant_id(request)
+    
+    if not agent_registry:
+        raise HTTPException(status_code=503, detail="Agent Registry not ready")
+        
+    config = await agent_registry.get_config(agent_id)
+    if not config:
+        row = await db_pool.fetchrow("SELECT * FROM agents WHERE id = $1 AND company_id = $2", uuid.UUID(agent_id), uuid.UUID(company_id))
+        if not row:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        config = dict(row)
+        
+    session_id = str(uuid.uuid4())
+    test_sessions[session_id] = {
+        "agent_id": agent_id,
+        "config": config,
+        "company_id": company_id
+    }
+    
+    return {"session_id": session_id}
+
+@app.websocket("/ws/agent-test/{session_id}")
+async def agent_test_ws(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    
+    session_data = test_sessions.get(session_id)
+    if not session_data:
+        await websocket.close(code=4004, reason="Session not found")
+        return
+        
+    import httpx
+    http_client = httpx.AsyncClient()
+    voice_session = VoiceSession(http_client)
+    
+    await voice_session.start(session_id, session_data["config"])
+    
+    try:
+        while True:
+            data = await websocket.receive_bytes()
+            if not data:
+                break
+                
+            transcript = await voice_session.process_audio(data)
+            if transcript:
+                await websocket.send_json({"type": "transcript", "text": transcript, "role": "user"})
+                
+                async for chunk in voice_session.process_text(transcript):
+                    await websocket.send_bytes(chunk)
+                    
+                last_msg = voice_session.conversation_history[-1]
+                if last_msg["role"] == "assistant":
+                    await websocket.send_json({"type": "transcript", "text": last_msg["content"], "role": "assistant"})
+                    
+    except WebSocketDisconnect:
+        logger.info(f"Test call {session_id} disconnected")
+    except Exception as e:
+        logger.error(f"Test call {session_id} error: {e}")
+    finally:
+        await voice_session.end()
+        await http_client.aclose()
+        if session_id in test_sessions:
+            del test_sessions[session_id]
+
 

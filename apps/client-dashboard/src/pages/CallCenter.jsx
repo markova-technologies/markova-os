@@ -17,6 +17,9 @@ import {
 } from 'lucide-react'
 import api from '../api/client'
 import realTimeService from '../services/realTimeService'
+import { useNavigate } from 'react-router-dom'
+import { useToast } from '../contexts/ToastContext'
+import { useAgentTestSession } from '../hooks/useAgentTestSession'
 import './CallCenter.css'
 
 const fallbackCalls = [
@@ -63,6 +66,8 @@ const fallbackCalls = [
 ]
 
 const CallCenter = () => {
+  const navigate = useNavigate()
+  const [isTestAgentOpen, setIsTestAgentOpen] = useState(false)
   const [calls, setCalls] = useState([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('all') // 'all', 'live', 'completed', 'voicemail'
@@ -125,12 +130,26 @@ const CallCenter = () => {
         setCalls(res.data)
         setSelectedCallId(res.data[0].id)
       } else {
-        setCalls(fallbackCalls)
-        setSelectedCallId(fallbackCalls[0].id)
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+        const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
+        if (isDeveloperAccount) {
+          setCalls(fallbackCalls)
+          setSelectedCallId(fallbackCalls[0].id)
+        } else {
+          setCalls([])
+          setSelectedCallId(null)
+        }
       }
     } catch (e) {
-      setCalls(fallbackCalls)
-      setSelectedCallId(fallbackCalls[0].id)
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
+      if (isDeveloperAccount) {
+        setCalls(fallbackCalls)
+        setSelectedCallId(fallbackCalls[0].id)
+      } else {
+        setCalls([])
+        setSelectedCallId(null)
+      }
     } finally {
       setLoading(false)
     }
@@ -212,7 +231,12 @@ const CallCenter = () => {
       {/* Sidebar List */}
       <div className={`cc-sidebar${isMobileDetailView ? ' mobile-hidden' : ''}`}>
         <div className="cc-sidebar-header">
-          <h2>Operations Center</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2>Operations Center</h2>
+            <button className="btn btn-primary" onClick={() => setIsTestAgentOpen(true)}>
+              <Headphones size={16} /> Test Agent
+            </button>
+          </div>
           <p>Monitor live calls and history</p>
           <div className="cc-search" style={{ marginTop: '1rem', position: 'relative' }}>
             <Search size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)' }} />
@@ -411,8 +435,37 @@ const CallCenter = () => {
           </div>
         )}
       </div>
+      {/* Test Agent Redirect Modal */}
+      <AnimatePresence>
+        {isTestAgentOpen && (
+          <div className="modal-overlay" onClick={() => setIsTestAgentOpen(false)}>
+            <motion.div 
+              className="modal-content"
+              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            >
+              <h2>Test AI Agent</h2>
+              <p style={{ color: 'var(--gray)', margin: '1rem 0' }}>
+                Agent voice testing has been moved to the Agent Studio. You can test your agent's responses and voice pipeline directly from there.
+              </p>
+              <div className="modal-actions" style={{ justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
+                <button className="btn btn-secondary" onClick={() => setIsTestAgentOpen(false)}>Cancel</button>
+                <button className="btn btn-primary" onClick={() => navigate('/agent-studio')}>Go to Agent Studio</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
 
 export default CallCenter
+
+
+
+
+
+
