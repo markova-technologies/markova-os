@@ -507,13 +507,16 @@ August 2, 2026 (Session 5 — Context Anchor & Permanent Memory Setup):
 - Updated this briefing log to include this session entry.
 - Active context: Supabase Auth integrated, Render deployment live, schema.sql dedup migration still pending, RAG not yet wired into orchestrator.
 
-August 2, 2026 (Session 6 — Conversation History Tag Investigation):
-- Developer noticed the conversation history panel did NOT show the "Markova Ai Call Center" folder tag next to the current conversation (unlike other conversations which correctly show their project folder).
-- Root cause investigated: The workspace folder tag in the IDE history panel is stored as a binary protobuf field (Field 1 of trajectory_metadata_blob in the conversation's SQLite .db file). This field is set automatically when a conversation is FIRST STARTED from within an open workspace.
-- The current conversation (b642e5d2) was started before the workspace was properly associated, so Field 1 has a complex nested structure with git repo data but the IDE cannot parse a clean label from it.
-- Fix: Close this conversation → reopen Markova Ai Call Center folder fresh in IDE → start a NEW conversation (which will correctly auto-tag to the folder) → load context from this briefing.
-- This session ends here. Next session (Session 7) should start fresh with the folder properly open.
+September 10, 2026 (Session 7 — Production Orchestrator Cloud Deployment & Telephony Consolidation):
+- Executed 4-phase Playground to Production promotion:
+  - Phase 1: Containerized `services/orchestrator/` with Render dynamic port (`PORT=10000`), health check (`/health`), and dynamic worker concurrency (`WEB_CONCURRENCY:-1`) compatible with Free tier and instantly auto-scalable for Starter/Standard plans. Created root `render.yaml`.
+  - Phase 2: Consolidated FreeSWITCH SIP trunk configs, dialplans, and install scripts into `infrastructure/telephony/freeswitch/` with a comprehensive README.
+  - Phase 3: Created `services/orchestrator/barge_in.py` with multi-tenant ESL event monitoring, VMD arming/disarming, graceful degradation, and exposed `POST /v1/calls/{call_id}/barge-in`.
+  - Phase 4: Migrated playground `knowledge_base.json` to `services/knowledge-service/seed_data/gm_furniture.json` and added `POST /api/knowledge/seed` for multi-tenant sample RAG onboarding.
+  - Confirmed e-commerce artifacts (`commerce.py`, `commerce_agent.py`) remain demo-only in the playground.
+- Code validated, committed, and pushed to GitHub `origin/main`.
 
-Last updated: August 2, 2026
-Generated from: full codebase walkthrough + conversation history analysis + Supabase migration logs + session 6 investigation
+Last updated: September 10, 2026
+Generated from: full codebase walkthrough + conversation history analysis + Supabase migration logs + session 7 implementation
+
 
