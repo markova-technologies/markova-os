@@ -29,7 +29,8 @@ import {
   RotateCcw,
   Info,
   Clock,
-  Radio
+  Radio,
+  Edit3
 } from 'lucide-react'
 import { 
   listTeams, 
@@ -107,15 +108,17 @@ const AgentStudio = () => {
   } = useAgentTestSession(editingAgent?.id)
 
   // ── 1. Fetch Teams & Agents (Auto-Commander Enabled) ─────────────────────
+  // ── 1. Fetch Teams & Agents (Auto-Commander Guaranteed) ───────────────────
   const loadStudioData = async () => {
     setLoading(true)
     try {
-      const [teamsRes, agentsRes] = await Promise.all([
-        listTeams().catch(() => ({ data: [] })),
-        listAgents().catch(() => ({ data: [] }))
-      ]);
+      // 1. Fetch teams first (guarantees backend ensureCommanderAgent executes)
+      const teamsRes = await listTeams().catch(() => ({ data: [] }));
+      
+      // 2. Fetch agents (guaranteed to include commander agent)
+      const agentsRes = await listAgents().catch(() => ({ data: [] }));
 
-      const fetchedTeams = (teamsRes.data || []).map(t => ({
+      let fetchedTeams = (teamsRes.data || []).map(t => ({
         id: t.id,
         name: t.name,
         icon: t.type === 'commander' ? ShieldAlert : Users,
@@ -123,16 +126,56 @@ const AgentStudio = () => {
         isCommander: t.type === 'commander'
       }));
 
+      let rawAgents = agentsRes.data || [];
+
+      // Guarantee Commander team exists in UI
+      let commanderTeam = fetchedTeams.find(t => t.isCommander);
+      if (!commanderTeam) {
+        commanderTeam = {
+          id: 'commander-team-id',
+          name: 'Commander Agent',
+          icon: ShieldAlert,
+          count: 1,
+          isCommander: true
+        };
+        fetchedTeams = [
+          commanderTeam,
+          { id: 'standard-team-id', name: 'Customer Care & Sales', icon: Users, count: 0, isCommander: false },
+          ...fetchedTeams
+        ];
+      }
+
+      // Guarantee Commander Agent (Almaz) exists in UI
+      const hasCommander = rawAgents.some(a => a.isCommander || a.name?.toLowerCase().includes('commander'));
+      if (!hasCommander) {
+        const fallbackCommander = {
+          id: 'commander-almaz-default',
+          name: 'Almaz - Commander Agent',
+          prompt: `You are Almaz, the primary Commander and Orchestrator AI for this enterprise call center.\nYour role is to warmly greet customers in Amharic (ሰላም! እንኳን ወደ ድርጅታችን ደህና መጡ), understand their inquiry, identify their needs, and provide clear assistance or direct their request to the appropriate department.\nAlways maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.`,
+          voice_provider: 'edge_tts',
+          voice_id: 'am-ET-MekdesNeural',
+          model_provider: 'groq',
+          model_id: 'llama-3.3-70b-versatile',
+          team_id: commanderTeam.id,
+          temperature: 0.3,
+          stt_provider: 'elevenlabs_scribe',
+          status: 'active',
+          isCommander: true
+        };
+        rawAgents.unshift(fallbackCommander);
+      }
+
       setTeams(fetchedTeams);
 
       const mappedAgents = {};
-      (agentsRes.data || []).forEach(a => {
-        const teamId = a.team_id || (fetchedTeams[0]?.id || 'general');
+      rawAgents.forEach(a => {
+        const isCmd = a.isCommander || a.name?.toLowerCase().includes('commander');
+        const teamId = a.team_id || (isCmd ? commanderTeam.id : (fetchedTeams[0]?.id || 'general'));
         if (!mappedAgents[teamId]) mappedAgents[teamId] = [];
         mappedAgents[teamId].push({
           ...a,
           status: 'active',
-          isCommander: fetchedTeams.find(t => t.id === teamId)?.isCommander || a.name?.toLowerCase().includes('commander')
+          isCommander: isCmd || fetchedTeams.find(t => t.id === teamId)?.isCommander
         });
       });
 
@@ -144,9 +187,9 @@ const AgentStudio = () => {
         count: (mappedAgents[t.id] || []).length
       })));
 
-      if (!activeTeam && fetchedTeams.length > 0) {
-        setActiveTeam(fetchedTeams[0].id);
-      }
+      // Always activate the Commander team by default
+      setActiveTeam(commanderTeam.id);
+
     } catch (err) {
       console.error("Failed to load agent studio data:", err);
       showError("Failed to load AI teams and agents.");
@@ -371,7 +414,7 @@ const AgentStudio = () => {
         language: 'am'
       };
 
-      if (editingAgent.isNew) {
+      if (editingAgent.isNew || (editingAgent.id && String(editingAgent.id).startsWith('commander-'))) {
         const res = await createAgent(payload);
         success("Agent created successfully!");
         
@@ -604,6 +647,15 @@ const AgentStudio = () => {
                   )}
                 </div>
                 <p>{(agent.prompt || '').substring(0, 65)}...</p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '0.75rem', paddingTop: '0.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                <button 
+                  className="btn btn-secondary btn-sm"
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.78rem', padding: '0.35rem 0.75rem' }}
+                  onClick={(e) => { e.stopPropagation(); setEditingAgent(agent); }}
+                >
+                  <Edit3 size={13} /> Edit Agent
+                </button>
               </div>
             </motion.div>
           ))}

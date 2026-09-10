@@ -224,12 +224,132 @@ function normalizeAgentBody(body = {}) {
 
 // ── Teams & Commander Auto-Setup Endpoints ─────────────────────────────────
 
-// List teams for Company (auto-provisions Commander team and agent if none exist)
+async function ensureCommanderAgent(ctx) {
+  const companyId = ctx.tenantId;
+
+  // 1. Fast path: check if an agent already exists as Commander or in a Commander team
+  const existingAgent = await tenantDb.query(
+    ctx,
+    `SELECT a.id, a.name, a.prompt, a.voice_provider, a.voice_id, a.model_provider, a.model_id, a.team_id, a.temperature, a.stt_provider
+     FROM agents a
+     LEFT JOIN teams t ON t.id = a.team_id
+     WHERE a.company_id = $1 AND (t.type = 'commander' OR a.name ILIKE '%commander%')
+     LIMIT 1`,
+    [companyId]
+  );
+
+  if (existingAgent.rows.length > 0) {
+    return existingAgent.rows[0];
+  }
+
+  // 2. Safe transaction auto-provisioning
+  return await tenantDb.withTenant(ctx, async (client) => {
+    // Check again inside transaction to prevent race conditions
+    const checkAgain = await client.query(
+      `SELECT a.id, a.name, a.prompt, a.voice_provider, a.voice_id, a.model_provider, a.model_id, a.team_id, a.temperature, a.stt_provider
+       FROM agents a
+       LEFT JOIN teams t ON t.id = a.team_id
+       WHERE a.company_id = $1 AND (t.type = 'commander' OR a.name ILIKE '%commander%')
+       LIMIT 1`,
+      [companyId]
+    );
+    if (checkAgain.rows.length > 0) {
+      return checkAgain.rows[0];
+    }
+
+    // A. Ensure Commander Team
+    let commanderTeamId;
+    const cmdTeamRes = await client.query(
+      `SELECT id FROM teams WHERE company_id = $1 AND type = 'commander' LIMIT 1`,
+      [companyId]
+    );
+    if (cmdTeamRes.rows.length > 0) {
+      commanderTeamId = cmdTeamRes.rows[0].id;
+    } else {
+      const newCmdTeam = await client.query(
+        `INSERT INTO teams (company_id, name, type)
+         VALUES ($1, 'Commander Agent', 'commander')
+         RETURNING id`,
+        [companyId]
+      );
+      commanderTeamId = newCmdTeam.rows[0].id;
+    }
+
+    // B. Ensure Standard Team (Sales / Support)
+    const stdTeamRes = await client.query(
+      `SELECT id FROM teams WHERE company_id = $1 AND type = 'standard' LIMIT 1`,
+      [companyId]
+    );
+    if (stdTeamRes.rows.length === 0) {
+      await client.query(
+        `INSERT INTO teams (company_id, name, type)
+         VALUES ($1, 'Customer Care & Sales', 'standard')`,
+        [companyId]
+      );
+    }
+
+    // C. Create default Commander Agent (Almaz)
+    const defaultPrompt = `You are Almaz, the primary Commander and Orchestrator AI for this enterprise call center.
+Your role is to warmly greet customers in Amharic (ሰላም! እንኳን ወደ ድርጅታችን ደህና መጡ), understand their inquiry, identify their needs, and provide clear assistance or direct their request to the appropriate department.
+Always maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.`;
+
+    const agentRes = await client.query(
+      `INSERT INTO agents (company_id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+       RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at`,
+      [
+        companyId,
+        'Almaz - Commander Agent',
+        defaultPrompt,
+        'edge_tts',
+        'am-ET-MekdesNeural',
+        'groq',
+        'llama-3.3-70b-versatile',
+        commanderTeamId,
+        0.3,
+        'elevenlabs_scribe'
+      ]
+    );
+    const agent = agentRes.rows[0];
+
+    // D. Create version 1
+    await client.query(
+      `INSERT INTO agent_versions (agent_id, version_number, prompt, model_provider, model_id, voice_provider, voice_id)
+       VALUES ($1, 1, $2, $3, $4, $5, $6)
+       ON CONFLICT DO NOTHING`,
+      [agent.id, agent.prompt, agent.model_provider, agent.model_id, agent.voice_provider, agent.voice_id]
+    );
+
+    // E. Link to team_agents and commander_agents
+    await client.query(
+      `INSERT INTO team_agents (team_id, agent_id, role)
+       VALUES ($1, $2, 'commander')
+       ON CONFLICT (team_id, agent_id) DO NOTHING`,
+      [commanderTeamId, agent.id]
+    );
+
+    await client.query(
+      `INSERT INTO commander_agents (team_id, agent_id, routing_rules)
+       VALUES ($1, $2, '{"default_route": "support"}'::jsonb)
+       ON CONFLICT (team_id, agent_id) DO NOTHING`,
+      [commanderTeamId, agent.id]
+    );
+
+    console.log(`✅ Auto-provisioned Commander Agent (Almaz) for company ${companyId}`);
+    return agent;
+  });
+}
+
+// List teams for Company (guarantees Commander team and agent are auto-provisioned)
 app.get('/api/builder/teams', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
 
   try {
+    // 1. Ensure Commander Agent and teams exist
+    await ensureCommanderAgent(ctx);
+
+    // 2. Query all teams with updated member counts
     const teamsResult = await tenantDb.query(
       ctx,
       `SELECT t.id, t.name, t.type, t.created_at, COUNT(a.id)::int as count
@@ -240,82 +360,6 @@ app.get('/api/builder/teams', async (req, res) => {
        ORDER BY CASE WHEN t.type = 'commander' THEN 0 ELSE 1 END, t.name ASC`,
       [companyId]
     );
-
-    // If company has no teams, auto-provision default Commander setup
-    if (teamsResult.rows.length === 0) {
-      const autoSetup = await tenantDb.withTenant(ctx, async (client) => {
-        // 1. Create Commander Team
-        const cmdTeamRes = await client.query(
-          `INSERT INTO teams (company_id, name, type)
-           VALUES ($1, 'Commander Agent', 'commander')
-           RETURNING id, name, type, created_at`,
-          [companyId]
-        );
-        const commanderTeam = cmdTeamRes.rows[0];
-
-        // 2. Create Standard Team (Sales / Support)
-        const supportTeamRes = await client.query(
-          `INSERT INTO teams (company_id, name, type)
-           VALUES ($1, 'Customer Care & Sales', 'standard')
-           RETURNING id, name, type, created_at`,
-          [companyId]
-        );
-        const supportTeam = supportTeamRes.rows[0];
-
-        // 3. Create default Commander Agent (Almaz)
-        const defaultPrompt = `You are Almaz, the primary Commander and Orchestrator AI for this enterprise call center.
-Your role is to warmly greet customers in Amharic (ሰላም! እንኳን ወደ ድርጅታችን ደህና መጡ), understand their inquiry, identify their needs, and provide clear assistance or direct their request to the appropriate department.
-Always maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.`;
-
-        const agentRes = await client.query(
-          `INSERT INTO agents (company_id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-           RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at`,
-          [
-            companyId,
-            'Almaz - Commander Agent',
-            defaultPrompt,
-            'edge_tts',
-            'am-ET-MekdesNeural',
-            'groq',
-            'llama-3.3-70b-versatile',
-            commanderTeam.id,
-            0.3,
-            'elevenlabs_scribe'
-          ]
-        );
-        const agent = agentRes.rows[0];
-
-        // 4. Create version 1
-        await client.query(
-          `INSERT INTO agent_versions (agent_id, version_number, prompt, model_provider, model_id, voice_provider, voice_id)
-           VALUES ($1, 1, $2, $3, $4, $5, $6)`,
-          [agent.id, agent.prompt, agent.model_provider, agent.model_id, agent.voice_provider, agent.voice_id]
-        );
-
-        // 5. Link to team_agents and commander_agents
-        await client.query(
-          `INSERT INTO team_agents (team_id, agent_id, role)
-           VALUES ($1, $2, 'commander')
-           ON CONFLICT DO NOTHING`,
-          [commanderTeam.id, agent.id]
-        );
-
-        await client.query(
-          `INSERT INTO commander_agents (team_id, agent_id, routing_rules)
-           VALUES ($1, $2, '{"default_route": "support"}'::jsonb)
-           ON CONFLICT DO NOTHING`,
-          [commanderTeam.id, agent.id]
-        );
-
-        return [
-          { ...commanderTeam, count: 1, isCommander: true },
-          { ...supportTeam, count: 0, isCommander: false }
-        ];
-      });
-
-      return res.json(autoSetup);
-    }
 
     const mapped = teamsResult.rows.map(t => ({
       ...t,
@@ -386,24 +430,10 @@ app.delete('/api/builder/teams/:id', async (req, res) => {
 // Get Commander team and agent info
 app.get('/api/builder/teams/commander', async (req, res) => {
   const ctx = req.securityContext;
-  const companyId = ctx.tenantId;
 
   try {
-    const result = await tenantDb.query(
-      ctx,
-      `SELECT a.id, a.name, a.prompt, a.voice_provider, a.voice_id, a.model_provider, a.model_id, a.team_id, a.temperature, a.stt_provider
-       FROM agents a
-       JOIN teams t ON t.id = a.team_id
-       WHERE a.company_id = $1 AND t.type = 'commander'
-       LIMIT 1`,
-      [companyId]
-    );
-
-    if (result.rows.length === 0) {
-      return res.json(null);
-    }
-
-    res.json(result.rows[0]);
+    const commanderAgent = await ensureCommanderAgent(ctx);
+    res.json(commanderAgent);
   } catch (error) {
     console.error('Get Commander Error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
@@ -518,12 +548,15 @@ app.get('/api/builder/agents', async (req, res) => {
   const ctx = req.securityContext;
 
   try {
+    // Ensure default Commander Agent exists so new users immediately receive Almaz
+    await ensureCommanderAgent(ctx);
+
     const result = await tenantDb.query(
       ctx,
       `SELECT id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at, updated_at 
        FROM agents 
        WHERE company_id = $1 
-       ORDER BY name ASC`,
+       ORDER BY CASE WHEN name ILIKE '%commander%' THEN 0 ELSE 1 END, name ASC`,
       [ctx.tenantId]
     );
     res.json(result.rows);

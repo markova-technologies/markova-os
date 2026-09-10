@@ -217,3 +217,19 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   2. Use `gen_random_uuid()` (standard built-in for Postgres 13+) to avoid failures when extensions like `uuid-ossp` require superuser privileges.
   3. Execute DDL statements in individual `try/catch` blocks within the startup routine so non-fatal notices (or pre-existing constraints) log warnings instead of aborting the connection pool or terminating the service.
 
+---
+
+### [2026-09-10] Commander Agent Auto-Provisioning & Client Default Setup
+- **Problem:**
+  - When a new user navigated to Agent Studio, the Commander Agent ("Almaz - Commander Agent") was not automatically created or visible in the UI.
+- **How it happened:**
+  1. In `services/agent-builder/server.js`, auto-provisioning was isolated strictly inside `GET /api/builder/teams` and only triggered when `teamsResult.rows.length === 0`.
+  2. In `AgentStudio.jsx`, `listTeams()` and `listAgents()` were called simultaneously via `Promise.all`. When `listTeams` ran the provisioning transaction, `listAgents` queried concurrently before the commit finished and returned `[]`, mapping 0 agents into the team.
+  3. If a company already had teams or if the backend had not yet finished its cold start, `GET /api/builder/agents` had no auto-provisioning logic and returned an empty array without creating Almaz.
+- **Lesson Learned & Fix:**
+  1. Extracted an idempotent `ensureCommanderAgent(ctx)` helper in `services/agent-builder/server.js` that checks for Commander existence and auto-provisions the Commander team, standard team, Almaz agent, and version 1.
+  2. Hooked `ensureCommanderAgent` into `GET /teams`, `GET /agents`, and `GET /teams/commander`, guaranteeing that whichever endpoint is reached first, the Commander Agent is reliably provisioned.
+  3. Sequenced `loadStudioData()` in `AgentStudio.jsx` and added client-side fallback synthesis so that even during network latency or offline backend moments, the Commander Agent is immediately present and selectable in the UI.
+  4. Added an explicit "Edit Agent" button to agent cards, and updated `handleSave` so synthesized IDs seamlessly persist to the backend upon saving.
+
+
