@@ -14,6 +14,7 @@
     "dev:admin": "npm run dev --workspace=apps/admin-dashboard",
     "dev:client": "npm run dev --workspace=apps/client-dashboard",
     "build:admin": "npm run build --workspace=apps/admin-dashboard",
-    "build:client": "npm run build --workspace=apps/client-dashboard"
+    "build:client": "npm run build --workspace=apps/client-dashboard",
+    "warmup": "node scripts/warmup-render.js"
   }
 }
