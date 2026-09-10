@@ -304,3 +304,20 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
      - Moved `knowledge_base.json` to `services/knowledge-service/seed_data/gm_furniture.json`.
      - Implemented `POST /api/knowledge/seed` in `knowledge-service` for tenant-isolated RAG seeding.
      - Confirmed e-commerce artifacts (`commerce.py`, `commerce_agent.py`) remain strictly in the playground as demo references.
+
+---
+
+### [2026-09-10] Render Monorepo Docker Build Context: `requirements.txt: not found`
+- **Problem:**
+  - Render Docker build for `markova-orchestrator` failed at step `[4/6] COPY requirements.txt .`:
+    `error: failed to solve: failed to compute cache key: failed to calculate checksum of ref ... "/requirements.txt": not found`.
+- **How it Happened:**
+  - When Render builds a Docker Web Service from a monorepo with `Dockerfile Path: services/orchestrator/Dockerfile` and Root Directory empty, Render sets the Docker build context to the root of the repository (`.`).
+  - Because `requirements.txt` is located inside `services/orchestrator/` rather than the repository root, `COPY requirements.txt .` looked for `/requirements.txt` in the root and failed.
+- **Lesson Learned & Fix:**
+  - In a monorepo where the Docker build context is the repository root (as used by `api-gateway`, `agent-builder`, `tool-engine`), Dockerfile `COPY` commands must reference the full monorepo path:
+    `COPY services/orchestrator/requirements.txt ./requirements.txt`
+    `COPY services/orchestrator/ ./`
+    `COPY infrastructure/migrations/ ./migrations_sql/`
+  - Updated `services/orchestrator/Dockerfile` and pushed to `main`.
+
