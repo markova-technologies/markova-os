@@ -321,3 +321,21 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
     `COPY infrastructure/migrations/ ./migrations_sql/`
   - Updated `services/orchestrator/Dockerfile` and pushed to `main`.
 
+---
+
+### [2026-09-10] Python Version Mismatch for `audioop-lts` in Python 3.11 Docker Build
+- **Problem:**
+  - Pip install failed in Docker build on Render with:
+    `ERROR: Ignored the following versions that require a different python version: ... 0.1.0 Requires-Python >=3.13`
+    `ERROR: Could not find a version that satisfies the requirement audioop-lts (from versions: none)`
+    `ERROR: No matching distribution found for audioop-lts`.
+- **How it Happened:**
+  - `audioop` was removed from the standard library in Python 3.13, so the `audioop-lts` package was created strictly for Python >= 3.13 (`Requires-Python >= 3.13`).
+  - In our Docker container (`FROM python:3.11-slim`), Python 3.11 is used. In Python 3.11, `audioop` is already a built-in standard library module.
+  - Because `audioop-lts` was listed unconditionally in `requirements.txt`, pip attempted to resolve and install it on Python 3.11, where all published wheel distributions were ignored due to the `>=3.13` python constraint.
+- **Lesson Learned & Fix:**
+  - In `requirements.txt`, use PEP 508 environment markers for version-specific polyfills:
+    `audioop-lts; python_version >= '3.13'`
+  - When pip runs on Python 3.11 (Docker), it skips `audioop-lts` cleanly, and Python uses the built-in `audioop`. When pip runs on Python 3.13+ (e.g. host development), it installs the polyfill.
+
+
