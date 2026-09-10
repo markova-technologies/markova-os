@@ -6,7 +6,7 @@ services:
     name: markova-orchestrator
     env: docker
     plan: free # Free tier compatible; upgrade to starter/standard anytime without code changes
-    region: frankfurt
+    region: ohio
     dockerfilePath: services/orchestrator/Dockerfile
     dockerContext: services/orchestrator
     healthCheckPath: /health
@@ -49,7 +49,7 @@ services:
     name: markova-ai-backend
     env: docker
     plan: free
-    region: frankfurt
+    region: ohio
     dockerfilePath: ai call center/Dockerfile
     dockerContext: ai call center
     healthCheckPath: /
