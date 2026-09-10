@@ -181,3 +181,5 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   2. Never register background worker intervals calling third-party client drivers (Redis, AMQP, DB) at module top-level; always encapsulate them in start functions invoked only after the underlying client has successfully opened and connected.
   3. Always log `err.message` in connection retry catch blocks to provide immediate visibility into network, DNS, and TLS errors in production logs.
   4. Always configure `ssl: { rejectUnauthorized: false }` for production cloud Postgres pools in Node.js when connecting to remote poolers.
+  5. When using `asyncpg` with Supabase/PgBouncer poolers (port 6543), set `statement_cache_size = 0` to prevent prepared statement errors in transaction pooling mode.
+  6. Render leaves services in `Failed service` state if startup crashed during an external outage; manual redeploy or a git commit touching that service's directory is required to bring it back up.

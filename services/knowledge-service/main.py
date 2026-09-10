@@ -49,20 +49,28 @@ _db_pool: asyncpg.Pool | None = None
 
 async def init_db_pool_async():
     global _db_pool
-    for attempt in range(10):
+    # Disable prepared statement caching when connecting to PgBouncer / Supavisor pooler
+    is_pooler = ":6543" in (DATABASE_URL or "") or "pooler" in (DATABASE_URL or "")
+    pool_kwargs = {
+        "min_size": 2,
+        "max_size": 10,
+        "command_timeout": 30,
+    }
+    if is_pooler:
+        pool_kwargs["statement_cache_size"] = 0
+
+    for attempt in range(15):
         try:
             _db_pool = await asyncpg.create_pool(
                 DATABASE_URL,
-                min_size=2,
-                max_size=10,
-                command_timeout=30,
+                **pool_kwargs
             )
             logger.info("knowledge_service_asyncpg_pool_ready")
             return
         except Exception as e:
             logger.error("db_pool_init_failed", attempt=attempt+1, error=str(e))
             await asyncio.sleep(3)
-    raise RuntimeError("Could not initialize asyncpg pool after 10 attempts")
+    raise RuntimeError("Could not initialize asyncpg pool after 15 attempts")
 
 _embedding_queue: asyncio.Queue = asyncio.Queue()
 
