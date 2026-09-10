@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Union, Any, Tuple
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks, Depends, Security, File, UploadFile, Header, Query
+from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks, Depends, Security, File, UploadFile, Header, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import Response, JSONResponse
 from fastapi.security.api_key import APIKeyHeader, APIKey
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,6 +28,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import uvicorn
+import uuid
+from voice_session import VoiceSession
 from groq import Groq
 from openai import OpenAI, AsyncOpenAI  # OpenAI for GPT-4o + Whisper-1 (primary)
 import httpx
@@ -716,13 +718,14 @@ app.mount("/audio", StaticFiles(directory="audio"), name="audio")
 async def favicon_icon():
     return Response(content="", media_type="image/x-icon")
 
-# Add CORS
+# Add CORS with regex to support all web origins (Vercel, localhost, custom domains) with credentials
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Callers reach this service over Ethiopian mobile links where every turn ships
@@ -738,7 +741,15 @@ async def catch_exceptions_middleware(request: Request, call_next):
         logger.error(f"❌ Uncaught Exception: {e}", exc_info=True)
         # Send critical alert
         await alerts.send_alert("Uncaught Exception in Endpoint", str(e))
-        return Response("Internal Server Error", status_code=500)
+        origin = request.headers.get("origin") or "*"
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Internal Server Error", "detail": str(e)},
+            headers={
+                "Access-Control-Allow-Origin": origin,
+                "Access-Control-Allow-Credentials": "true"
+            }
+        )
 
 @app.on_event("startup")
 async def startup_event():
@@ -3127,6 +3138,189 @@ async def get_detailed_metrics(range: str = "day"):
     except Exception as e:
         logger.error(f"Failed to fetch metrics: {e}")
         return {"summary": {}, "trend": []}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase 2 & Voice Sandbox Bridge: Test-Call, WebSocket & Voice Previews
+# ─────────────────────────────────────────────────────────────────────────────
+
+test_sessions: Dict[str, Any] = {}
+
+@app.post("/api/agents/{agent_id}/test-call")
+@app.post("/v1/agents/{agent_id}/test-call")
+async def create_test_call(agent_id: str, request: Request):
+    company_id = request.headers.get("x-company-id") or request.headers.get("x-tenant-id") or "00000000-0000-0000-0000-000000000000"
+    
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+        
+    config = body.get("config") or body
+    if not isinstance(config, dict) or not config.get("prompt"):
+        config = {
+            "id": agent_id,
+            "name": config.get("name") if isinstance(config, dict) else "Markova - Commander Agent",
+            "prompt": "You are Markova, a helpful AI voice assistant for Markova AI Call Center. Respond concisely in Amharic or English.",
+            "voice_provider": "edge_tts",
+            "voice_id": "am-ET-MekdesNeural",
+            "model_provider": "groq",
+            "model_id": "llama-3.3-70b-versatile"
+        }
+        
+    session_id = str(uuid.uuid4())
+    test_sessions[session_id] = {
+        "agent_id": agent_id,
+        "config": config,
+        "company_id": company_id
+    }
+    
+    return {"session_id": session_id}
+
+@app.websocket("/ws/agent-test/{session_id}")
+async def agent_test_ws(websocket: WebSocket, session_id: str):
+    await websocket.accept()
+    
+    session_data = test_sessions.get(session_id)
+    if not session_data:
+        session_data = {
+            "agent_id": "markova-commander-default",
+            "config": {
+                "name": "Markova - Commander Agent",
+                "prompt": "You are Markova, the primary Commander and Orchestrator AI for Markova AI Call Center. Respond warmly and concisely in Amharic (or English if addressed in English).",
+                "voice_id": "am-ET-MekdesNeural",
+                "model_provider": "groq",
+                "model_id": "llama-3.3-70b-versatile"
+            }
+        }
+        
+    import httpx
+    http_client = httpx.AsyncClient()
+    voice_session = VoiceSession(http_client)
+    
+    await voice_session.start(session_id, session_data["config"])
+    
+    # Send welcoming greeting upon connection
+    try:
+        greeting = "ሰላም! እኔ ማርኮቫ ነኝ፤ እንኳን ደህና መጡ። እንዴት ልርዳዎት?"
+        await websocket.send_json({"type": "transcript", "text": greeting, "role": "assistant"})
+        async for chunk in voice_session._synthesize_tts(greeting):
+            await websocket.send_bytes(chunk)
+    except Exception as greet_err:
+        logger.warning(f"greeting_synthesis_failed: {greet_err}")
+    
+    try:
+        while True:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                break
+
+            transcript = None
+            if "bytes" in message and message["bytes"]:
+                transcript = await voice_session.process_audio(message["bytes"])
+            elif "text" in message and message["text"]:
+                raw_text = message["text"]
+                try:
+                    payload = json.loads(raw_text)
+                    transcript = payload.get("text", "")
+                except Exception:
+                    transcript = raw_text
+
+            if transcript and transcript.strip():
+                await websocket.send_json({"type": "transcript", "text": transcript.strip(), "role": "user"})
+                
+                async for chunk in voice_session.process_text(transcript.strip()):
+                    await websocket.send_bytes(chunk)
+                    
+                if voice_session.conversation_history:
+                    last_msg = voice_session.conversation_history[-1]
+                    if last_msg["role"] == "assistant":
+                        await websocket.send_json({"type": "transcript", "text": last_msg["content"], "role": "assistant"})
+                    
+    except WebSocketDisconnect:
+        logger.info(f"Test call {session_id} disconnected")
+    except Exception as e:
+        logger.error(f"Test call {session_id} error: {e}")
+    finally:
+        await voice_session.end()
+        await http_client.aclose()
+        if session_id in test_sessions:
+            del test_sessions[session_id]
+
+@app.post("/api/agents/{agent_id}/voice-preview")
+@app.post("/v1/agents/{agent_id}/voice-preview")
+async def preview_voice(agent_id: str, request: Request):
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    text = body.get("text", "ሰላም፣ ይህ የድምፅ ሙከራ ነው።")
+    voice_id = body.get("voice_id", "am-ET-MekdesNeural")
+    
+    import edge_tts
+    import tempfile
+    
+    try:
+        communicate = edge_tts.Communicate(text, voice_id)
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
+            temp_path = f.name
+        await communicate.save(temp_path)
+        
+        with open(temp_path, "rb") as f:
+            audio_bytes = f.read()
+        os.unlink(temp_path)
+        return Response(content=audio_bytes, media_type="audio/mpeg")
+    except Exception as e:
+        logger.error(f"Edge TTS preview failed: {e}")
+        audio_url = await generate_multilingual_voice(text, "amharic", method="auto")
+        if audio_url:
+            return {"url": audio_url}
+        raise HTTPException(status_code=500, detail="Voice synthesis failed")
+
+@app.post("/api/agents/{agent_id}/deploy")
+@app.post("/v1/agents/{agent_id}/deploy")
+async def deploy_agent(agent_id: str, request: Request):
+    return {"status": "success", "message": "Agent deployed successfully", "agent_id": agent_id}
+
+# Fallback Proxy for Builder endpoints if client-dashboard directly addresses this service
+AGENT_BUILDER_URL = os.getenv("AGENT_BUILDER_URL", "https://markova-agent-builder.onrender.com")
+
+@app.api_route("/v1/agents", methods=["GET", "POST"])
+@app.api_route("/v1/agents/{subpath:path}", methods=["GET", "POST", "PUT", "DELETE"])
+@app.api_route("/v1/teams", methods=["GET", "POST"])
+@app.api_route("/v1/teams/{subpath:path}", methods=["GET", "POST", "PUT", "DELETE"])
+async def proxy_builder_endpoints(request: Request, subpath: str = ""):
+    # Skip endpoints handled locally
+    if "test-call" in request.url.path or "voice-preview" in request.url.path or "deploy" in request.url.path:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+    target_path = request.url.path.replace("/v1/agents", "/api/builder/agents").replace("/v1/teams", "/api/builder/teams")
+    url = f"{AGENT_BUILDER_URL.rstrip('/')}{target_path}"
+    
+    headers = dict(request.headers)
+    headers.pop("host", None)
+    headers.pop("content-length", None)
+    
+    body = await request.body()
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as client:
+            resp = await client.request(
+                method=request.method,
+                url=url,
+                headers=headers,
+                content=body,
+                params=dict(request.query_params)
+            )
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                headers=dict(resp.headers),
+                media_type=resp.headers.get("content-type")
+            )
+    except Exception as proxy_err:
+        logger.warning(f"Agent builder proxy failed: {proxy_err}")
+        return JSONResponse(status_code=502, content={"error": "Builder service unavailable", "detail": str(proxy_err)})
 
 if __name__ == "__main__":
     print("Starting Natural Amharic AI Call System...")

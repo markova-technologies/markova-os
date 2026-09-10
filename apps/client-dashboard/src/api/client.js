@@ -67,6 +67,16 @@ api.interceptors.request.use(async (config) => {
   }
   if (token) config.headers.Authorization = `Bearer ${token}`;
   config.headers['x-markova-env'] = currentEnvironment();
+
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const companyId = user.company_id || user.companyId || (isDemoMode() ? '00000000-0000-0000-0000-000000000000' : null);
+    if (companyId) {
+      config.headers['x-company-id'] = companyId;
+      config.headers['x-tenant-id'] = companyId;
+    }
+  } catch (e) {}
+
   return config;
 });
 

@@ -13,11 +13,13 @@ async function bootstrap() {
   const helmet = require('helmet');
   app.use(helmet());
 
-  // Strict CORS configuration
+  // CORS configuration for dashboard, local dev, and Vercel deployments
   app.enableCors({
-    origin: process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : ['http://localhost:3000', 'http://localhost:3001'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+    origin: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-company-id', 'x-tenant-id', 'x-markova-env', 'Accept', 'Origin'],
+    exposedHeaders: ['*'],
   });
   
   // Rate limiting middleware

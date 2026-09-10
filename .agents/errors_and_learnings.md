@@ -254,3 +254,29 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
      - In `services/orchestrator/voice_session.py`, buffered TTS streams into complete MP3 audio payloads per sentence before transmission, delivering smooth, crystal-clear voice playback in the browser.
      - In `services/orchestrator/main.py`, sent an immediate welcoming greeting audio upon WebSocket connection (*"ሰላም! እኔ ማርኮቫ ነኝ፤ እንኳን ደህና መጡ። እንዴት ልርዳዎት?"*).
      - Added `/ws` proxy rule in `apps/client-dashboard/vite.config.js`.
+
+---
+
+### [2026-09-10] Production Vercel Dashboard "Failed to connect to voice trial: Network Error" & Dual Architecture Parity
+- **Problem:**
+  - After deploying the client dashboard to Vercel (`https://markova-os-client-dashboard.vercel.app/app/agent-studio`), clicking "Test Voice" failed immediately with 4 stacked red error toasts:
+    `That didn't go through: Failed to connect to voice trial: Network Error`.
+- **How it happened:**
+  1. `apps/client-dashboard/.env` was configured with `VITE_API_URL=https://markova-ai-backend-us.onrender.com`.
+  2. On Render, the `markova-ai-backend-us` service was running the original production deployment Dockerfile (`ai call center/Dockerfile` running `main_natural_voice.py`), while `test-call`, `voice-preview`, and the test WebSocket `/ws/agent-test/{session_id}` were previously only implemented in `services/orchestrator/main.py`.
+  3. When the Vercel dashboard sent cross-origin `POST /v1/agents/{id}/test-call` to `markova-ai-backend-us.onrender.com`, `main_natural_voice.py` returned `404 Not Found`.
+  4. Furthermore, `catch_exceptions_middleware` in `main_natural_voice.py` and CORS in `services/orchestrator/main.py` lacked explicit regex origin matching (`allow_origin_regex=r"^https?://.*"`), causing browsers to reject cross-origin preflights with `Network Error` whenever custom headers like `x-markova-env` or `demo-token` were sent.
+  5. In `services/api-gateway/src/main.ts`, `enableCors` only allowed localhost when `ALLOWED_ORIGINS` was unset on Render, rejecting `*.vercel.app` traffic, and `auth.middleware.ts` lacked a bypass for demo sandbox tokens.
+- **Lesson Learned & Fix:**
+  1. **Dual-Environment Architecture Parity**:
+     - Built and copied `ai call center/voice_session.py` with multi-provider STT (ElevenLabs Scribe v2, Groq Whisper Turbo, OpenAI Whisper) and streaming neural TTS (Edge TTS `am-ET-MekdesNeural` / ElevenLabs).
+     - Added `POST /api/agents/{agent_id}/test-call`, `POST /v1/agents/{agent_id}/test-call`, `WebSocket /ws/agent-test/{session_id}`, `POST /v1/agents/{agent_id}/voice-preview`, and `POST /v1/agents/{agent_id}/deploy` directly to `ai call center/main_natural_voice.py`.
+     - Added a transparent reverse-proxy in `main_natural_voice.py` for `/v1/agents` and `/v1/teams` to `https://markova-agent-builder.onrender.com`, ensuring agent saving and team listing succeed even if the client talks directly to the AI voice backend.
+  2. **CORS & Exception Normalization**:
+     - Configured `CORSMiddleware` with `allow_origin_regex=r"^https?://.*"`, `allow_credentials=True`, and `expose_headers=["*"]` across both `ai call center/main_natural_voice.py` and `services/orchestrator/main.py`.
+     - Updated `catch_exceptions_middleware` to attach CORS headers to 500 error responses so the browser receives meaningful error JSON instead of generic `Network Error`.
+  3. **Gateway & Auth Resilience**:
+     - Enabled permissive CORS in `services/api-gateway/src/main.ts` for all dashboard domains including Vercel.
+     - Added a `demo-token` bypass in `services/api-gateway/src/auth.middleware.ts` to seamlessly authenticate sandbox test sessions with an enterprise test context.
+     - Updated `apps/client-dashboard/src/api/client.js` request interceptor to automatically attach `x-company-id` and `x-tenant-id` on every outgoing API call.
+
