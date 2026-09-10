@@ -352,8 +352,13 @@ async def lifespan(app: FastAPI):
     from campaigns import process_campaigns
     campaign_processor_task = asyncio.create_task(process_campaigns(db_pool))
 
+    # Phase 3: Telephony Barge-In Controller
+    from barge_in import barge_in_controller
+    barge_in_controller.start()
+
     yield
     
+    barge_in_controller.stop()
     pubsub_task.cancel()
     cleanup_task.cancel()
     semantic_cache_cleanup_task.cancel()
@@ -3236,6 +3241,23 @@ async def get_recording(call_id: str, request: Request):
     if not row["recording_url"]:
         return {"id": call_id, "recording_url": None, "available": False}
     return {"id": call_id, "recording_url": row["recording_url"], "available": True}
+
+
+@app.post("/v1/calls/{call_id}/barge-in")
+async def trigger_call_barge_in(call_id: str, request: Request):
+    """
+    Direct endpoint to trigger audio interruption (barge-in) for a call,
+    stopping active TTS playback on FreeSWITCH or WebSockets.
+    """
+    from barge_in import barge_in_controller
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    reason = body.get("reason", "manual_api_trigger")
+    interrupted = barge_in_controller.trigger_break(call_id, reason=reason)
+    return {"call_id": call_id, "interrupted": interrupted, "status": "ok"}
 
 
 @app.post("/v1/calls/{call_id}/transfer")
