@@ -45,6 +45,12 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
+      // WebSocket proxy for agent voice test sandbox
+      '/ws': {
+        target: 'http://localhost:8000',
+        changeOrigin: true,
+        ws: true,
+      },
     },
   },
 })

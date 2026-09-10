@@ -42,26 +42,34 @@ export const useAgentTestSession = (agentId) => {
     }
   }, [])
 
-  const startSession = useCallback(async () => {
-    if (!agentId) return
+  const startSession = useCallback(async (agentConfig = null) => {
+    const targetId = agentId || agentConfig?.id || 'markova-commander-default'
 
     setIsConnecting(true)
     setError(null)
     setTranscript([])
 
     try {
-      // 1. Initialize test session on orchestrator
-      const res = await startAgentTestSession(agentId)
+      // 1. Initialize test session on orchestrator (passes active agent draft if provided)
+      const res = await startAgentTestSession(targetId, agentConfig || {})
       const sessionId = res.data?.session_id
       if (!sessionId) {
         throw new Error('No session ID returned from test call creation.')
       }
 
       // 2. Connect WebSocket
-      const apiBase = import.meta.env.VITE_API_URL || (window.location.protocol === 'https:' ? 'https://' + window.location.host : 'http://localhost:8000')
-      const wsProto = apiBase.startsWith('https') ? 'wss:' : 'ws:'
-      const hostPart = apiBase.replace(/^https?:\/\//, '')
-      const wsUrl = `${wsProto}//${hostPart}/ws/agent-test/${sessionId}`
+      const apiBase = import.meta.env.VITE_API_URL || ''
+      let wsUrl
+      if (apiBase) {
+        const wsProto = apiBase.startsWith('https') ? 'wss:' : 'ws:'
+        const hostPart = apiBase.replace(/^https?:\/\//, '').replace(/\/+$/, '')
+        wsUrl = `${wsProto}//${hostPart}/ws/agent-test/${sessionId}`
+      } else {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+        const host = isLocal ? 'localhost:8000' : window.location.host
+        wsUrl = `${proto}//${host}/ws/agent-test/${sessionId}`
+      }
 
       const ws = new WebSocket(wsUrl)
       ws.binaryType = 'arraybuffer'
@@ -73,26 +81,28 @@ export const useAgentTestSession = (agentId) => {
 
         // Request microphone access for direct audio streaming
         try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-          mediaStreamRef.current = stream
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+            mediaStreamRef.current = stream
 
-          const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-            ? 'audio/webm;codecs=opus'
-            : 'audio/webm'
+            const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+              ? 'audio/webm;codecs=opus'
+              : 'audio/webm'
 
-          const recorder = new MediaRecorder(stream, { mimeType })
-          mediaRecorderRef.current = recorder
+            const recorder = new MediaRecorder(stream, { mimeType })
+            mediaRecorderRef.current = recorder
 
-          recorder.ondataavailable = (e) => {
-            if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-              e.data.arrayBuffer().then(buf => {
-                ws.send(buf)
-              })
+            recorder.ondataavailable = (e) => {
+              if (e.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+                e.data.arrayBuffer().then(buf => {
+                  ws.send(buf)
+                })
+              }
             }
-          }
 
-          // Slice audio every 2.5 seconds or on demand
-          recorder.start(2500)
+            // Slice audio every 2.5 seconds or on demand
+            recorder.start(2500)
+          }
         } catch (micErr) {
           console.warn('Microphone access denied or unavailable, text chat only:', micErr)
         }

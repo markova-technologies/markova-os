@@ -441,5 +441,5 @@ export const getAgentVoicePreview = (id, text) =>
 
 export const deployAgent = (id) => api.post(`/agents/${id}/deploy`);
 
-export const startAgentTestSession = (id) => api.post(`/agents/${id}/test-call`);
+export const startAgentTestSession = (id, config = {}) => api.post(`/agents/${id}/test-call`, { config });
 

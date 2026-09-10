@@ -232,4 +232,25 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   3. Sequenced `loadStudioData()` in `AgentStudio.jsx` and added client-side fallback synthesis so that even during network latency or offline backend moments, the Commander Agent is immediately present and selectable in the UI.
   4. Added an explicit "Edit Agent" button to agent cards, and updated `handleSave` so synthesized IDs seamlessly persist to the backend upon saving.
 
+---
 
+### [2026-09-10] Markova Default Agent Branding, Agent Renaming UX & Voice Trial Testing Engine Fixes
+- **Problem:**
+  1. Default Commander Agent was branded as "Almaz" instead of "Markova" by default, without user instructions explaining they can rename it.
+  2. Agents in Agent Studio could not be renamed (static `<h2>` displayed in the header with no input field, locking "New Agent" or any custom agent into its original name).
+  3. Voice Sandbox agent testing failed to launch or run ("Voice test bridge error" / `startAgentTestSession is not a function` / WebSocket connection drops).
+- **How it happened:**
+  1. In `AgentStudio.jsx`, `builder-title` rendered `<h2>{editingAgent.name || 'Untitled Agent'}</h2>` with no `<input>` or state binding.
+  2. In `apps/client-dashboard/src/api/client.js`, `startAgentTestSession` was not properly configured to accept active draft config payloads, preventing test-calls for newly drafted or unsaved agents.
+  3. In `services/orchestrator/main.py`, `create_test_call` performed an unchecked `uuid.UUID(agent_id)` lookup against the database, throwing `ValueError: badly formed hexadecimal UUID string` on draft or fallback agent IDs (e.g., `commander-markova-default`).
+  4. In `services/orchestrator/voice_session.py`, `_synthesize_tts` streamed micro-chunks of MP3 data directly over the WebSocket. In the browser, the MediaSource / `<audio>` element reset playback on each fragmentary blob, causing stutter or decoder failure.
+  5. The Vite dev server proxy lacked `/ws` forwarding to port 8000.
+- **Lesson Learned & Fix:**
+  1. **Branding & User Guidance**: Updated default agent name to `"Markova - Commander Agent"` across `services/agent-builder/server.js`, `services/orchestrator/voice_session.py`, and `AgentStudio.jsx`. Added explicit tips and hints in the prompt and UI informing users they can rename it anytime.
+  2. **Editable Agent Names Everywhere**: Replaced static header titles in `AgentStudio.jsx` with an interactive, styled `<input>` featuring an `Edit3` icon, hover/focus rings, and real-time state synchronization to `editingAgent.name`. Added a dedicated "Agent Name" input field in Sub-Tab 1 (Prompt) for seamless configuration.
+  3. **Robust Test Session Bridge**:
+     - Updated `apps/client-dashboard/src/api/client.js` and `apps/client-dashboard/src/hooks/useAgentTestSession.js` to pass active draft configs (`prompt`, `voice_provider`, `voice_id`, `model_provider`, `model_id`) in `startAgentTestSession(targetId, agentConfig)`.
+     - In `services/orchestrator/main.py`, made `create_test_call` accept payload configs directly and wrapped `uuid.UUID` in safe exception handling, guaranteeing successful test session creation even for unsaved drafts.
+     - In `services/orchestrator/voice_session.py`, buffered TTS streams into complete MP3 audio payloads per sentence before transmission, delivering smooth, crystal-clear voice playback in the browser.
+     - In `services/orchestrator/main.py`, sent an immediate welcoming greeting audio upon WebSocket connection (*"ሰላም! እኔ ማርኮቫ ነኝ፤ እንኳን ደህና መጡ። እንዴት ልርዳዎት?"*).
+     - Added `/ws` proxy rule in `apps/client-dashboard/vite.config.js`.

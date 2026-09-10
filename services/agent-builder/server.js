@@ -239,7 +239,16 @@ async function ensureCommanderAgent(ctx) {
   );
 
   if (existingAgent.rows.length > 0) {
-    return existingAgent.rows[0];
+    const row = existingAgent.rows[0];
+    if (row.name === 'Almaz - Commander Agent') {
+      await tenantDb.query(
+        ctx,
+        `UPDATE agents SET name = 'Markova - Commander Agent' WHERE id = $1 AND company_id = $2`,
+        [row.id, companyId]
+      );
+      row.name = 'Markova - Commander Agent';
+    }
+    return row;
   }
 
   // 2. Safe transaction auto-provisioning
@@ -254,7 +263,15 @@ async function ensureCommanderAgent(ctx) {
       [companyId]
     );
     if (checkAgain.rows.length > 0) {
-      return checkAgain.rows[0];
+      const row = checkAgain.rows[0];
+      if (row.name === 'Almaz - Commander Agent') {
+        await client.query(
+          `UPDATE agents SET name = 'Markova - Commander Agent' WHERE id = $1 AND company_id = $2`,
+          [row.id, companyId]
+        );
+        row.name = 'Markova - Commander Agent';
+      }
+      return row;
     }
 
     // A. Ensure Commander Team
@@ -288,10 +305,11 @@ async function ensureCommanderAgent(ctx) {
       );
     }
 
-    // C. Create default Commander Agent (Almaz)
-    const defaultPrompt = `You are Almaz, the primary Commander and Orchestrator AI for this enterprise call center.
+    // C. Create default Commander Agent (Markova)
+    const defaultPrompt = `You are Markova, the primary Commander and Orchestrator AI for this enterprise call center.
 Your role is to warmly greet customers in Amharic (ሰላም! እንኳን ወደ ድርጅታችን ደህና መጡ), understand their inquiry, identify their needs, and provide clear assistance or direct their request to the appropriate department.
-Always maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.`;
+Always maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.
+(Tip: You can customize this prompt, adjust instructions, and rename this agent at any time in Agent Studio).`;
 
     const agentRes = await client.query(
       `INSERT INTO agents (company_id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider)
@@ -299,7 +317,7 @@ Always maintain a professional, respectful, and helpful Ethiopian conversational
        RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at`,
       [
         companyId,
-        'Almaz - Commander Agent',
+        'Markova - Commander Agent',
         defaultPrompt,
         'edge_tts',
         'am-ET-MekdesNeural',
@@ -335,7 +353,7 @@ Always maintain a professional, respectful, and helpful Ethiopian conversational
       [commanderTeamId, agent.id]
     );
 
-    console.log(`✅ Auto-provisioned Commander Agent (Almaz) for company ${companyId}`);
+    console.log(`✅ Auto-provisioned Commander Agent (Markova) for company ${companyId}`);
     return agent;
   });
 }

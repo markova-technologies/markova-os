@@ -41,7 +41,7 @@ class VoiceSession:
         self.is_active = True
 
         system_prompt = self.config.get("prompt") or (
-            "You are Almaz, a helpful and polite AI voice assistant for Markova AI Call Center. "
+            "You are Markova, a helpful and polite AI voice assistant for Markova AI Call Center. "
             "Respond concisely and naturally in Amharic (or English if addressed in English). "
             "Keep voice responses short and easy to listen to (1-2 sentences max)."
         )
@@ -199,10 +199,13 @@ class VoiceSession:
         try:
             import edge_tts
             communicate = edge_tts.Communicate(text, voice_id)
+            audio_buffer = bytearray()
             async for chunk in communicate.stream():
                 if chunk["type"] == "audio":
-                    yield chunk["data"]
-            return
+                    audio_buffer.extend(chunk["data"])
+            if audio_buffer:
+                yield bytes(audio_buffer)
+                return
         except Exception as edge_err:
             logger.warning("edge_tts_failed_trying_fallback", error=str(edge_err))
 
@@ -213,11 +216,14 @@ class VoiceSession:
                 url = f"https://api.elevenlabs.io/v1/text-to-speech/{el_voice}/stream"
                 headers = {"xi-api-key": self.elevenlabs_api_key, "Content-Type": "application/json"}
                 payload = {"text": text, "model_id": "eleven_multilingual_v2"}
+                audio_buffer = bytearray()
                 async with self.http_client.stream("POST", url, headers=headers, json=payload, timeout=20.0) as resp:
                     if resp.status_code == 200:
                         async for chunk in resp.aiter_bytes():
-                            yield chunk
-                        return
+                            audio_buffer.extend(chunk)
+                        if audio_buffer:
+                            yield bytes(audio_buffer)
+                            return
             except Exception as el_err:
                 logger.warning("elevenlabs_tts_failed", error=str(el_err))
 

@@ -3620,15 +3620,41 @@ test_sessions = {}
 async def create_test_call(agent_id: str, request: Request):
     company_id = _tenant_id(request)
     
-    if not agent_registry:
-        raise HTTPException(status_code=503, detail="Agent Registry not ready")
+    # Check if request provided active draft config
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
         
-    config = await agent_registry.get_config(agent_id)
+    config = body.get("config") or body
+    if not isinstance(config, dict) or not config.get("prompt"):
+        config = None
+        if agent_registry:
+            try:
+                config = await agent_registry.get_config(agent_id)
+            except Exception:
+                config = None
+        if not config and db_pool:
+            try:
+                agent_uuid = uuid.UUID(agent_id)
+                comp_uuid = uuid.UUID(company_id)
+                row = await db_pool.fetchrow("SELECT * FROM agents WHERE id = $1 AND company_id = $2", agent_uuid, comp_uuid)
+                if row:
+                    config = dict(row)
+            except (ValueError, TypeError, Exception):
+                pass
+                
     if not config:
-        row = await db_pool.fetchrow("SELECT * FROM agents WHERE id = $1 AND company_id = $2", uuid.UUID(agent_id), uuid.UUID(company_id))
-        if not row:
-            raise HTTPException(status_code=404, detail="Agent not found")
-        config = dict(row)
+        config = {
+            "id": agent_id,
+            "name": "Markova Test Agent",
+            "prompt": "You are Markova, a helpful AI voice assistant for Markova AI Call Center. Respond concisely in Amharic or English.",
+            "voice_provider": "edge_tts",
+            "voice_id": "am-ET-MekdesNeural",
+            "model_provider": "groq",
+            "model_id": "llama-3.3-70b-versatile"
+        }
         
     session_id = str(uuid.uuid4())
     test_sessions[session_id] = {
@@ -3653,6 +3679,15 @@ async def agent_test_ws(websocket: WebSocket, session_id: str):
     voice_session = VoiceSession(http_client)
     
     await voice_session.start(session_id, session_data["config"])
+    
+    # Send welcoming greeting upon connection
+    try:
+        greeting = "ሰላም! እኔ ማርኮቫ ነኝ፤ እንኳን ደህና መጡ። እንዴት ልርዳዎት?"
+        await websocket.send_json({"type": "transcript", "text": greeting, "role": "assistant"})
+        async for chunk in voice_session._synthesize_tts(greeting):
+            await websocket.send_bytes(chunk)
+    except Exception as greet_err:
+        logger.warning("greeting_synthesis_failed", error=str(greet_err))
     
     try:
         while True:
