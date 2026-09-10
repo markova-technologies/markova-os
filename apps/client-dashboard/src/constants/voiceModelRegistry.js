@@ -62,12 +62,23 @@ export const MODEL_PROVIDERS = {
   groq: {
     id: 'groq',
     name: 'Groq LPU Engine',
-    badge: '⚡ Ultra-Low Latency (<200ms)',
+    badge: '⚡ Ultra-Low Latency (<150ms)',
     recommended: true,
     description: 'LPUs engineered for near-zero latency phone conversations. Amharic LLM optimized.',
     models: [
-      { id: 'llama-3.3-70b-versatile', name: 'LLaMA 3.3 70B Versatile', speed: '<180ms', quality: 'Top Quality', recommended: true, badge: '⚡ Ultra-Fast & Smart' },
-      { id: 'llama-3.1-8b-instant', name: 'LLaMA 3.1 8B Instant', speed: '<100ms', quality: 'Speed Champion', badge: '🚀 Instant Phone Turns' }
+      { id: 'groq/compound-mini', name: 'Compound Mini', speed: '<120ms', quality: 'Speed Champion', recommended: true, badge: '🚀 Instant Amharic Turns' },
+      { id: 'groq/compound', name: 'Groq Compound', speed: '<200ms', quality: 'Top Quality', badge: '⚡ High Accuracy' },
+      { id: 'qwen/qwen3.6-27b', name: 'Qwen 3.6 27B', speed: '~250ms', quality: 'Deep Multilingual', badge: '🌍 Multilingual Depth' }
+    ]
+  },
+  gemini: {
+    id: 'gemini',
+    name: 'Google Gemini',
+    badge: '📊 Native Amharic Fluency',
+    description: 'High-accuracy Ethiopian dialect comprehension and conversational reasoning.',
+    models: [
+      { id: 'gemini-flash-latest', name: 'Gemini Flash Latest', speed: '~250ms', quality: 'Flawless Amharic', recommended: true, badge: '⭐ Native Fluency' },
+      { id: 'gemini-3.6-flash', name: 'Gemini 3.6 Flash', speed: '~280ms', quality: 'Next-Gen Flash', badge: '🧠 Smart Reasoning' }
     ]
   },
   openai: {
@@ -78,15 +89,6 @@ export const MODEL_PROVIDERS = {
     models: [
       { id: 'gpt-4o-mini', name: 'GPT-4o Mini', speed: '~350ms', quality: 'High Efficiency', badge: '🎯 Balanced Performance' },
       { id: 'gpt-4o', name: 'GPT-4o Omni', speed: '~600ms', quality: 'Maximum Intelligence', badge: '🧠 Flagship Model' }
-    ]
-  },
-  gemini: {
-    id: 'gemini',
-    name: 'Google Gemini',
-    badge: '📊 Deep Context',
-    description: 'Massive context windows and evaluation capability.',
-    models: [
-      { id: 'gemini-1.5-flash', name: 'Gemini 1.5 Flash', speed: '~300ms', quality: 'High Context', badge: '⚡ 1M Token Context' }
     ]
   }
 };

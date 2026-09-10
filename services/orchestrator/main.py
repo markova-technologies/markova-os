@@ -3808,7 +3808,7 @@ async def create_test_call(agent_id: str, request: Request):
             "voice_provider": "edge_tts",
             "voice_id": "am-ET-MekdesNeural",
             "model_provider": "groq",
-            "model_id": "llama-3.3-70b-versatile"
+            "model_id": "groq/compound-mini"
         }
         
     session_id = str(uuid.uuid4())
@@ -3819,6 +3819,15 @@ async def create_test_call(agent_id: str, request: Request):
     }
     
     return {"session_id": session_id}
+
+_GREETING_AUDIO_CACHE: Dict[str, bytes] = {}
+_NOISE_FILTER_SET = {
+    "[noise]", "(noise)", "[silence]", "(silence)", 
+    "[cough]", "(cough)", "[laughter]", "(laughter)", 
+    "[clears throat]", "(clears throat)", "[gasp]", 
+    "[music]", "(music)", "[applause]", "(applause)",
+    "[inaudible]", "(inaudible)", "...", "…", "noise"
+}
 
 @app.websocket("/ws/agent-test/{session_id}")
 async def agent_test_ws(websocket: WebSocket, session_id: str):
@@ -3835,12 +3844,20 @@ async def agent_test_ws(websocket: WebSocket, session_id: str):
     
     await voice_session.start(session_id, session_data["config"])
     
-    # Send welcoming greeting upon connection
+    # Send welcoming greeting upon connection (zero-latency cached)
     try:
         greeting = "ሰላም! እኔ ማርኮቫ ነኝ፤ እንኳን ደህና መጡ። እንዴት ልርዳዎት?"
         await websocket.send_json({"type": "transcript", "text": greeting, "role": "assistant"})
-        async for chunk in voice_session._synthesize_tts(greeting):
-            await websocket.send_bytes(chunk)
+        voice_id = session_data.get("config", {}).get("voice_id", "am-ET-MekdesNeural")
+        if voice_id in _GREETING_AUDIO_CACHE:
+            await websocket.send_bytes(_GREETING_AUDIO_CACHE[voice_id])
+        else:
+            cached_audio = bytearray()
+            async for chunk in voice_session._synthesize_tts(greeting):
+                cached_audio.extend(chunk)
+                await websocket.send_bytes(chunk)
+            if cached_audio:
+                _GREETING_AUDIO_CACHE[voice_id] = bytes(cached_audio)
     except Exception as greet_err:
         logger.warning("greeting_synthesis_failed", error=str(greet_err))
     
@@ -3862,9 +3879,14 @@ async def agent_test_ws(websocket: WebSocket, session_id: str):
                     transcript = raw_text
 
             if transcript and transcript.strip():
-                await websocket.send_json({"type": "transcript", "text": transcript.strip(), "role": "user"})
+                clean_t = transcript.strip()
+                if clean_t.lower() in _NOISE_FILTER_SET:
+                    logger.info("ignored_ambient_noise", text=clean_t)
+                    continue
+
+                await websocket.send_json({"type": "transcript", "text": clean_t, "role": "user"})
                 
-                async for chunk in voice_session.process_text(transcript.strip()):
+                async for chunk in voice_session.process_text(clean_t):
                     await websocket.send_bytes(chunk)
                     
                 if voice_session.conversation_history:

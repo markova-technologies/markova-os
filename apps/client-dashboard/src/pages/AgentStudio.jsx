@@ -155,7 +155,7 @@ const AgentStudio = () => {
           voice_provider: 'edge_tts',
           voice_id: 'am-ET-MekdesNeural',
           model_provider: 'groq',
-          model_id: 'llama-3.3-70b-versatile',
+          model_id: 'groq/compound-mini',
           team_id: commanderTeam.id,
           temperature: 0.3,
           stt_provider: 'elevenlabs_scribe',
@@ -290,7 +290,7 @@ const AgentStudio = () => {
       voiceProvider: editingAgent.voice_provider || 'edge_tts',
       voiceId: editingAgent.voice_id || 'am-ET-MekdesNeural',
       modelProvider: editingAgent.model_provider || 'groq',
-      modelId: editingAgent.model_id || 'llama-3.3-70b-versatile',
+      modelId: editingAgent.model_id || 'groq/compound-mini',
       temperature: editingAgent.temperature ?? 0.3,
       sttProvider: editingAgent.stt_provider || 'elevenlabs_scribe',
       exportedAt: new Date().toISOString(),
@@ -314,7 +314,7 @@ const AgentStudio = () => {
         voice_provider: 'edge_tts',
         voice_id: 'am-ET-MekdesNeural',
         model_provider: 'groq',
-        model_id: 'llama-3.3-70b-versatile'
+        model_id: 'groq/compound-mini'
       };
       await startSession(targetAgent);
       setIsListeningForSpeech(true);
@@ -415,7 +415,7 @@ const AgentStudio = () => {
         voice_provider: editingAgent.voice_provider || 'edge_tts',
         voice_id: editingAgent.voice_id || 'am-ET-MekdesNeural',
         model_provider: editingAgent.model_provider || 'groq',
-        model_id: editingAgent.model_id || 'llama-3.3-70b-versatile',
+        model_id: editingAgent.model_id || 'groq/compound-mini',
         temperature: editingAgent.temperature !== undefined ? parseFloat(editingAgent.temperature) : 0.3,
         stt_provider: editingAgent.stt_provider || 'elevenlabs_scribe',
         language: 'am'
@@ -612,7 +612,7 @@ const AgentStudio = () => {
               voice_provider: 'edge_tts',
               voice_id: 'am-ET-MekdesNeural',
               model_provider: 'groq',
-              model_id: 'llama-3.3-70b-versatile',
+              model_id: 'groq/compound-mini',
               temperature: 0.3,
               stt_provider: 'elevenlabs_scribe',
               prompt: ''
@@ -707,7 +707,7 @@ const AgentStudio = () => {
     const currentVoiceProvider = editingAgent.voice_provider || 'edge_tts';
     const currentVoiceId = editingAgent.voice_id || 'am-ET-MekdesNeural';
     const currentModelProvider = editingAgent.model_provider || 'groq';
-    const currentModelId = editingAgent.model_id || 'llama-3.3-70b-versatile';
+    const currentModelId = editingAgent.model_id || 'groq/compound-mini';
     const currentTemperature = editingAgent.temperature ?? 0.3;
     const currentSTT = editingAgent.stt_provider || 'elevenlabs_scribe';
 

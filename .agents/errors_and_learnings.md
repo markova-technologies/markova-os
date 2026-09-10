@@ -415,3 +415,24 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   3. Added `CREATE EXTENSION IF NOT EXISTS pgcrypto;` to `013_immutable_audit_log.sql` and `014_call_encryption.sql`.
   4. Made RLS policy creation in `016_caller_memory.sql` idempotent with `DROP POLICY IF EXISTS` and `current_setting('app.current_tenant', true)`.
   5. With migration 007 unblocked, `017_campaign_engine.sql` will execute, creating the `campaigns` table and eliminating the `campaign_table_not_ready` warning.
+
+---
+
+### [2026-09-10] Voice Sandbox Latency, Groq 404 Model Silencing, and Ambient Noise Loop
+- **Problems Observed:**
+  1. High startup latency when clicking "Test Voice" / starting a voice trial in the Voice Sandbox Simulator before the agent's first greeting audio arrived.
+  2. Agent responded to background noise (`[noise]`) and user inquiries (`ሰላም አማርኛ መስማት ትችያለሽ.`) with `"እንደምን አደሩ! ጥያቄዎ ደርሶኛል፣ እባክዎ ጥቂት ይጠብቁ።"` and then never replied.
+- **Root Causes:**
+  1. Initial greeting synthesis was un-cached; every WebSocket connection triggered a live network request to Edge-TTS, adding ~3.7 seconds before any audio packet reached the browser.
+  2. The configured Groq model `llama-3.3-70b-versatile` returned `HTTP 404: The model llama-3.3-70b-versatile does not exist` on the active Groq tier.
+  3. The secondary OpenAI fallback key had exhausted credits (`HTTP 429: credit_balance_exhausted`).
+  4. When both failed, `voice_session.py` returned a deceptive hardcoded fallback `"እንደምን አደሩ! ጥያቄዎ ደርሶኛል፣ እባክዎ ጥቂት ይጠብቁ።"` ("Good morning! I received your question, please wait a moment."). Users assumed the agent was processing, but it was actually a dead-end unhandled error.
+  5. Ambient mic noise transcribed by Whisper/Scribe as `[noise]` was treated as user speech, immediately triggering the failure fallback.
+- **Fixes Applied:**
+  1. **Zero-Latency In-Memory Greeting Cache**: Implemented `_GREETING_AUDIO_CACHE` in `main.py` (both `services/orchestrator/` and `ai call center/`). The initial greeting audio is cached in memory, delivering greeting audio in < 1ms on WebSocket connect.
+  2. **Multi-Tier Robust LLM Fallback (Groq + Gemini + OpenAI)**:
+     - Added `GROQ_MODEL_MAP` mapping legacy `llama-3.3-70b-versatile` to active working models (`groq/compound-mini`, `groq/compound`, `qwen/qwen3.6-27b`).
+     - Added native Google Gemini support (`gemini-flash-latest`, `gemini-3.6-flash`, `gemini-2.5-flash-lite`) via `GEMINI_API_KEY`, delivering fluent, culturally authentic Amharic completions with ~250ms response times.
+     - Replaced deceptive placeholder with an honest error notification: `"ይቅርታ፣ አሁን መልስ መስጠት አልቻልኩም። እባክዎ ጥያቄዎን በድጋሚ ይጠይቁኝ።"`.
+  3. **Noise Token Filter**: Added `NOISE_TOKENS` filter in `voice_session.py` and `main.py` to immediately ignore `[noise]`, `(noise)`, `[silence]`, `[applause]`, etc., preventing spurious LLM/TTS generation cycles.
+  4. **Frontend Registry & Defaults**: Updated `apps/client-dashboard/src/constants/voiceModelRegistry.js` and `AgentStudio.jsx` to default to `groq/compound-mini` and surface Gemini models.

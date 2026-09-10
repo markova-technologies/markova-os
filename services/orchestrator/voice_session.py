@@ -19,6 +19,22 @@ logger = structlog.get_logger("markova.voice_session")
 
 AMHARIC_PROMPT_HINT = "ሰላም የደንበኞች አገልግሎት ድጋፍ ነኝ። ሶፋ ወንበር አልጋ ዋጋ ክፍያ"
 
+GROQ_MODEL_MAP = {
+    "llama-3.3-70b-versatile": "groq/compound-mini",
+    "llama-3.1-70b-versatile": "groq/compound-mini",
+    "llama-3.1-8b-instant": "groq/compound-mini",
+    "llama3-70b-8192": "groq/compound-mini",
+    "llama3-8b-8192": "groq/compound-mini",
+}
+
+NOISE_TOKENS = {
+    "[noise]", "(noise)", "[silence]", "(silence)", 
+    "[cough]", "(cough)", "[laughter]", "(laughter)", 
+    "[clears throat]", "(clears throat)", "[gasp]", 
+    "[music]", "(music)", "[applause]", "(applause)",
+    "[inaudible]", "(inaudible)", "...", "…", "noise"
+}
+
 
 class VoiceSession:
     def __init__(self, http_client: Optional[httpx.AsyncClient] = None):
@@ -32,6 +48,7 @@ class VoiceSession:
         # Provider keys from environment
         self.elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY", "")
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY", "")
         self.openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
     async def start(self, session_id: str, config: Dict[str, Any]):
@@ -128,10 +145,12 @@ class VoiceSession:
 
     async def process_text(self, text: str) -> AsyncGenerator[bytes, None]:
         """Generates LLM response and streams synthesized TTS audio bytes back."""
-        if not text or not text.strip():
+        cleaned = text.strip() if text else ""
+        if not cleaned or cleaned.lower() in NOISE_TOKENS:
+            logger.info("ignoring_noise_transcript", session_id=self.session_id, text=cleaned)
             return
 
-        self.conversation_history.append({"role": "user", "content": text.strip()})
+        self.conversation_history.append({"role": "user", "content": cleaned})
 
         # 1. Generate text response via LLM
         assistant_reply = await self._generate_llm_response()
@@ -143,32 +162,84 @@ class VoiceSession:
             yield audio_chunk
 
     async def _generate_llm_response(self) -> str:
-        """Calls Groq or OpenAI chat completions API."""
+        """Calls Groq, Gemini, or OpenAI chat completions API with automatic model mapping and fallbacks."""
         model_provider = (self.config.get("model_provider") or "groq").lower()
-        model_id = self.config.get("model_id") or "llama-3.3-70b-versatile"
+        requested_model = self.config.get("model_id") or "groq/compound-mini"
         temperature = float(self.config.get("temperature", 0.3))
 
-        # Groq path
+        # 1. Groq path (primary for voice due to ultra-low latency)
         if (model_provider == "groq" or self.groq_api_key) and not self.groq_api_key.startswith("your_"):
-            try:
-                payload = {
-                    "model": model_id if "llama" in model_id.lower() else "llama-3.3-70b-versatile",
-                    "messages": self.conversation_history[-10:],
-                    "temperature": temperature,
-                    "max_tokens": 150
-                }
-                resp = await self.http_client.post(
-                    "https://api.groq.com/openai/v1/chat/completions",
-                    headers={"Authorization": f"Bearer {self.groq_api_key}", "Content-Type": "application/json"},
-                    json=payload,
-                    timeout=15.0
-                )
-                if resp.status_code == 200:
-                    return resp.json()["choices"][0]["message"]["content"].strip()
-            except Exception as e:
-                logger.warning("llm_groq_failed", error=str(e))
+            mapped_model = GROQ_MODEL_MAP.get(requested_model, requested_model)
+            groq_candidates = [mapped_model]
+            for alt in ["groq/compound-mini", "groq/compound", "qwen/qwen3.6-27b"]:
+                if alt not in groq_candidates:
+                    groq_candidates.append(alt)
 
-        # OpenAI fallback
+            for g_model in groq_candidates:
+                try:
+                    payload = {
+                        "model": g_model,
+                        "messages": self.conversation_history[-10:],
+                        "temperature": temperature,
+                        "max_tokens": 150
+                    }
+                    resp = await self.http_client.post(
+                        "https://api.groq.com/openai/v1/chat/completions",
+                        headers={"Authorization": f"Bearer {self.groq_api_key}", "Content-Type": "application/json"},
+                        json=payload,
+                        timeout=12.0
+                    )
+                    if resp.status_code == 200:
+                        content = resp.json()["choices"][0]["message"]["content"].strip()
+                        if content:
+                            return content
+                    else:
+                        logger.warning("groq_model_attempt_failed", model=g_model, status=resp.status_code, body=resp.text[:150])
+                except Exception as e:
+                    logger.warning("groq_model_exception", model=g_model, error=str(e))
+
+        # 2. Google Gemini fallback / direct provider (flawless native Amharic capability)
+        if self.gemini_api_key and not self.gemini_api_key.startswith("your_"):
+            gemini_models = ["gemini-flash-latest", "gemini-3.6-flash", "gemini-2.5-flash-lite"]
+            system_text = ""
+            contents = []
+            for msg in self.conversation_history[-10:]:
+                if msg["role"] == "system":
+                    system_text = msg["content"]
+                elif msg["role"] == "user":
+                    contents.append({"role": "user", "parts": [{"text": msg["content"]}]})
+                elif msg["role"] == "assistant":
+                    contents.append({"role": "model", "parts": [{"text": msg["content"]}]})
+
+            for g_model in gemini_models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{g_model}:generateContent?key={self.gemini_api_key}"
+                    gemini_payload = {
+                        "contents": contents,
+                        "generationConfig": {
+                            "maxOutputTokens": 150,
+                            "temperature": temperature
+                        }
+                    }
+                    if system_text:
+                        gemini_payload["system_instruction"] = {"parts": [{"text": system_text}]}
+
+                    resp = await self.http_client.post(url, json=gemini_payload, timeout=12.0)
+                    if resp.status_code == 200:
+                        candidates = resp.json().get("candidates", [])
+                        if candidates:
+                            parts = candidates[0].get("content", {}).get("parts", [])
+                            if parts and "text" in parts[0]:
+                                text_reply = parts[0]["text"].strip()
+                                if text_reply:
+                                    logger.info("gemini_llm_success", model=g_model)
+                                    return text_reply
+                    else:
+                        logger.warning("gemini_model_attempt_failed", model=g_model, status=resp.status_code, body=resp.text[:150])
+                except Exception as e:
+                    logger.warning("gemini_model_exception", model=g_model, error=str(e))
+
+        # 3. OpenAI fallback
         if self.openai_api_key and not self.openai_api_key.startswith("your_"):
             try:
                 payload = {
@@ -181,15 +252,19 @@ class VoiceSession:
                     "https://api.openai.com/v1/chat/completions",
                     headers={"Authorization": f"Bearer {self.openai_api_key}", "Content-Type": "application/json"},
                     json=payload,
-                    timeout=15.0
+                    timeout=12.0
                 )
                 if resp.status_code == 200:
                     return resp.json()["choices"][0]["message"]["content"].strip()
+                else:
+                    logger.warning("openai_failed", status=resp.status_code, body=resp.text[:150])
             except Exception as e:
                 logger.warning("llm_openai_failed", error=str(e))
 
-        # Default fallback if LLM is unavailable
-        return "እንደምን አደሩ! ጥያቄዎ ደርሶኛል፣ እባክዎ ጥቂት ይጠብቁ።"
+        # Emergency Fallback if all LLM providers fail
+        logger.error("all_llm_providers_failed", session_id=self.session_id)
+        return "ይቅርታ፣ አሁን መልስ መስጠት አልቻልኩም። እባክዎ ጥያቄዎን በድጋሚ ይጠይቁኝ።"
+
 
     async def _synthesize_tts(self, text: str) -> AsyncGenerator[bytes, None]:
         """Synthesizes speech using edge-tts (primary) or ElevenLabs / gTTS."""
