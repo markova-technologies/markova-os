@@ -280,3 +280,27 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
      - Added a `demo-token` bypass in `services/api-gateway/src/auth.middleware.ts` to seamlessly authenticate sandbox test sessions with an enterprise test context.
      - Updated `apps/client-dashboard/src/api/client.js` request interceptor to automatically attach `x-company-id` and `x-tenant-id` on every outgoing API call.
 
+---
+
+### [2026-09-10] Playground to Production Promotion & Render Scalable Deployment (Phases 1-4)
+- **Problem & Architectural Risks:**
+  1. Production multi-tenant orchestrator (`services/orchestrator/main.py`) was not deployed on Render, leaving only the experimental playground running in the cloud.
+  2. `services/orchestrator/Dockerfile` had hardcoded `PORT=6000`, failing Render's dynamic `$PORT` injection (10000).
+  3. `main.py` raised a hard `RuntimeError` at module import time if `DATABASE_URL` was missing, causing initial Render sync crashes before secrets were configured.
+  4. `services/orchestrator/requirements.txt` contained duplicate entries and conflicting OpenTelemetry pins (`0.46b0` vs `0.50b0`).
+  5. FreeSWITCH dialplans and carrier configs were unmanaged in the playground folder without documentation.
+  6. RAG knowledge data was hardcoded as a static GM Furniture JSON in the playground rather than being a multi-tenant ingestible seed.
+- **Resolution & Learnings:**
+  1. **Phase 1 (Render Deployment & Scaling Parity):**
+     - Updated `services/orchestrator/Dockerfile` to use `PORT=10000`, `EXPOSE 10000`, and dynamic start command: `uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000} --workers ${WEB_CONCURRENCY:-1}`.
+     - On Render Free Tier, `WEB_CONCURRENCY` defaults to 1 (~180MB RAM, safe for 512MB limit). Upgrading to Starter/Standard plans scales CPU workers seamlessly via `WEB_CONCURRENCY=2` or `4` with zero code changes.
+     - Made `DATABASE_URL` optional at import time with memory sandbox fallback, added `statement_cache_size=0` for Supabase port 6543 PgBouncer compatibility, and enabled configurable pool sizes via `DB_POOL_MIN_SIZE` (default 1) and `DB_POOL_MAX_SIZE` (default 5).
+     - Bundled SQL migrations into `services/orchestrator/migrations_sql` and defined root `render.yaml` with `/health` check.
+  2. **Phase 2 (FreeSWITCH Infrastructure Organization):**
+     - Consolidated FreeSWITCH configs, dialplans (`default.xml`, `public.xml`), scripts (`install_freeswitch.sh`, `setup_firewall.sh`), and SIP profiles into `infrastructure/telephony/freeswitch/` with a comprehensive `README.md`.
+  3. **Phase 3 (Barge-In Engine):**
+     - Created `services/orchestrator/barge_in.py` (`TelephonyBargeInController`) with per-call tracking, VMD arming/disarming, and `uuid_break` execution. Added graceful degradation when FreeSWITCH/greenswitch is absent, and exposed `POST /v1/calls/{call_id}/barge-in`.
+  4. **Phase 4 (Multi-Tenant Knowledge Seed Data):**
+     - Moved `knowledge_base.json` to `services/knowledge-service/seed_data/gm_furniture.json`.
+     - Implemented `POST /api/knowledge/seed` in `knowledge-service` for tenant-isolated RAG seeding.
+     - Confirmed e-commerce artifacts (`commerce.py`, `commerce_agent.py`) remain strictly in the playground as demo references.
