@@ -26,17 +26,13 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB hard limit
 
 app = FastAPI(title="Markova Knowledge Service")
 
-_ALLOWED_ORIGINS = [
-    o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",")
-    if o.strip()
-] or ["http://localhost:5173", "http://localhost:3000"]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ALLOWED_ORIGINS,
+    allow_origin_regex=r"^https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -405,6 +401,121 @@ async def search_knowledge(
     except Exception as e:
         logger.error("search_error", error=str(e))
         raise HTTPException(status_code=500, detail="Internal server error")
+
+class SeedRequest(BaseModel):
+    template: Optional[str] = "gm_furniture"
+    source_name: Optional[str] = "Sample Knowledge Base (GM Furniture)"
+
+
+@app.post("/api/knowledge/seed")
+async def seed_knowledge_base(
+    payload: SeedRequest = SeedRequest(),
+    x_company_id: str = Header(..., alias="x-company-id"),
+    x_user_id: Optional[str] = Header(None, alias="x-user-id"),
+):
+    """
+    Seed a sample knowledge base (e.g. GM Furniture) into the tenant's knowledge store.
+    This enables testing RAG without needing to upload custom documents first.
+    """
+    if not _db_pool:
+        raise HTTPException(status_code=503, detail="Database pool not ready")
+
+    template_file = os.path.join(os.path.dirname(__file__), "seed_data", f"{payload.template}.json")
+    if not os.path.exists(template_file):
+        raise HTTPException(status_code=404, detail=f"Seed template '{payload.template}' not found")
+
+    with open(template_file, "r", encoding="utf-8") as f:
+        raw_data = json.load(f)
+
+    # Convert structured JSON into digestible semantic text passages for RAG chunks
+    passages = []
+    
+    # 1. Company overview & policies
+    company = raw_data.get("company", {})
+    if company:
+        comp_text = (
+            f"Company: {company.get('name')} ({company.get('name_amharic')})\n"
+            f"Description: {company.get('description')}\n"
+            f"Factory Location: {company.get('factory')}\n"
+            f"Working Hours: {company.get('working_hours')}\n"
+            f"Warranty: {company.get('warranty')}\n"
+            f"Custom Orders: {company.get('custom_orders')}\n"
+            f"Payment Methods: {', '.join(company.get('payment_methods', []))}\n"
+        )
+        passages.append(comp_text)
+
+    # 2. Showrooms
+    for sr in raw_data.get("showrooms", []):
+        passages.append(
+            f"Showroom: {sr.get('name')} ({sr.get('name_amharic')})\n"
+            f"Location: {sr.get('location')} ({sr.get('location_amharic')})\n"
+            f"Phone: {sr.get('phone')}\n"
+            f"Hours: {sr.get('working_hours')}"
+        )
+
+    # 3. Product categories and items
+    for cat in raw_data.get("categories", []):
+        cat_name = cat.get("name", "Product Category")
+        for item in cat.get("items", []):
+            item_text = (
+                f"Product: {item.get('name')} ({item.get('name_amharic')})\n"
+                f"Category: {cat_name}\n"
+                f"Price: {item.get('price_etb')} ETB\n"
+                f"Material: {item.get('material', 'Standard')}\n"
+                f"Dimensions: {item.get('dimensions', 'Standard')}\n"
+                f"Description: {item.get('description')}"
+            )
+            passages.append(item_text)
+
+    async with _db_pool.acquire() as conn:
+        async with conn.transaction():
+            # 1. Create Knowledge Source
+            source = await conn.fetchrow(
+                """INSERT INTO knowledge_sources (company_id, type, name, status, config)
+                   VALUES ($1, 'template_seed', $2, 'ready', $3)
+                   RETURNING id, name, type, status""",
+                uuid.UUID(x_company_id), payload.source_name, json.dumps({"template": payload.template})
+            )
+            source_id = source["id"]
+
+            # 2. Create Document record
+            doc = await conn.fetchrow(
+                """INSERT INTO knowledge_documents (source_id, file_name, file_path, file_size, status)
+                   VALUES ($1, $2, $3, $4, 'ready')
+                   RETURNING id""",
+                source_id, f"{payload.template}.json", template_file, os.path.getsize(template_file)
+            )
+            doc_id = doc["id"]
+
+            # 3. Insert Chunks and queue for vector embeddings
+            inserted_chunks = 0
+            for passage in passages:
+                piece = passage.strip()
+                if not piece:
+                    continue
+                chunk_row = await conn.fetchrow(
+                    """INSERT INTO knowledge_chunks (document_id, content, company_id)
+                       VALUES ($1, $2, $3) RETURNING id""",
+                    doc_id, piece, uuid.UUID(x_company_id)
+                )
+                chunk_id = chunk_row["id"]
+                _embedding_queue.put_nowait({
+                    "chunk_id": chunk_id,
+                    "content": piece,
+                    "company_id": x_company_id
+                })
+                inserted_chunks += 1
+
+    return {
+        "status": "success",
+        "source_id": str(source_id),
+        "document_id": str(doc_id),
+        "source_name": payload.source_name,
+        "template": payload.template,
+        "chunks_indexed": inserted_chunks,
+        "message": f"Successfully seeded {inserted_chunks} knowledge chunks for tenant {x_company_id}"
+    }
+
 
 @app.get("/health")
 def health():
