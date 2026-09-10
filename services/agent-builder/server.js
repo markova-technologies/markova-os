@@ -15,7 +15,8 @@ app.use(express.json());
 
 // Postgres Connection Pool with retries
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 
 const tenantDb = new TenantDb(pool);
@@ -30,7 +31,7 @@ async function connectDb() {
       console.log('✅ Agent Builder Service connected to PostgreSQL');
       return;
     } catch (err) {
-      console.log(`⚠️ Database connection attempt ${i + 1} failed. Retrying in 3000ms...`);
+      console.log(`⚠️ Database connection attempt ${i + 1} failed (${err.message}). Retrying in 3000ms...`);
       await new Promise(res => setTimeout(res, 3000));
     }
   }

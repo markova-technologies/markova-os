@@ -19,7 +19,8 @@ app.use(requestLogger);
 
 // Postgres Connection Pool with retries
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
 });
 const tenantDb = new TenantDb(pool);
 
@@ -44,7 +45,7 @@ async function initialize() {
       console.log('✅ Tool Engine connected to PostgreSQL');
       break;
     } catch (err) {
-      console.log(`⚠️ Database connection attempt ${i + 1} failed. Retrying in 3000ms...`);
+      console.log(`⚠️ Database connection attempt ${i + 1} failed (${err.message}). Retrying in 3000ms...`);
       await new Promise(res => setTimeout(res, 3000));
     }
   }
@@ -60,9 +61,10 @@ async function initialize() {
       await redisClient.connect();
       redisConnected = true;
       console.log('✅ Tool Engine connected to Redis');
+      startRetryWorker();
       break;
     } catch (err) {
-      console.log(`⚠️ Redis connection attempt ${i + 1} failed. Retrying in 3000ms...`);
+      console.log(`⚠️ Redis connection attempt ${i + 1} failed (${err.message}). Retrying in 3000ms...`);
       await new Promise(res => setTimeout(res, 3000));
     }
   }
@@ -132,69 +134,72 @@ async function queueRetry(companyId, toolId, payload, attempt = 1) {
   console.log(`⏳ Enqueued tool retry job (Attempt #${attempt}) for tool ${toolId}`);
 }
 
-// Background retry loop (runs every 10 seconds)
-setInterval(async () => {
-  try {
-    const queueKey = 'tool_retry_queue';
-    const jobRaw = await redisClient.lPop(queueKey);
-    if (!jobRaw) return;
-
-    const job = JSON.parse(jobRaw);
-    console.log(`⚙️ Processing tool retry job (Attempt #${job.attempt}) for tool ${job.toolId}`);
-
-    const ctx = { tenantId: job.companyId, isServiceAccount: true };
-
-    const result = await tenantDb.query(
-      ctx,
-      'SELECT id, type, name, webhook_url, method FROM tools WHERE id = $1',
-      [job.toolId]
-    );
-
-    if (result.rows.length === 0) {
-      console.log(`❌ Tool ${job.toolId} no longer exists. Skipping retry.`);
-      return;
-    }
-
-    const tool = result.rows[0];
-    const pluginType = tool.type || 'webhook';
-    const plugin = plugins[pluginType];
-
-    if (!plugin) {
-      console.log(`❌ Unsupported tool type: ${pluginType}. Skipping retry.`);
-      return;
-    }
-
+// Background retry loop (runs every 10 seconds once Redis connects)
+function startRetryWorker() {
+  setInterval(async () => {
     try {
-      await plugin.execute(tool, job.payload);
-      console.log(`✅ Tool ${tool.name} retry succeeded on attempt #${job.attempt}`);
-      
-      // Log Audit Log Success
-      await tenantDb.query(
+      if (!redisClient.isOpen) return;
+      const queueKey = 'tool_retry_queue';
+      const jobRaw = await redisClient.lPop(queueKey);
+      if (!jobRaw) return;
+
+      const job = JSON.parse(jobRaw);
+      console.log(`⚙️ Processing tool retry job (Attempt #${job.attempt}) for tool ${job.toolId}`);
+
+      const ctx = { tenantId: job.companyId, isServiceAccount: true };
+
+      const result = await tenantDb.query(
         ctx,
-        `INSERT INTO audit_logs (company_id, action, entity_type, entity_id) 
-         VALUES ($1, $2, $3, $4)`,
-        [job.companyId, `TOOL_RETRY_SUCCESS_A${job.attempt}`, 'tool', tool.id]
+        'SELECT id, type, name, webhook_url, method FROM tools WHERE id = $1',
+        [job.toolId]
       );
-    } catch (err) {
-      console.log(`⚠️ Tool ${tool.name} retry attempt #${job.attempt} failed: ${err.message}`);
-      if (job.attempt < 3) {
-        // Backoff and schedule again
-        await queueRetry(job.companyId, job.toolId, job.payload, job.attempt + 1);
-      } else {
-        console.error(`❌ Tool ${tool.name} execution failed permanently after 3 attempts`);
-        // Log permanent failure
+
+      if (result.rows.length === 0) {
+        console.log(`❌ Tool ${job.toolId} no longer exists. Skipping retry.`);
+        return;
+      }
+
+      const tool = result.rows[0];
+      const pluginType = tool.type || 'webhook';
+      const plugin = plugins[pluginType];
+
+      if (!plugin) {
+        console.log(`❌ Unsupported tool type: ${pluginType}. Skipping retry.`);
+        return;
+      }
+
+      try {
+        await plugin.execute(tool, job.payload);
+        console.log(`✅ Tool ${tool.name} retry succeeded on attempt #${job.attempt}`);
+        
+        // Log Audit Log Success
         await tenantDb.query(
           ctx,
           `INSERT INTO audit_logs (company_id, action, entity_type, entity_id) 
            VALUES ($1, $2, $3, $4)`,
-          [job.companyId, 'TOOL_FAILED_PERMANENTLY', 'tool', tool.id]
+          [job.companyId, `TOOL_RETRY_SUCCESS_A${job.attempt}`, 'tool', tool.id]
         );
+      } catch (err) {
+        console.log(`⚠️ Tool ${tool.name} retry attempt #${job.attempt} failed: ${err.message}`);
+        if (job.attempt < 3) {
+          // Backoff and schedule again
+          await queueRetry(job.companyId, job.toolId, job.payload, job.attempt + 1);
+        } else {
+          console.error(`❌ Tool ${tool.name} execution failed permanently after 3 attempts`);
+          // Log permanent failure
+          await tenantDb.query(
+            ctx,
+            `INSERT INTO audit_logs (company_id, action, entity_type, entity_id) 
+             VALUES ($1, $2, $3, $4)`,
+            [job.companyId, 'TOOL_FAILED_PERMANENTLY', 'tool', tool.id]
+          );
+        }
       }
+    } catch (error) {
+      console.error('Error running retry worker loop:', error.message);
     }
-  } catch (error) {
-    console.error('Error running retry worker loop:', error.message);
-  }
-}, 10000);
+  }, 10000);
+}
 
 function planAllowsExecution(plan) {
   const p = String(plan || 'starter').toLowerCase();
