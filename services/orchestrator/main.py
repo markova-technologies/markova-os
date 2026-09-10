@@ -364,19 +364,6 @@ async def lifespan(app: FastAPI):
                 db_pool = await asyncpg.create_pool(effective_db_url, **pool_kwargs)
                 knowledge_adapter = KnowledgeAdapter(db_pool)
                 logger.info("orchestrator_connected_to_postgresql", pool_min=DB_POOL_MIN_SIZE, pool_max=DB_POOL_MAX_SIZE)
-                
-                # Run pending database migrations
-                from migrations import run_pending_migrations
-                migrations_dir = os.getenv("MIGRATIONS_DIR")
-                if not migrations_dir:
-                    candidate = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infrastructure", "migrations")
-                    if os.path.isdir(candidate):
-                        migrations_dir = candidate
-                    else:
-                        migrations_dir = os.path.join(os.path.dirname(__file__), "migrations_sql")
-                if os.path.isdir(migrations_dir):
-                    await run_pending_migrations(db_pool, migrations_dir)
-                
                 break
             except Exception as e:
                 err_str = str(e)
@@ -393,6 +380,22 @@ async def lifespan(app: FastAPI):
                 await asyncio.sleep(wait_sec)
         else:
             logger.error("orchestrator_db_connection_failed", fallback="memory_sandbox_mode")
+
+        # Run pending database migrations
+        if db_pool:
+            try:
+                from migrations import run_pending_migrations
+                migrations_dir = os.getenv("MIGRATIONS_DIR")
+                if not migrations_dir:
+                    candidate = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infrastructure", "migrations")
+                    if os.path.isdir(candidate):
+                        migrations_dir = candidate
+                    else:
+                        migrations_dir = os.path.join(os.path.dirname(__file__), "migrations_sql")
+                if os.path.isdir(migrations_dir):
+                    await run_pending_migrations(db_pool, migrations_dir)
+            except Exception as mig_err:
+                logger.error("pending_migrations_error", error=str(mig_err))
 
     # Connect Redis (degrade gracefully if unavailable without crashing voice calls)
     for attempt in range(5):

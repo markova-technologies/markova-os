@@ -53,66 +53,88 @@ CREATE TABLE IF NOT EXISTS secret_vault (
     UNIQUE(company_id, key_name)
 );
 
--- Enable RLS on all tenant tables
+-- Enable RLS on all tenant tables (with idempotent policy drops)
 ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_agents ON agents;
 CREATE POLICY tenant_isolation_agents ON agents USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_users ON users;
 CREATE POLICY tenant_isolation_users ON users USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE calls ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_calls ON calls;
 CREATE POLICY tenant_isolation_calls ON calls USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE tools ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_tools ON tools;
 CREATE POLICY tenant_isolation_tools ON tools USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE integrations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_integrations ON integrations;
 CREATE POLICY tenant_isolation_integrations ON integrations USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE tenant_api_keys ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_tenant_api_keys ON tenant_api_keys;
 CREATE POLICY tenant_isolation_tenant_api_keys ON tenant_api_keys USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE provider_configs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_provider_configs ON provider_configs;
 CREATE POLICY tenant_isolation_provider_configs ON provider_configs USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE phone_numbers ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_phone_numbers ON phone_numbers;
 CREATE POLICY tenant_isolation_phone_numbers ON phone_numbers USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE teams ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_teams ON teams;
 CREATE POLICY tenant_isolation_teams ON teams USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE routing_rules ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_routing_rules ON routing_rules;
 CREATE POLICY tenant_isolation_routing_rules ON routing_rules USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE crm_contacts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_crm_contacts ON crm_contacts;
 CREATE POLICY tenant_isolation_crm_contacts ON crm_contacts USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE crm_opportunities ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_crm_opportunities ON crm_opportunities;
 CREATE POLICY tenant_isolation_crm_opportunities ON crm_opportunities USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE crm_appointments ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_crm_appointments ON crm_appointments;
 CREATE POLICY tenant_isolation_crm_appointments ON crm_appointments USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE connector_runs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_connector_runs ON connector_runs;
 CREATE POLICY tenant_isolation_connector_runs ON connector_runs USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE knowledge_sources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_knowledge_sources ON knowledge_sources;
 CREATE POLICY tenant_isolation_knowledge_sources ON knowledge_sources USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_audit_logs ON audit_logs;
 CREATE POLICY tenant_isolation_audit_logs ON audit_logs USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE usage_metrics ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_usage_metrics ON usage_metrics;
 CREATE POLICY tenant_isolation_usage_metrics ON usage_metrics USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE crm_leads ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_crm_leads ON crm_leads;
 CREATE POLICY tenant_isolation_crm_leads ON crm_leads USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE memory_entries ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_memory_entries ON memory_entries;
 CREATE POLICY tenant_isolation_memory_entries ON memory_entries USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE policies ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_policies ON policies;
 CREATE POLICY tenant_isolation_policies ON policies USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS tenant_isolation_subscriptions ON subscriptions;
 CREATE POLICY tenant_isolation_subscriptions ON subscriptions USING (company_id = current_setting('app.current_tenant', true)::uuid);
+

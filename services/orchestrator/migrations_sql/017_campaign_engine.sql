@@ -38,11 +38,15 @@ ALTER TABLE campaigns ENABLE ROW LEVEL SECURITY;
 ALTER TABLE campaign_contacts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE dnc_list ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS tenant_isolation_campaigns ON campaigns;
 CREATE POLICY tenant_isolation_campaigns ON campaigns
-    FOR ALL USING (company_id = current_setting('app.current_tenant')::uuid);
+    FOR ALL USING (company_id = current_setting('app.current_tenant', true)::uuid);
 
+DROP POLICY IF EXISTS tenant_isolation_campaign_contacts ON campaign_contacts;
 CREATE POLICY tenant_isolation_campaign_contacts ON campaign_contacts
-    FOR ALL USING (campaign_id IN (SELECT id FROM campaigns WHERE company_id = current_setting('app.current_tenant')::uuid));
+    FOR ALL USING (campaign_id IN (SELECT id FROM campaigns WHERE company_id = current_setting('app.current_tenant', true)::uuid));
 
+DROP POLICY IF EXISTS tenant_isolation_dnc_list ON dnc_list;
 CREATE POLICY tenant_isolation_dnc_list ON dnc_list
-    FOR ALL USING (company_id = current_setting('app.current_tenant')::uuid);
+    FOR ALL USING (company_id = current_setting('app.current_tenant', true)::uuid);
+

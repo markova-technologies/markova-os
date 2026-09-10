@@ -376,6 +376,18 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   3. Made OpenTelemetry OTLP trace exporter strictly opt-in: only initializes if `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable is explicitly provided.
   4. Added `@app.get("/")` and `@app.head("/")` returning status 200 OK and service metadata.
 
+---
 
-
-
+### [2026-09-10] Database Migration Gap: `relation "integrations" does not exist` & `relation "campaigns" does not exist`
+- **Problems Observed in Render Logs:**
+  1. `{"version": "001_enterprise_security", "error": "relation \"integrations\" does not exist", "event": "migration_failed"}`.
+  2. Because migration raised an error inside the Postgres pool connection loop, it treated the entire DB connection as failed and fell back to `memory_sandbox_mode` after 5 attempts.
+  3. Subsequent migrations (including `017_campaign_engine.sql`) were blocked, causing `campaign_processor` to fail with `relation "campaigns" does not exist`.
+- **Root Causes:**
+  1. Base tables (`companies`, `users`, `agents`, `integrations`, etc.) were defined in `infrastructure/postgres/schema.sql`, which was not included in the automated migrations directory (`migrations_sql/`). The migrations started at `001_enterprise_security.sql`, which attempted to `ALTER TABLE integrations ENABLE ROW LEVEL SECURITY` before the table was ever created.
+  2. In `main.py`, `run_pending_migrations` was coupled inside the `asyncpg.create_pool` retry loop. Any migration syntax or table error caused the healthy DB connection pool to be discarded and retry 5 times before failing over to sandbox mode.
+- **Fixes Applied:**
+  1. Created `000_base_schema.sql` in both `infrastructure/migrations/` and `services/orchestrator/migrations_sql/` containing the core platform schema (all base tables, triggers, and types), ensuring it executes first.
+  2. Updated `001_enterprise_security.sql` and `017_campaign_engine.sql` to include `DROP POLICY IF EXISTS` before each `CREATE POLICY` to make migrations 100% idempotent.
+  3. Decoupled Postgres pool connection from migration execution in `main.py`: `db_pool` connects first and stays alive, while migrations run in an isolated block that cannot kill the active pool.
+  4. Added graceful handling in `campaigns.py` for missing `campaigns` table so it sleeps 15s instead of logging error spam.

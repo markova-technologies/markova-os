@@ -179,6 +179,10 @@ async def process_campaigns(db_pool_ref):
                 await asyncio.sleep(1)
 
         except Exception as e:
-            logger.error("campaign_processor_error", error=str(e))
-        
-        await asyncio.sleep(5)
+            err_str = str(e)
+            if "relation \"campaigns\" does not exist" in err_str:
+                logger.warning("campaign_table_not_ready", hint="Waiting for campaigns table to be created by migrations")
+                await asyncio.sleep(15)
+            else:
+                logger.error("campaign_processor_error", error=err_str)
+                await asyncio.sleep(5)
