@@ -338,4 +338,24 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
     `audioop-lts; python_version >= '3.13'`
   - When pip runs on Python 3.11 (Docker), it skips `audioop-lts` cleanly, and Python uses the built-in `audioop`. When pip runs on Python 3.13+ (e.g. host development), it installs the polyfill.
 
+---
+
+### [2026-09-10] Prometheus CollectorRegistry Collision: `ValueError: Duplicated timeseries in CollectorRegistry: {'markova_active_calls'}`
+- **Problem:**
+  - On startup of `markova-orchestrator` on Render, uvicorn failed to import the application:
+    `File "/app/main.py", line 1545, in <module>`
+    `from metrics import (...)`
+    `File "/app/metrics.py", line 8, in <module>`
+    `active_calls_gauge = Gauge(...)`
+    `ValueError: Duplicated timeseries in CollectorRegistry: {'markova_active_calls'}`
+- **How it Happened:**
+  - `main.py` had declared `ACTIVE_CALLS = Gauge("markova_active_calls", ...)` at line 82.
+  - Later in the same file (line 1545), `main.py` imported `from metrics import active_calls_gauge, ...`.
+  - When `metrics.py` executed, it attempted to call `Gauge("markova_active_calls", ...)` on the default global Prometheus `REGISTRY`, which was already registered, triggering an immediate fatal `ValueError`.
+- **Lesson Learned & Fix:**
+  - 1. **Centralize Metric Declarations:** All Prometheus metrics should be defined once in `metrics.py` and imported by `main.py`.
+  - 2. **Collector Collision Guards:** In `metrics.py`, wrapped all metric definitions with safe `_get_or_create_*` helper functions that check `if name in REGISTRY._names_to_collectors: return REGISTRY._names_to_collectors[name]`. This ensures idempotency even during unit tests, hot-reloading, or multiple module imports.
+  - 3. Removed the redundant inline `from metrics import ...` at line 1545 of `main.py` and imported all metrics at the top of `main.py`.
+
+
 

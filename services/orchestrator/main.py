@@ -64,27 +64,51 @@ try:
 except ImportError:
     OTEL_AVAILABLE = False
 
-# Prometheus Metrics
+# Prometheus Metrics - imported from metrics.py to avoid registry duplicates
 try:
-    from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
-    PROMETHEUS_AVAILABLE = True
-    VOICE_CALLS_TOTAL = Counter(
-        "markova_voice_calls_total",
-        "Total inbound voice calls processed",
-        ["company_id", "status"]
-    )
-    CALL_TURN_LATENCY = Histogram(
-        "markova_call_turn_latency_seconds",
-        "End-to-end voice turn processing latency",
-        ["company_id"],
-        buckets=[0.1, 0.25, 0.5, 1.0, 2.0, 5.0]
-    )
-    ACTIVE_CALLS = Gauge(
-        "markova_active_calls",
-        "Current active voice calls"
+    from metrics import (
+        PROMETHEUS_AVAILABLE,
+        VOICE_CALLS_TOTAL,
+        CALL_TURN_LATENCY,
+        ACTIVE_CALLS,
+        active_calls_gauge,
+        llm_tokens_total,
+        turn_latency_summary,
+        redis_operations_total,
+        generate_latest,
+        CONTENT_TYPE_LATEST,
     )
 except ImportError:
-    PROMETHEUS_AVAILABLE = False
+    try:
+        from services.orchestrator.metrics import (
+            PROMETHEUS_AVAILABLE,
+            VOICE_CALLS_TOTAL,
+            CALL_TURN_LATENCY,
+            ACTIVE_CALLS,
+            active_calls_gauge,
+            llm_tokens_total,
+            turn_latency_summary,
+            redis_operations_total,
+            generate_latest,
+            CONTENT_TYPE_LATEST,
+        )
+    except ImportError:
+        PROMETHEUS_AVAILABLE = False
+        class _Noop:
+            def labels(self, **kw): return self
+            def inc(self, *a, **kw): pass
+            def dec(self, *a, **kw): pass
+            def observe(self, *a, **kw): pass
+            def set(self, *a, **kw): pass
+        VOICE_CALLS_TOTAL = _Noop()
+        CALL_TURN_LATENCY = _Noop()
+        ACTIVE_CALLS = _Noop()
+        active_calls_gauge = _Noop()
+        llm_tokens_total = _Noop()
+        turn_latency_summary = _Noop()
+        redis_operations_total = _Noop()
+        generate_latest = lambda: b""
+        CONTENT_TYPE_LATEST = "text/plain"
 
 
 semantic_cache = None
@@ -1542,12 +1566,7 @@ def split_into_sentences(text: str) -> list[str]:
     return [s.strip() for s in sentences if s.strip()]
 
 
-from metrics import (
-    active_calls_gauge,
-    llm_tokens_total,
-    turn_latency_summary,
-    redis_operations_total
-)
+# Metrics imported at module level from metrics.py
 
 # Phase 10
 from sentiment import analyze_sentiment
