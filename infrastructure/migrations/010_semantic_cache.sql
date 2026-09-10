@@ -18,6 +18,7 @@ CREATE INDEX IF NOT EXISTS semantic_cache_company_idx
     ON semantic_response_cache (company_id, expires_at);
 
 -- Auto-delete expired entries
+DROP FUNCTION IF EXISTS cleanup_semantic_cache();
 CREATE OR REPLACE FUNCTION cleanup_semantic_cache() RETURNS void AS $$
     DELETE FROM semantic_response_cache WHERE expires_at < NOW();
 $$ LANGUAGE sql;

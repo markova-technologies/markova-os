@@ -1,5 +1,7 @@
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- Add consent fields to calls table
 ALTER TABLE calls
     ADD COLUMN IF NOT EXISTS recording_consent BOOLEAN DEFAULT FALSE,

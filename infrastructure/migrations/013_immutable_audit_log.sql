@@ -4,6 +4,8 @@
 
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
 -- 1. Add chain hash column (links each entry to the previous)
 ALTER TABLE audit_logs 
     ADD COLUMN IF NOT EXISTS chain_hash TEXT,

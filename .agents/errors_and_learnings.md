@@ -391,3 +391,27 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   2. Updated `001_enterprise_security.sql` and `017_campaign_engine.sql` to include `DROP POLICY IF EXISTS` before each `CREATE POLICY` to make migrations 100% idempotent.
   3. Decoupled Postgres pool connection from migration execution in `main.py`: `db_pool` connects first and stays alive, while migrations run in an isolated block that cannot kill the active pool.
   4. Added graceful handling in `campaigns.py` for missing `campaigns` table so it sleeps 15s instead of logging error spam.
+
+---
+
+### [2026-09-10] Migration 007 Error: `column "description" of relation "roles" does not exist` Halting Campaign Migrations
+- **Problems Observed in Render Logs:**
+  1. `{"version": "007_admin_roles", "error": "column \"description\" of relation \"roles\" does not exist", "event": "migration_failed", "level": "error"}`.
+  2. Because migration 007 failed, all downstream migrations (008 through 019) halted.
+  3. Consequently, `017_campaign_engine.sql` was never applied, leaving the `campaigns` table uncreated and triggering periodic warning logs: `{"hint": "Waiting for campaigns table to be created by migrations", "event": "campaign_table_not_ready", "level": "warning"}`.
+- **Root Causes:**
+  1. In `001_enterprise_security.sql`, table `roles` was initially created with columns `(id, company_id, name, created_at)`. It lacked a `description` column.
+  2. In `007_admin_roles.sql`, the script had `CREATE TABLE IF NOT EXISTS roles (... description TEXT)`. Because `roles` already existed in Postgres, the `CREATE TABLE IF NOT EXISTS` statement was skipped, leaving `description` absent.
+  3. When `007_admin_roles.sql` then executed `INSERT INTO roles (name, description) VALUES ... ON CONFLICT (name) DO NOTHING`, Postgres failed with `column "description" of relation "roles" does not exist`. Furthermore, `roles` had a constraint on `(company_id, name)` rather than `(name)`, which would also cause `ON CONFLICT (name)` to fail.
+  4. Inspection of subsequent migrations revealed:
+     - `010_semantic_cache.sql` defined `cleanup_semantic_cache() RETURNS void`, whereas `011_semantic_cache_cleanup_fn.sql` changed return type to `RETURNS integer` without a preceding `DROP FUNCTION`, which PostgreSQL rejects.
+     - `013_immutable_audit_log.sql` and `014_call_encryption.sql` used `digest()` and encryption functions without ensuring `CREATE EXTENSION IF NOT EXISTS pgcrypto`.
+     - `016_caller_memory.sql` created RLS policy without `DROP POLICY IF EXISTS` or safe fallback for `current_setting('app.current_tenant', true)`.
+- **Fixes Applied:**
+  1. Updated `007_admin_roles.sql` in both `infrastructure/migrations/` and `services/orchestrator/migrations_sql/`:
+     - Added `ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT;`.
+     - Replaced strict `ON CONFLICT (name)` with idempotent `INSERT ... SELECT ... WHERE NOT EXISTS (SELECT 1 FROM roles WHERE roles.name = r.name AND roles.company_id IS NULL)` to support both global platform roles and company-scoped roles.
+  2. Added `DROP FUNCTION IF EXISTS cleanup_semantic_cache();` to both `010_semantic_cache.sql` and `011_semantic_cache_cleanup_fn.sql`.
+  3. Added `CREATE EXTENSION IF NOT EXISTS pgcrypto;` to `013_immutable_audit_log.sql` and `014_call_encryption.sql`.
+  4. Made RLS policy creation in `016_caller_memory.sql` idempotent with `DROP POLICY IF EXISTS` and `current_setting('app.current_tenant', true)`.
+  5. With migration 007 unblocked, `017_campaign_engine.sql` will execute, creating the `campaigns` table and eliminating the `campaign_table_not_ready` warning.

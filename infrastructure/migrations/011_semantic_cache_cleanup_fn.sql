@@ -1,6 +1,8 @@
 -- Migration 011: Add cleanup function for semantic_response_cache
 -- Called hourly by orchestrator background task
 
+DROP FUNCTION IF EXISTS cleanup_semantic_cache();
+
 CREATE OR REPLACE FUNCTION cleanup_semantic_cache()
 RETURNS integer AS $$
 DECLARE

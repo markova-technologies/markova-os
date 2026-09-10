@@ -23,5 +23,6 @@ ON caller_memory(company_id, caller_number);
 -- RLS
 ALTER TABLE caller_memory ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS tenant_isolation_caller_memory ON caller_memory;
 CREATE POLICY tenant_isolation_caller_memory ON caller_memory
-    FOR ALL USING (company_id = current_setting('app.current_tenant')::uuid);
+    FOR ALL USING (company_id = current_setting('app.current_tenant', true)::uuid);
