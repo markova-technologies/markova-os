@@ -1,0 +1,23 @@
+<include>
+  <context name="default">
+    <!-- 
+         Default Context (Internal Calls)
+         Used for registered extensions calling each other or outbound.
+    -->
+    <!-- AI Agent Extension -->
+    <extension name="ai_agent">
+      <condition field="destination_number" expression="^(8888)$">
+        <action application="answer"/>
+        <action application="lua" data="ai_agent_handler.lua"/>
+      </condition>
+    </extension>
+
+    <extension name="local_extension">
+      <condition field="destination_number" expression="^(10[0-9][0-9])$">
+        <action application="export" data="dialed_extension=$1"/>
+        <action application="user_exists" data="id=$1 domain=${domain}"/>
+        <action application="bridge" data="user/${dialed_extension}@${domain_name}"/>
+      </condition>
+    </extension>
+  </context>
+</include>

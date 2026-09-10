@@ -1,0 +1,46 @@
+<configuration name="modules.conf" description="Modules">
+  <modules>
+    <!-- Loggers -->
+    <load module="mod_console"/>
+    <load module="mod_logfile"/>
+    
+    <!-- Codecs -->
+    <load module="mod_g723_1"/>
+    <load module="mod_g729"/>
+    <load module="mod_amr"/>
+    <load module="mod_opus"/>
+    
+    <!-- Audio File Formats -->
+    <load module="mod_sndfile"/>
+    <load module="mod_native_file"/>
+    <load module="mod_shout"/>
+    
+    <!-- Languages -->
+    <load module="mod_lua"/>
+    
+    <!-- XML Interfaces -->
+    <!-- <load module="mod_xml_rpc"/> -->
+    <load module="mod_xml_curl"/>
+    <load module="mod_xml_cdr"/>
+    
+    <!-- Endpoints -->
+    <load module="mod_sofia"/>
+    <load module="mod_loopback"/>
+    
+    <!-- Applications -->
+    <load module="mod_commands"/>
+    <load module="mod_conference"/>
+    <load module="mod_dptools"/>
+    <load module="mod_expr"/>
+    <load module="mod_fifo"/>
+    <load module="mod_httapi"/>
+    <load module="mod_hash"/>
+    <load module="mod_esf"/>
+    <load module="mod_fsv"/>
+    <load module="mod_curl"/>
+    
+    <!-- Dialplan Interfaces -->
+    <load module="mod_dialplan_xml"/>
+    <load module="mod_dialplan_asterisk"/>
+  </modules>
+</configuration>
