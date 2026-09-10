@@ -183,3 +183,19 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   4. Always configure `ssl: { rejectUnauthorized: false }` for production cloud Postgres pools in Node.js when connecting to remote poolers.
   5. When using `asyncpg` with Supabase/PgBouncer poolers (port 6543), set `statement_cache_size = 0` to prevent prepared statement errors in transaction pooling mode.
   6. Render leaves services in `Failed service` state if startup crashed during an external outage; manual redeploy or a git commit touching that service's directory is required to bring it back up.
+
+---
+
+### [2026-09-10] Agent Studio Sub-tabs & Real Architecture Parity (Option A)
+- **Problem:**
+  1. Agent Studio had non-functional sub-tabs (Knowledge, Integrations, Analytics, Version History) where calls passed invalid arguments (e.g. `listKnowledgeSources('agent', id)`) or relied on hardcoded mocks.
+  2. Dropdowns in Voice and Model tabs displayed fictitious providers (`voiceflow_amharic`, `playht`) that were unsupported by the telephony orchestrator.
+  3. New tenant organizations had empty teams sidebar without a default Commander Agent, requiring manual configuration before testing.
+  4. Knowledge sources were disconnected from agent definitions, risking future data migration once orchestrator RAG is deployed.
+- **How it happened:**
+  - Rapid prototyping of frontend mockups bypassed API schema contracts. The backend `agent-builder` lacked endpoints for `/api/builder/teams`, `/api/builder/agents/:id/knowledge`, `/api/builder/agents/:id/tools`, and `/api/builder/agents/:id/stats`.
+- **Lesson Learned & Fix:**
+  1. Created a centralized Hexagon Architecture registry (`voiceModelRegistry.js`) so frontend dropdowns strictly mirror orchestrator capabilities (Edge-TTS `am-ET-MekdesNeural`, Groq `llama-3.3-70b-versatile`, ElevenLabs Scribe v2 STT).
+  2. Implemented Option A for knowledge association: real PostgreSQL join table (`agent_knowledge_sources`) with full attach/detach endpoints and an honest UI badge (`RAG: Pending Activation`) until orchestrator prompt injection is wired.
+  3. Implemented auto-provisioning for the Commander Agent team ("Almaz - Commander") and standard teams on first tenant load in `agent-builder`.
+  4. Built a domain-aware AI prompt suggester utility generating Amharic and bilingual Ethiopian call center archetypes with a one-click apply tray.

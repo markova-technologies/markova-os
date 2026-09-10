@@ -2761,11 +2761,11 @@ async def handle_audio_response(
             if resp.status_code == 200:
                     audio_bytes = await preprocess_audio_for_stt(resp.content, ".wav")
                     whisper_prompt = await get_agent_whisper_prompt(company_id) if company_id else None
-                    # 1. Primary: Hasab AI STT (Winner of 2026 Amharic benchmark)
-                    hasab_config = await get_provider_config(company_id, "stt", "hasab")
-                    hasab_key = (hasab_config or {}).get("api_key") or os.getenv("HASAB_API_KEY", "")
+                    # 1. Primary: ElevenLabs Scribe v2 (Winner of 2026 Amharic benchmark)
                     if DATA_RESIDENCY_MODE:
                         # INSA compliance: strictly lock to Ethiopian STT (Hasab AI)
+                        hasab_config = await get_provider_config(company_id, "stt", "hasab")
+                        hasab_key = (hasab_config or {}).get("api_key") or os.getenv("HASAB_API_KEY", "")
                         if hasab_key:
                             try:
                                 user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
@@ -2775,31 +2775,22 @@ async def handle_audio_response(
                         else:
                             logger.error("data_residency_mode_true")
                     else:
-                        if hasab_key:
+                        el_config = await get_provider_config(company_id, "stt", "elevenlabs")
+                        el_key = (el_config or {}).get("api_key") or os.getenv("ELEVENLABS_API_KEY", "")
+                        if el_key:
                             try:
-                                user_text = await _hasab_stt(audio_bytes, "audio.wav", hasab_key, "am")
+                                user_text = await _elevenlabs_stt(audio_bytes, "audio.wav", el_key, "am")
                                 logger.info("transcribed_via_primary_stt")
-                            except Exception as h_err:
-                                logger.error("hasab_ai_stt_failed", h_err=h_err)
+                            except Exception as e_err:
+                                logger.error("elevenlabs_stt_failed_e", e_err=e_err)
                         
-                        # 2. Fallback: ElevenLabs Scribe v2
-                        if not user_text:
-                            el_config = await get_provider_config(company_id, "stt", "elevenlabs")
-                            el_key = (el_config or {}).get("api_key") or os.getenv("ELEVENLABS_API_KEY", "")
-                            if el_key:
-                                try:
-                                    user_text = await _elevenlabs_stt(audio_bytes, "audio.wav", el_key, "am")
-                                    logger.info("transcribed_via_fallback_stt")
-                                except Exception as e_err:
-                                    logger.error("elevenlabs_stt_failed_e", e_err=e_err)
-
-                        # 3. Emergency Fallback: Groq Whisper / OpenAI
+                        # 2. Fallback: Groq Whisper / OpenAI
                         if not user_text:
                             stt_config = await get_provider_config(company_id, "stt", "groq")
                             stt_key = (stt_config or {}).get("api_key") or os.getenv("GROQ_API_KEY", "")
                             if stt_key:
                                 user_text = await _groq_stt("whisper-large-v3-turbo", audio_bytes, "audio.wav", stt_key, "am", prompt=whisper_prompt)
-                                logger.info("transcribed_via_emergency_fallback")
+                                logger.info("transcribed_via_fallback_stt")
                             else:
                                 openai_key = os.getenv("OPENAI_API_KEY", "")
                                 if openai_key:
@@ -3491,7 +3482,7 @@ async def handle_twilio_message(
 </Response>"""
     return PlainTextResponse(content=twiml, media_type="application/xml")
 
-<<<<<<< HEAD
+
 @app.get("/api/capabilities")
 async def list_registered_capabilities():
     """List all registered system and tenant capabilities from the kernel."""
@@ -3566,8 +3557,8 @@ agent_registry = None
 @app.on_event("startup")
 async def startup_registry():
     global agent_registry
-    if db_pool and redis_client:
-        agent_registry = AgentRegistry(redis_client, db_pool)
+    agent_registry = AgentRegistry(redis_client, db_pool)
+    if db_pool:
         await agent_registry.load_all()
 
 @app.post("/api/agents/{agent_id}/deploy")
@@ -3665,20 +3656,31 @@ async def agent_test_ws(websocket: WebSocket, session_id: str):
     
     try:
         while True:
-            data = await websocket.receive_bytes()
-            if not data:
+            message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
                 break
+
+            transcript = None
+            if "bytes" in message and message["bytes"]:
+                transcript = await voice_session.process_audio(message["bytes"])
+            elif "text" in message and message["text"]:
+                raw_text = message["text"]
+                try:
+                    payload = json.loads(raw_text)
+                    transcript = payload.get("text", "")
+                except Exception:
+                    transcript = raw_text
+
+            if transcript and transcript.strip():
+                await websocket.send_json({"type": "transcript", "text": transcript.strip(), "role": "user"})
                 
-            transcript = await voice_session.process_audio(data)
-            if transcript:
-                await websocket.send_json({"type": "transcript", "text": transcript, "role": "user"})
-                
-                async for chunk in voice_session.process_text(transcript):
+                async for chunk in voice_session.process_text(transcript.strip()):
                     await websocket.send_bytes(chunk)
                     
-                last_msg = voice_session.conversation_history[-1]
-                if last_msg["role"] == "assistant":
-                    await websocket.send_json({"type": "transcript", "text": last_msg["content"], "role": "assistant"})
+                if voice_session.conversation_history:
+                    last_msg = voice_session.conversation_history[-1]
+                    if last_msg["role"] == "assistant":
+                        await websocket.send_json({"type": "transcript", "text": last_msg["content"], "role": "assistant"})
                     
     except WebSocketDisconnect:
         logger.info(f"Test call {session_id} disconnected")

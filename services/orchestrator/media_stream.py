@@ -1,15 +1,15 @@
 import asyncio
 import json
-import base64
-import audioop
+try:
+    import audioop
+except ImportError:
+    import audioop_lts as audioop
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from adapters.stt_stream_adapter import DeepgramSTTStream
 from adapters.tts_stream_adapter import synthesize_stream_mulaw
 from vad import get_vad, EndOfUtteranceDetector
-# We need llm_stream from adapters.llm_adapters (I assume it has one, if not I'll just use a mock or build it)
-from main import get_conversation_state, _in_memory_state, _openai_chat
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -102,6 +102,7 @@ async def websocket_media_stream(websocket: WebSocket):
                 logger.info("twilio_stream_started", stream_sid=stream_sid, call_sid=call_sid)
                 
                 # Retrieve call state
+                from main import get_conversation_state
                 state = await get_conversation_state(call_sid)
                 
                 # Initialize STT stream

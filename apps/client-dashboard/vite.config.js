@@ -24,7 +24,7 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'react-router-dom', 'lucide-react'],
   },
   server: {
-    port: 3001,
+    port: 3000,
     fs: {
       // Shared UI + full docs site (embedded under /docs/*).
       allow: ['..', '../..'],

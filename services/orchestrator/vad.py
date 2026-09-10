@@ -55,7 +55,10 @@ class SileroVAD:
         """
         if not self._session:
             # Fallback to energy-based detection if model failed to load
-            import audioop
+            try:
+                import audioop
+            except ImportError:
+                import audioop_lts as audioop
             rms = audioop.rms(pcm_frame, 2)
             return rms > 300
         
@@ -116,3 +119,13 @@ class EndOfUtteranceDetector:
         self._consecutive_silent = 0
         self._speech_started = False
         self.vad.reset()
+
+
+_global_vad = None
+
+def get_vad(threshold: float = 0.5) -> SileroVAD:
+    """Returns a shared SileroVAD instance."""
+    global _global_vad
+    if _global_vad is None:
+        _global_vad = SileroVAD(threshold=threshold)
+    return _global_vad

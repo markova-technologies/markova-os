@@ -2,23 +2,23 @@
   "summary": [
     {
       "provider": "ElevenLabs (Scribe v2)",
-      "avg_wer": 68.5,
-      "avg_cer": 37.78,
-      "avg_latency": 8.64,
+      "avg_wer": 63.5,
+      "avg_cer": 31.58,
+      "avg_latency": 5.79,
       "success_rate": "5/5"
     },
     {
       "provider": "Hasab AI (Amharic STT)",
-      "avg_wer": 25.67,
-      "avg_cer": 15.27,
-      "avg_latency": 9.22,
-      "success_rate": "5/5"
+      "avg_wer": 100.0,
+      "avg_cer": 100.0,
+      "avg_latency": 0.0,
+      "success_rate": "0/5 (Failed)"
     },
     {
       "provider": "Groq (Whisper-v3-Turbo)",
-      "avg_wer": 110.0,
-      "avg_cer": 206.22,
-      "avg_latency": 9.0,
+      "avg_wer": 174.67,
+      "avg_cer": 218.8,
+      "avg_latency": 6.11,
       "success_rate": "5/5"
     }
   ],
@@ -28,25 +28,25 @@
       "ground_truth": "ሰላም እኔ ዘላለም ነኝ መረጃ ማወቅ ፈልጌ ነበረ",
       "providers": {
         "ElevenLabs (Scribe v2)": {
-          "transcription": "ሰላም እኔ ዜላለም ነኝ መረጃ ማወቅ ፈልግኝ ነበር",
-          "latency_sec": 15.336,
+          "transcription": "ሰላም እኔ ዜላለም ነኝ መረጃ ማወቅ ፈልግ የነበረ",
+          "latency_sec": 9.502,
           "status": "OK (SDK)",
           "wer": 37.5,
-          "cer": 17.39
-        },
-        "Hasab AI (Amharic STT)": {
-          "transcription": "ሰላም! እኔ ዘላለም ነኝ። መረጃ ማወቅ ፈልጌ ነበር።",
-          "latency_sec": 10.597,
-          "status": "OK",
-          "wer": 25.0,
           "cer": 13.04
         },
-        "Groq (Whisper-v3-Turbo)": {
-          "transcription": "ድፈም ፉ ጢሼ የጝ ደሕጝ ደመ ቡሚጦ",
-          "latency_sec": 15.166,
-          "status": "OK",
+        "Hasab AI (Amharic STT)": {
+          "transcription": "",
+          "latency_sec": 13.099,
+          "status": "HTTP 402: {\"success\":false,\"message\":\"Not enough tokens to process this audio\",\"metadata\":{\"required_tokens\":2",
           "wer": 100.0,
-          "cer": 95.65
+          "cer": 100.0
+        },
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "ድጋለ ስጋ ደስበለ ድጋማድ ነኝ። ተህጋ ስጋ፦ ደልጋ ድጋ ኝርበሄቪ ዻናጋዽ ድሕጋክ ድሰለ አኝ።",
+          "latency_sec": 7.781,
+          "status": "OK",
+          "wer": 175.0,
+          "cer": 178.26
         }
       }
     },
@@ -55,25 +55,25 @@
       "ground_truth": "ሰላም መረጃ ማወቅ ፈልጌ ነበረ",
       "providers": {
         "ElevenLabs (Scribe v2)": {
-          "transcription": "ሰላም በለጃሞ እፈልግ የነበረ።",
-          "latency_sec": 6.849,
+          "transcription": "ሰላም በለጃሞ እፈልግ የነበረ",
+          "latency_sec": 5.118,
           "status": "OK (SDK)",
           "wer": 80.0,
-          "cer": 53.33
+          "cer": 46.67
         },
         "Hasab AI (Amharic STT)": {
-          "transcription": "ሰላም! መረጃ ማወቅ ፈልጌ ነበር።",
-          "latency_sec": 10.244,
-          "status": "OK",
-          "wer": 20.0,
-          "cer": 13.33
-        },
-        "Groq (Whisper-v3-Turbo)": {
-          "transcription": "ድጋጋርጋር ድጋጋ።",
-          "latency_sec": 7.905,
-          "status": "OK",
+          "transcription": "",
+          "latency_sec": 7.11,
+          "status": "HTTP 402: {\"success\":false,\"message\":\"Not enough tokens to process this audio\",\"metadata\":{\"required_tokens\":2",
           "wer": 100.0,
           "cer": 100.0
+        },
+        "Groq (Whisper-v3-Turbo)": {
+          "transcription": "ኝዦዚዦ ድፋሬ፣ ዚደႦ ዚደል፣ዮ ድፖትቶ፭ች አፊና ዏደወዎፍሚ።",
+          "latency_sec": 5.677,
+          "status": "OK",
+          "wer": 140.0,
+          "cer": 206.67
         }
       }
     },
@@ -82,25 +82,25 @@
       "ground_truth": "ወንበር ፈልጌ ነበር?",
       "providers": {
         "ElevenLabs (Scribe v2)": {
-          "transcription": "ወምበር፣ ፈለጊ እምበር",
-          "latency_sec": 9.191,
+          "transcription": "ወምበር፣ ፈለግ ይነበር",
+          "latency_sec": 4.102,
           "status": "OK (SDK)",
           "wer": 100.0,
-          "cer": 60.0
+          "cer": 50.0
         },
         "Hasab AI (Amharic STT)": {
-          "transcription": "ወንበር ፈልጌ ነበር።",
-          "latency_sec": 11.139,
-          "status": "OK",
-          "wer": 33.33,
-          "cer": 10.0
+          "transcription": "",
+          "latency_sec": 8.427,
+          "status": "HTTP 402: {\"success\":false,\"message\":\"Not enough tokens to process this audio\",\"metadata\":{\"required_tokens\":2",
+          "wer": 100.0,
+          "cer": 100.0
         },
         "Groq (Whisper-v3-Turbo)": {
-          "transcription": "እናደዹሚደዻይ რጋለዚደዹሚቶም ድጋሚደሎዎ።",
-          "latency_sec": 8.098,
+          "transcription": "ድገ ድጋሚበር ነናችገዎች። ድጋ። ነኝ። ድጉንበር ድጋ።",
+          "latency_sec": 7.486,
           "status": "OK",
-          "wer": 100.0,
-          "cer": 240.0
+          "wer": 233.33,
+          "cer": 230.0
         }
       }
     },
@@ -110,24 +110,24 @@
       "providers": {
         "ElevenLabs (Scribe v2)": {
           "transcription": "የሶፋ ዋጋ ስንተ ነው?",
-          "latency_sec": 5.877,
+          "latency_sec": 5.349,
           "status": "OK (SDK)",
           "wer": 50.0,
           "cer": 18.18
         },
         "Hasab AI (Amharic STT)": {
-          "transcription": "የሶፋው ዋጋ ስንት ነው?",
-          "latency_sec": 7.297,
-          "status": "OK",
-          "wer": 0.0,
-          "cer": 0.0
+          "transcription": "",
+          "latency_sec": 4.309,
+          "status": "HTTP 402: {\"success\":false,\"message\":\"Not enough tokens to process this audio\",\"metadata\":{\"required_tokens\":2",
+          "wer": 100.0,
+          "cer": 100.0
         },
         "Groq (Whisper-v3-Turbo)": {
-          "transcription": "ወምጒጡመደላጚበሟምጒጡ ወማጎቡበምሳትጡጢምትትጫዝ አልጎሚስጁተሲትቮጇኝነጞርቶት ጠስሚገሳት።",
-          "latency_sec": 7.338,
+          "transcription": "ድጋም ድጋችች ድጋችጉች ድጋኝ ድጋችች ድጋችችች",
+          "latency_sec": 4.662,
           "status": "OK",
-          "wer": 100.0,
-          "cer": 445.45
+          "wer": 150.0,
+          "cer": 209.09
         }
       }
     },
@@ -136,25 +136,25 @@
       "ground_truth": "ሾው ሩማችሁ የት ነው?",
       "providers": {
         "ElevenLabs (Scribe v2)": {
-          "transcription": "ሾሩማቸው የድ ነው",
-          "latency_sec": 5.962,
+          "transcription": "ሾሩማቹ የት ነው?",
+          "latency_sec": 4.899,
           "status": "OK (SDK)",
-          "wer": 75.0,
-          "cer": 40.0
+          "wer": 50.0,
+          "cer": 30.0
         },
         "Hasab AI (Amharic STT)": {
-          "transcription": "ሹህ ሩማቹ የት ነው?",
-          "latency_sec": 6.8,
-          "status": "OK",
-          "wer": 50.0,
-          "cer": 40.0
+          "transcription": "",
+          "latency_sec": 5.921,
+          "status": "HTTP 402: {\"success\":false,\"message\":\"Not enough tokens to process this audio\",\"metadata\":{\"required_tokens\":2",
+          "wer": 100.0,
+          "cer": 100.0
         },
         "Groq (Whisper-v3-Turbo)": {
-          "transcription": "የጋ ደም። የግጉ ቨገ፣ ነ። የም።",
-          "latency_sec": 6.49,
+          "transcription": "ውርዪዻ ዝዎችፕዹ ውርዬች። ዲርዲችጠ ዣጣዚ ዝርፋር የጂግ።",
+          "latency_sec": 4.924,
           "status": "OK",
-          "wer": 150.0,
-          "cer": 150.0
+          "wer": 175.0,
+          "cer": 270.0
         }
       }
     }

@@ -27,6 +27,7 @@ import Organization from './pages/Organization'
 import Notifications from './pages/Notifications'
 import LandingPage from './pages/LandingPage'
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
+import { supabase } from './config/supabase'
 import { ROUTES } from './config/site'
 
 
@@ -57,12 +58,64 @@ function App() {
   }, [location.pathname])
 
   useEffect(() => {
+    let mounted = true
+
+    // 1. Subscribe to Supabase auth events (OAuth redirect, sign-in, token refresh)
+    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return
+      if (session?.access_token) {
+        tokenStore.set(session.access_token, session.refresh_token)
+        const userData = {
+          id: session.user.id,
+          email: session.user.email,
+          name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0],
+          companyName: session.user.user_metadata?.companyName || 'Markova Enterprise',
+        }
+        localStorage.setItem('user', JSON.stringify(userData))
+        setIsAuthenticated(true)
+        setUser(userData)
+
+        // Clear ugly OAuth hash fragment from browser URL address bar
+        if (window.location.hash.includes('access_token')) {
+          window.history.replaceState(null, '', window.location.pathname === '/' ? '/app' : window.location.pathname)
+        }
+      } else if (event === 'SIGNED_OUT') {
+        setIsAuthenticated(false)
+        setUser(null)
+      }
+    })
+
+    // 2. Initial token & session verification
     const verifyToken = async () => {
+      // Check Supabase session first (handles OAuth callback or existing Supabase session)
+      try {
+        const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }))
+        if (session?.access_token && mounted) {
+          tokenStore.set(session.access_token, session.refresh_token)
+          const userData = {
+            id: session.user.id,
+            email: session.user.email,
+            name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split('@')[0],
+            companyName: session.user.user_metadata?.companyName || 'Markova Enterprise',
+          }
+          localStorage.setItem('user', JSON.stringify(userData))
+          setIsAuthenticated(true)
+          setUser(userData)
+
+          if (window.location.hash.includes('access_token')) {
+            window.history.replaceState(null, '', window.location.pathname === '/' ? '/app' : window.location.pathname)
+          }
+          return
+        }
+      } catch (err) {
+        console.warn('Supabase getSession check failed:', err)
+      }
+
       // Local demo session (Vercel without API, or explicit demo login).
       if (isDemoMode()) {
         try {
           const saved = JSON.parse(localStorage.getItem('user') || 'null')
-          if (saved) {
+          if (saved && mounted) {
             setIsAuthenticated(true)
             setUser(saved)
             return
@@ -74,34 +127,31 @@ function App() {
 
       let token = tokenStore.get()
 
-      // Local auto-login only in development.
-      if (!token && import.meta.env.DEV) {
-        try {
-          const { data } = await loginRequest('demo@markova.et', 'MarkovaDemo2026!')
-          tokenStore.set(data.token, data.refreshToken)
-          localStorage.setItem('user', JSON.stringify(data.user))
-          token = data.token
-        } catch (err) {
-          // Demo auto-login failed; fall back to the normal login flow.
-        }
-      }
-
       if (!token) return
 
       try {
         const { data } = await getMe()
-        setIsAuthenticated(true)
-        setUser(data)
-        localStorage.setItem('user', JSON.stringify(data))
+        if (mounted) {
+          setIsAuthenticated(true)
+          setUser(data)
+          localStorage.setItem('user', JSON.stringify(data))
+        }
       } catch (err) {
         // Token invalid or expired
         tokenStore.clear()
-        setIsAuthenticated(false)
-        setUser(null)
+        if (mounted) {
+          setIsAuthenticated(false)
+          setUser(null)
+        }
       }
     }
 
     verifyToken()
+
+    return () => {
+      mounted = false
+      authListener?.subscription?.unsubscribe()
+    }
   }, [])
 
   const handleLogin = (userData) => {

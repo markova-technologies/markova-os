@@ -27,8 +27,52 @@ async function connectDb() {
   for (let i = 0; i < 10; i++) {
     try {
       const client = await pool.connect();
-      client.release();
-      console.log('✅ Agent Builder Service connected to PostgreSQL');
+      try {
+        // Ensure idempotent schema for teams, agents, tools, and knowledge bridge
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS teams (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            type VARCHAR(50) DEFAULT 'general',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+
+          CREATE TABLE IF NOT EXISTS team_agents (
+            team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+            agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+            role VARCHAR(100) DEFAULT 'member',
+            PRIMARY KEY (team_id, agent_id)
+          );
+
+          CREATE TABLE IF NOT EXISTS commander_agents (
+            team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
+            agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+            routing_rules JSONB,
+            PRIMARY KEY (team_id, agent_id)
+          );
+
+          CREATE TABLE IF NOT EXISTS agent_tools (
+            agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+            tool_id UUID REFERENCES tools(id) ON DELETE CASCADE,
+            PRIMARY KEY (agent_id, tool_id)
+          );
+
+          CREATE TABLE IF NOT EXISTS agent_knowledge_sources (
+            agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+            source_id UUID REFERENCES knowledge_sources(id) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (agent_id, source_id)
+          );
+
+          ALTER TABLE agents ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
+          ALTER TABLE agents ADD COLUMN IF NOT EXISTS temperature NUMERIC DEFAULT 0.3;
+          ALTER TABLE agents ADD COLUMN IF NOT EXISTS stt_provider VARCHAR(100) DEFAULT 'elevenlabs_scribe';
+        `);
+      } finally {
+        client.release();
+      }
+      console.log('✅ Agent Builder Service connected to PostgreSQL with verified schema');
       return;
     } catch (err) {
       console.log(`⚠️ Database connection attempt ${i + 1} failed (${err.message}). Retrying in 3000ms...`);
@@ -55,19 +99,223 @@ function normalizeAgentBody(body = {}) {
     name: body.name,
     prompt: body.prompt,
     language: body.language || 'am',
-    voice_provider: body.voice_provider || voice.provider || voice.voice_provider,
-    voice_id: body.voice_id || voice.voice_id || voice.id,
-    model_provider: body.model_provider || model.provider || model.model_provider,
-    model_id: body.model_id || model.model_id || model.id,
+    voice_provider: body.voice_provider || voice.provider || voice.voice_provider || 'edge_tts',
+    voice_id: body.voice_id || voice.voice_id || voice.id || 'am-ET-MekdesNeural',
+    model_provider: body.model_provider || model.provider || model.model_provider || 'groq',
+    model_id: body.model_id || model.model_id || model.id || 'llama-3.3-70b-versatile',
+    team_id: body.team_id || null,
+    temperature: body.temperature !== undefined ? parseFloat(body.temperature) : 0.3,
+    stt_provider: body.stt_provider || 'elevenlabs_scribe',
   };
 }
+
+// ── Teams & Commander Auto-Setup Endpoints ─────────────────────────────────
+
+// List teams for Company (auto-provisions Commander team and agent if none exist)
+app.get('/api/builder/teams', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+
+  try {
+    const teamsResult = await tenantDb.query(
+      ctx,
+      `SELECT t.id, t.name, t.type, t.created_at, COUNT(a.id)::int as count
+       FROM teams t
+       LEFT JOIN agents a ON a.team_id = t.id
+       WHERE t.company_id = $1
+       GROUP BY t.id, t.name, t.type, t.created_at
+       ORDER BY CASE WHEN t.type = 'commander' THEN 0 ELSE 1 END, t.name ASC`,
+      [companyId]
+    );
+
+    // If company has no teams, auto-provision default Commander setup
+    if (teamsResult.rows.length === 0) {
+      const autoSetup = await tenantDb.withTenant(ctx, async (client) => {
+        // 1. Create Commander Team
+        const cmdTeamRes = await client.query(
+          `INSERT INTO teams (company_id, name, type)
+           VALUES ($1, 'Commander Agent', 'commander')
+           RETURNING id, name, type, created_at`,
+          [companyId]
+        );
+        const commanderTeam = cmdTeamRes.rows[0];
+
+        // 2. Create Standard Team (Sales / Support)
+        const supportTeamRes = await client.query(
+          `INSERT INTO teams (company_id, name, type)
+           VALUES ($1, 'Customer Care & Sales', 'standard')
+           RETURNING id, name, type, created_at`,
+          [companyId]
+        );
+        const supportTeam = supportTeamRes.rows[0];
+
+        // 3. Create default Commander Agent (Almaz)
+        const defaultPrompt = `You are Almaz, the primary Commander and Orchestrator AI for this enterprise call center.
+Your role is to warmly greet customers in Amharic (ሰላም! እንኳን ወደ ድርጅታችን ደህና መጡ), understand their inquiry, identify their needs, and provide clear assistance or direct their request to the appropriate department.
+Always maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.`;
+
+        const agentRes = await client.query(
+          `INSERT INTO agents (company_id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+           RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at`,
+          [
+            companyId,
+            'Almaz - Commander Agent',
+            defaultPrompt,
+            'edge_tts',
+            'am-ET-MekdesNeural',
+            'groq',
+            'llama-3.3-70b-versatile',
+            commanderTeam.id,
+            0.3,
+            'elevenlabs_scribe'
+          ]
+        );
+        const agent = agentRes.rows[0];
+
+        // 4. Create version 1
+        await client.query(
+          `INSERT INTO agent_versions (agent_id, version_number, prompt, model_provider, model_id, voice_provider, voice_id)
+           VALUES ($1, 1, $2, $3, $4, $5, $6)`,
+          [agent.id, agent.prompt, agent.model_provider, agent.model_id, agent.voice_provider, agent.voice_id]
+        );
+
+        // 5. Link to team_agents and commander_agents
+        await client.query(
+          `INSERT INTO team_agents (team_id, agent_id, role)
+           VALUES ($1, $2, 'commander')
+           ON CONFLICT DO NOTHING`,
+          [commanderTeam.id, agent.id]
+        );
+
+        await client.query(
+          `INSERT INTO commander_agents (team_id, agent_id, routing_rules)
+           VALUES ($1, $2, '{"default_route": "support"}'::jsonb)
+           ON CONFLICT DO NOTHING`,
+          [commanderTeam.id, agent.id]
+        );
+
+        return [
+          { ...commanderTeam, count: 1, isCommander: true },
+          { ...supportTeam, count: 0, isCommander: false }
+        ];
+      });
+
+      return res.json(autoSetup);
+    }
+
+    const mapped = teamsResult.rows.map(t => ({
+      ...t,
+      isCommander: t.type === 'commander'
+    }));
+
+    res.json(mapped);
+  } catch (error) {
+    console.error('List Teams Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Create new Team
+app.post('/api/builder/teams', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { name, type } = req.body || {};
+
+  if (!name) {
+    return res.status(400).json({ error: 'Team name is required' });
+  }
+
+  try {
+    const result = await tenantDb.query(
+      ctx,
+      `INSERT INTO teams (company_id, name, type)
+       VALUES ($1, $2, COALESCE($3, 'standard'))
+       RETURNING id, name, type, created_at`,
+      [companyId, name, type || 'standard']
+    );
+
+    res.status(201).json({
+      ...result.rows[0],
+      count: 0,
+      isCommander: result.rows[0].type === 'commander'
+    });
+  } catch (error) {
+    console.error('Create Team Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Delete Team
+app.delete('/api/builder/teams/:id', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { id } = req.params;
+
+  try {
+    const result = await tenantDb.query(
+      ctx,
+      'DELETE FROM teams WHERE id = $1 AND company_id = $2 RETURNING id',
+      [id, companyId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Team not found' });
+    }
+
+    res.json({ success: true, message: 'Team deleted' });
+  } catch (error) {
+    console.error('Delete Team Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Get Commander team and agent info
+app.get('/api/builder/teams/commander', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+
+  try {
+    const result = await tenantDb.query(
+      ctx,
+      `SELECT a.id, a.name, a.prompt, a.voice_provider, a.voice_id, a.model_provider, a.model_id, a.team_id, a.temperature, a.stt_provider
+       FROM agents a
+       JOIN teams t ON t.id = a.team_id
+       WHERE a.company_id = $1 AND t.type = 'commander'
+       LIMIT 1`,
+      [companyId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.json(null);
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Get Commander Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ── Agents Endpoints ───────────────────────────────────────────────────────
 
 // Create Agent
 app.post('/api/builder/agents', async (req, res) => {
   const ctx = req.securityContext;
   const companyId = ctx.tenantId;
   const userId = auditUserId(ctx);
-  const { name, prompt, voice_provider, voice_id, model_provider, model_id, language } = normalizeAgentBody(req.body);
+  const { 
+    name, 
+    prompt, 
+    voice_provider, 
+    voice_id, 
+    model_provider, 
+    model_id, 
+    team_id, 
+    temperature, 
+    stt_provider, 
+    language 
+  } = normalizeAgentBody(req.body);
 
   if (!name || !prompt || !voice_provider || !voice_id || !model_provider || !model_id) {
     return res.status(400).json({
@@ -106,28 +354,38 @@ app.post('/api/builder/agents', async (req, res) => {
     const agent = await tenantDb.withTenant(ctx, async (client) => {
       // 1. Create Agent record
       const agentRes = await client.query(
-        `INSERT INTO agents (company_id, name, prompt, voice_provider, voice_id, model_provider, model_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, created_at`,
-        [companyId, name, prompt, voice_provider, voice_id, model_provider, model_id]
+        `INSERT INTO agents (company_id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at`,
+        [companyId, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider]
       );
-      const agent = agentRes.rows[0];
+      const newAgent = agentRes.rows[0];
 
-      // 2. Create Agent Version 1
+      // 2. Map to team_agents if team_id provided
+      if (team_id) {
+        await client.query(
+          `INSERT INTO team_agents (team_id, agent_id, role)
+           VALUES ($1, $2, 'member')
+           ON CONFLICT DO NOTHING`,
+          [team_id, newAgent.id]
+        );
+      }
+
+      // 3. Create Agent Version 1
       await client.query(
         `INSERT INTO agent_versions (agent_id, version_number, prompt, model_provider, model_id, voice_provider, voice_id)
          VALUES ($1, 1, $2, $3, $4, $5, $6)`,
-        [agent.id, prompt, model_provider, model_id, voice_provider, voice_id]
+        [newAgent.id, prompt, model_provider, model_id, voice_provider, voice_id]
       );
 
       // Create Audit Log
       await client.query(
         `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id) 
          VALUES ($1, $2, $3, $4, $5)`,
-        [companyId, userId, 'AGENT_CREATED', 'agent', agent.id]
+        [companyId, userId, 'AGENT_CREATED', 'agent', newAgent.id]
       );
 
-      return agent;
+      return newAgent;
     });
 
     res.status(201).json({
@@ -149,7 +407,10 @@ app.get('/api/builder/agents', async (req, res) => {
   try {
     const result = await tenantDb.query(
       ctx,
-      'SELECT id, name, prompt, voice_provider, voice_id, model_provider, model_id, created_at FROM agents WHERE company_id = $1 ORDER BY name ASC',
+      `SELECT id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at, updated_at 
+       FROM agents 
+       WHERE company_id = $1 
+       ORDER BY name ASC`,
       [ctx.tenantId]
     );
     res.json(result.rows);
@@ -167,7 +428,9 @@ app.get('/api/builder/agents/:id', async (req, res) => {
   try {
     const result = await tenantDb.query(
       ctx,
-      'SELECT id, name, prompt, voice_provider, voice_id, model_provider, model_id, created_at FROM agents WHERE id = $1 AND company_id = $2',
+      `SELECT id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at, updated_at 
+       FROM agents 
+       WHERE id = $1 AND company_id = $2`,
       [id, ctx.tenantId]
     );
 
@@ -188,7 +451,17 @@ app.put('/api/builder/agents/:id', async (req, res) => {
   const companyId = ctx.tenantId;
   const userId = auditUserId(ctx);
   const { id } = req.params;
-  const { name, prompt, voice_provider, voice_id, model_provider, model_id } = req.body;
+  const { 
+    name, 
+    prompt, 
+    voice_provider, 
+    voice_id, 
+    model_provider, 
+    model_id, 
+    team_id, 
+    temperature, 
+    stt_provider 
+  } = req.body;
 
   const violations = PromptRegistry.scanPromptSafety(prompt);
   if (violations.length > 0) {
@@ -223,12 +496,25 @@ app.put('/api/builder/agents/:id', async (req, res) => {
              voice_id = COALESCE($4, voice_id), 
              model_provider = COALESCE($5, model_provider), 
              model_id = COALESCE($6, model_id),
+             team_id = COALESCE($7, team_id),
+             temperature = COALESCE($8, temperature),
+             stt_provider = COALESCE($9, stt_provider),
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $7 AND company_id = $8
-         RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, updated_at`,
-        [name, prompt, voice_provider, voice_id, model_provider, model_id, id, companyId]
+         WHERE id = $10 AND company_id = $11
+         RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, updated_at`,
+        [name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, id, companyId]
       );
-      const updatedAgent = updateRes.rows[0];
+      const updatedAgentRecord = updateRes.rows[0];
+
+      // Update team_agents association
+      if (team_id) {
+        await client.query(
+          `INSERT INTO team_agents (team_id, agent_id, role)
+           VALUES ($1, $2, 'member')
+           ON CONFLICT (team_id, agent_id) DO NOTHING`,
+          [team_id, id]
+        );
+      }
 
       // 4. Save to Versions table
       await client.query(
@@ -237,11 +523,11 @@ app.put('/api/builder/agents/:id', async (req, res) => {
         [
           id, 
           nextVersion, 
-          updatedAgent.prompt, 
-          updatedAgent.model_provider, 
-          updatedAgent.model_id, 
-          updatedAgent.voice_provider, 
-          updatedAgent.voice_id
+          updatedAgentRecord.prompt, 
+          updatedAgentRecord.model_provider, 
+          updatedAgentRecord.model_id, 
+          updatedAgentRecord.voice_provider, 
+          updatedAgentRecord.voice_id
         ]
       );
 
@@ -252,7 +538,7 @@ app.put('/api/builder/agents/:id', async (req, res) => {
         [companyId, userId, 'AGENT_UPDATED', 'agent', id]
       );
 
-      return updatedAgent;
+      return updatedAgentRecord;
     });
 
     res.json(updatedAgent);
@@ -271,7 +557,6 @@ app.get('/api/builder/agents/:id/versions', async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Verify ownership
     const agentCheck = await tenantDb.query(
       ctx,
       'SELECT id FROM agents WHERE id = $1 AND company_id = $2',
@@ -283,7 +568,10 @@ app.get('/api/builder/agents/:id/versions', async (req, res) => {
 
     const versions = await tenantDb.query(
       ctx,
-      'SELECT id, version_number, prompt, model_provider, model_id, voice_provider, voice_id, created_at FROM agent_versions WHERE agent_id = $1 ORDER BY version_number DESC',
+      `SELECT id, version_number as version, prompt, model_provider, model_id, voice_provider, voice_id, created_at 
+       FROM agent_versions 
+       WHERE agent_id = $1 
+       ORDER BY version_number DESC`,
       [id]
     );
 
@@ -334,7 +622,7 @@ app.post('/api/builder/agents/:id/versions/:versionId/rollback', async (req, res
         `UPDATE agents 
          SET prompt = $1, model_provider = $2, model_id = $3, voice_provider = $4, voice_id = $5, updated_at = CURRENT_TIMESTAMP
          WHERE id = $6
-         RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, updated_at`,
+         RETURNING id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, updated_at`,
         [
           versionConfig.prompt,
           versionConfig.model_provider,
@@ -350,12 +638,12 @@ app.post('/api/builder/agents/:id/versions/:versionId/rollback', async (req, res
         `INSERT INTO agent_versions (agent_id, version_number, prompt, model_provider, model_id, voice_provider, voice_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
         [
-          id,
-          nextVersion,
-          versionConfig.prompt,
-          versionConfig.model_provider,
-          versionConfig.model_id,
-          versionConfig.voice_provider,
+          id, 
+          nextVersion, 
+          versionConfig.prompt, 
+          versionConfig.model_provider, 
+          versionConfig.model_id, 
+          versionConfig.voice_provider, 
           versionConfig.voice_id
         ]
       );
@@ -376,6 +664,186 @@ app.post('/api/builder/agents/:id/versions/:versionId/rollback', async (req, res
     if (error.message === 'VERSION_NOT_FOUND') return res.status(404).json({ error: 'Agent version record not found' });
 
     console.error('Agent Rollback Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ── Agent Knowledge Base Association Endpoints ─────────────────────────────
+
+// List connected knowledge sources for an agent
+app.get('/api/builder/agents/:id/knowledge', async (req, res) => {
+  const ctx = req.securityContext;
+  const { id } = req.params;
+
+  try {
+    const result = await tenantDb.query(
+      ctx,
+      `SELECT ks.id, ks.name, ks.type, ks.status, aks.created_at as connected_at
+       FROM agent_knowledge_sources aks
+       JOIN knowledge_sources ks ON ks.id = aks.source_id
+       WHERE aks.agent_id = $1 AND ks.company_id = $2
+       ORDER BY aks.created_at DESC`,
+      [id, ctx.tenantId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get Agent Knowledge Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Attach knowledge source to agent
+app.post('/api/builder/agents/:id/knowledge/:sourceId', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { id, sourceId } = req.params;
+
+  try {
+    const result = await tenantDb.query(
+      ctx,
+      `INSERT INTO agent_knowledge_sources (agent_id, source_id)
+       SELECT $1, $2
+       WHERE EXISTS (SELECT 1 FROM agents WHERE id = $1 AND company_id = $3)
+         AND EXISTS (SELECT 1 FROM knowledge_sources WHERE id = $2 AND company_id = $3)
+       ON CONFLICT (agent_id, source_id) DO NOTHING
+       RETURNING agent_id, source_id`,
+      [id, sourceId, companyId]
+    );
+
+    res.json({ success: true, connected: true, agent_id: id, source_id: sourceId });
+  } catch (error) {
+    console.error('Attach Knowledge Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Detach knowledge source from agent
+app.delete('/api/builder/agents/:id/knowledge/:sourceId', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { id, sourceId } = req.params;
+
+  try {
+    await tenantDb.query(
+      ctx,
+      `DELETE FROM agent_knowledge_sources
+       WHERE agent_id = $1 AND source_id = $2
+         AND EXISTS (SELECT 1 FROM agents WHERE id = $1 AND company_id = $3)`,
+      [id, sourceId, companyId]
+    );
+
+    res.json({ success: true, disconnected: true });
+  } catch (error) {
+    console.error('Detach Knowledge Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ── Agent Tools & Integration Association Endpoints ────────────────────────
+
+// List connected tools for an agent
+app.get('/api/builder/agents/:id/tools', async (req, res) => {
+  const ctx = req.securityContext;
+  const { id } = req.params;
+
+  try {
+    const result = await tenantDb.query(
+      ctx,
+      `SELECT t.id, t.name, t.description, t.webhook_url, t.method, t.type
+       FROM agent_tools at
+       JOIN tools t ON t.id = at.tool_id
+       WHERE at.agent_id = $1 AND t.company_id = $2
+       ORDER BY t.name ASC`,
+      [id, ctx.tenantId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get Agent Tools Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Attach tool to agent
+app.post('/api/builder/agents/:id/tools/:toolId', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { id, toolId } = req.params;
+
+  try {
+    await tenantDb.query(
+      ctx,
+      `INSERT INTO agent_tools (agent_id, tool_id)
+       SELECT $1, $2
+       WHERE EXISTS (SELECT 1 FROM agents WHERE id = $1 AND company_id = $3)
+         AND EXISTS (SELECT 1 FROM tools WHERE id = $2 AND company_id = $3)
+       ON CONFLICT (agent_id, tool_id) DO NOTHING`,
+      [id, toolId, companyId]
+    );
+
+    res.json({ success: true, connected: true, agent_id: id, tool_id: toolId });
+  } catch (error) {
+    console.error('Attach Tool Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Detach tool from agent
+app.delete('/api/builder/agents/:id/tools/:toolId', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { id, toolId } = req.params;
+
+  try {
+    await tenantDb.query(
+      ctx,
+      `DELETE FROM agent_tools
+       WHERE agent_id = $1 AND tool_id = $2
+         AND EXISTS (SELECT 1 FROM agents WHERE id = $1 AND company_id = $3)`,
+      [id, toolId, companyId]
+    );
+
+    res.json({ success: true, disconnected: true });
+  } catch (error) {
+    console.error('Detach Tool Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// ── Agent Analytics & Stats Endpoint ───────────────────────────────────────
+
+app.get('/api/builder/agents/:id/stats', async (req, res) => {
+  const ctx = req.securityContext;
+  const { id } = req.params;
+
+  try {
+    const statsRes = await tenantDb.query(
+      ctx,
+      `SELECT 
+         COUNT(*)::int AS total_calls,
+         COALESCE(AVG(EXTRACT(EPOCH FROM (COALESCE(end_time, CURRENT_TIMESTAMP) - start_time)))::int, 0) AS avg_duration_seconds,
+         COALESCE(ROUND((COUNT(*) FILTER (WHERE status = 'completed')::numeric / NULLIF(COUNT(*), 0)::numeric) * 100), 100)::int AS success_rate,
+         COALESCE(SUM(turn_count)::int, 0) AS total_turns
+       FROM calls
+       WHERE agent_id = $1 AND company_id = $2`,
+      [id, ctx.tenantId]
+    );
+
+    const s = statsRes.rows[0] || { total_calls: 0, avg_duration_seconds: 0, success_rate: 100, total_turns: 0 };
+    const mins = Math.floor(s.avg_duration_seconds / 60);
+    const secs = s.avg_duration_seconds % 60;
+    const formattedDuration = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+
+    res.json({
+      totalCalls: s.total_calls,
+      avgDuration: formattedDuration,
+      avgDurationSeconds: s.avg_duration_seconds,
+      successRate: `${s.success_rate}%`,
+      totalTurns: s.total_turns
+    });
+  } catch (error) {
+    console.error('Agent Stats Error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

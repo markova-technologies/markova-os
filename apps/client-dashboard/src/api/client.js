@@ -422,8 +422,18 @@ export const listTeams = () => api.get('/teams');
 export const createTeam = (data) => api.post('/teams', data);
 export const deleteTeam = (id) => api.delete(`/teams/${id}`);
 
-export const getCommander = () => Promise.resolve({ data: {} });
-export const getAgentAnalytics = (id) => Promise.resolve({ data: { totalCalls: 120, avgDuration: '2m 14s', successRate: '92%' } });
+export const getCommander = () => api.get('/teams/commander').catch(() => ({ data: null }));
+export const getAgentAnalytics = (id) => api.get(`/agents/${id}/stats`).catch(() => ({ data: { totalCalls: 0, avgDuration: '0s', successRate: '100%', totalTurns: 0 } }));
+
+// Agent-Knowledge bridge (Option A)
+export const getAgentKnowledge = (id) => api.get(`/agents/${id}/knowledge`);
+export const connectKnowledgeToAgent = (agentId, sourceId) => api.post(`/agents/${agentId}/knowledge/${sourceId}`);
+export const disconnectKnowledgeFromAgent = (agentId, sourceId) => api.delete(`/agents/${agentId}/knowledge/${sourceId}`);
+
+// Agent-Tools bridge
+export const getAgentTools = (id) => api.get(`/agents/${id}/tools`);
+export const connectToolToAgent = (agentId, toolId) => api.post(`/agents/${agentId}/tools/${toolId}`);
+export const disconnectToolFromAgent = (agentId, toolId) => api.delete(`/agents/${agentId}/tools/${toolId}`);
 
 // ---------- Agent Sandbox & Deployment ----------
 export const getAgentVoicePreview = (id, text) =>
@@ -432,3 +442,4 @@ export const getAgentVoicePreview = (id, text) =>
 export const deployAgent = (id) => api.post(`/agents/${id}/deploy`);
 
 export const startAgentTestSession = (id) => api.post(`/agents/${id}/test-call`);
+
