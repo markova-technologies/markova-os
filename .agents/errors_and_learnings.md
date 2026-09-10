@@ -357,5 +357,25 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   - 2. **Collector Collision Guards:** In `metrics.py`, wrapped all metric definitions with safe `_get_or_create_*` helper functions that check `if name in REGISTRY._names_to_collectors: return REGISTRY._names_to_collectors[name]`. This ensures idempotency even during unit tests, hot-reloading, or multiple module imports.
   - 3. Removed the redundant inline `from metrics import ...` at line 1545 of `main.py` and imported all metrics at the top of `main.py`.
 
+---
+
+### [2026-09-10] Render Orchestrator Runtime Errors: Supabase ENOIDENTIFIER, Background Worker NoneType, and OTEL Jaeger Spam
+- **Problems Observed in Live Render Logs:**
+  1. `{"error": "(ENOIDENTIFIER) no tenant identifier provided (external_id or sni_hostname required)", "event": "db_attempt_failed"}` with 20 retries delaying port binding by > 2 minutes.
+  2. `{"error": "'NoneType' object has no attribute 'fetch'", "event": "campaign_processor_error"}` repeating every 5 seconds.
+  3. `Transient error StatusCode.UNAVAILABLE encountered while exporting traces to jaeger:4317, retrying in 1s, 2s, 4s...`
+  4. `GET / HTTP/1.1 404 Not Found` when health-checking or visiting root URL.
+- **Root Causes:**
+  1. Supabase connection pooler (`pooler.supabase.com:6543`) requires tenant project ref in the username (`postgres.[project-ref]`). Plain `postgres` username causes Supavisor to reject connection with `(ENOIDENTIFIER)`.
+  2. In `campaigns.py`, `process_campaigns` assumed `db_pool` was always ready and called `.fetch()` unconditionally inside an infinite loop, crashing when DB connection was in sandbox/memory mode.
+  3. OpenTelemetry OTLP trace exporter defaulted to `http://jaeger:4317` when `OTEL_EXPORTER_OTLP_ENDPOINT` was unset, causing background gRPC workers to endlessly retry against a non-existent host.
+  4. FastAPI lacked a `/` root route handler (only had `/health`).
+- **Fixes Applied:**
+  1. Implemented `normalize_database_url` in `main.py` to auto-detect Supabase pooler URLs and inject the tenant project ref into `postgres.[project-ref]` username, added `ssl="require"` for Supabase hosts, and capped retries to 5 attempts (fast startup).
+  2. Updated `campaigns.py` and `lifespan` to pass `lambda: db_pool` and check `if not pool: await asyncio.sleep(5); continue` before issuing queries.
+  3. Made OpenTelemetry OTLP trace exporter strictly opt-in: only initializes if `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable is explicitly provided.
+  4. Added `@app.get("/")` and `@app.head("/")` returning status 200 OK and service metadata.
+
+
 
 

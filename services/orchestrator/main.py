@@ -181,6 +181,46 @@ def _validate_dial_target(target: str) -> bool:
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
 DATABASE_URL = os.getenv("DATABASE_URL", "")
+
+def normalize_database_url(url: str) -> str:
+    """
+    Supabase pooler (pooler.supabase.com) requires the tenant project ref in the username
+    (e.g., 'postgres.xrawhqzcptvzyobgoxqw') when connecting without SNI.
+    If the username is just 'postgres' without a dot, auto-inject the project ref.
+    """
+    if not url or "pooler.supabase.com" not in url:
+        return url
+    project_ref = os.getenv("SUPABASE_PROJECT_REF")
+    if not project_ref:
+        supabase_url = os.getenv("SUPABASE_URL") or os.getenv("VITE_SUPABASE_URL", "")
+        match = re.search(r"https?://([a-z0-9]+)\.supabase\.co", supabase_url)
+        if match:
+            project_ref = match.group(1)
+    if not project_ref:
+        project_ref = "xrawhqzcptvzyobgoxqw"
+    import urllib.parse
+    try:
+        parsed = urllib.parse.urlparse(url)
+        if parsed.username == "postgres" and project_ref and "." not in parsed.username:
+            netloc = f"postgres.{project_ref}"
+            if parsed.password:
+                netloc += f":{parsed.password}"
+            netloc += f"@{parsed.hostname}"
+            if parsed.port:
+                netloc += f":{parsed.port}"
+            normalized = urllib.parse.urlunparse((
+                parsed.scheme,
+                netloc,
+                parsed.path,
+                parsed.params,
+                parsed.query,
+                parsed.fragment
+            ))
+            logger.info("auto_normalized_supabase_pooler_user", project_ref=project_ref)
+            return normalized
+    except Exception as err:
+        logger.warning("failed_to_normalize_db_url", error=str(err))
+    return url
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 TOOL_ENGINE_URL = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
 PORT = int(os.getenv("PORT", 10000))
@@ -308,16 +348,20 @@ async def lifespan(app: FastAPI):
     if not DATABASE_URL:
         logger.warning("DATABASE_URL is not set. Orchestrator will run in memory-only sandbox mode.")
     else:
-        # Connect PostgreSQL with up to 20 attempts & exponential/bounded backoff (for Render cold starts)
-        for attempt in range(20):
+        effective_db_url = normalize_database_url(DATABASE_URL)
+        use_ssl = "require" if ("supabase.co" in effective_db_url or "pooler.supabase.com" in effective_db_url) else None
+        # Connect PostgreSQL with up to 5 attempts (fast failover to avoid delaying Render port detection)
+        for attempt in range(5):
             try:
-                db_pool = await asyncpg.create_pool(
-                    DATABASE_URL,
-                    min_size=DB_POOL_MIN_SIZE,
-                    max_size=DB_POOL_MAX_SIZE,
-                    command_timeout=15,
-                    statement_cache_size=0,
-                )
+                pool_kwargs = {
+                    "min_size": DB_POOL_MIN_SIZE,
+                    "max_size": DB_POOL_MAX_SIZE,
+                    "command_timeout": 15,
+                    "statement_cache_size": 0,
+                }
+                if use_ssl:
+                    pool_kwargs["ssl"] = use_ssl
+                db_pool = await asyncpg.create_pool(effective_db_url, **pool_kwargs)
                 knowledge_adapter = KnowledgeAdapter(db_pool)
                 logger.info("orchestrator_connected_to_postgresql", pool_min=DB_POOL_MIN_SIZE, pool_max=DB_POOL_MAX_SIZE)
                 
@@ -335,11 +379,20 @@ async def lifespan(app: FastAPI):
                 
                 break
             except Exception as e:
-                wait_sec = min(2 + attempt, 10)
-                logger.error("db_attempt_failed", attempt=attempt + 1, error=str(e), wait_sec=wait_sec)
+                err_str = str(e)
+                wait_sec = min(2 + attempt, 5)
+                if "(ENOIDENTIFIER)" in err_str:
+                    logger.error(
+                        "db_attempt_failed_tenant_id_missing",
+                        attempt=attempt + 1,
+                        error=err_str,
+                        hint="Supabase pooler requires username 'postgres.[project-ref]'. Update DATABASE_URL in Render to: postgresql://postgres.[project-ref]:[password]@aws-0-us-east-2.pooler.supabase.com:6543/postgres"
+                    )
+                else:
+                    logger.error("db_attempt_failed", attempt=attempt + 1, error=err_str, wait_sec=wait_sec)
                 await asyncio.sleep(wait_sec)
         else:
-            logger.error("orchestrator_db_connection_failed")
+            logger.error("orchestrator_db_connection_failed", fallback="memory_sandbox_mode")
 
     # Connect Redis (degrade gracefully if unavailable without crashing voice calls)
     for attempt in range(5):
@@ -374,7 +427,7 @@ async def lifespan(app: FastAPI):
     
     # Phase 10.3: Campaign Engine
     from campaigns import process_campaigns
-    campaign_processor_task = asyncio.create_task(process_campaigns(db_pool))
+    campaign_processor_task = asyncio.create_task(process_campaigns(lambda: db_pool))
 
     # Phase 3: Telephony Barge-In Controller
     from barge_in import barge_in_controller
@@ -430,29 +483,44 @@ from media_stream import router as media_stream_router
 app.include_router(media_stream_router)
 
 if OTEL_AVAILABLE:
-    try:
-        provider = TracerProvider()
-        otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://jaeger:4317")
-        provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
-        )
-        trace.set_tracer_provider(provider)
-        FastAPIInstrumentor.instrument_app(app)
-        
-        # Add auto-instrumentations
-        from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
-        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-        from opentelemetry.instrumentation.redis import RedisInstrumentor
-        AsyncPGInstrumentor().instrument()
-        HTTPXClientInstrumentor().instrument()
-        RedisInstrumentor().instrument()
-        
-        logger.info("opentelemetry_tracing_initialized", endpoint=otlp_endpoint)
-    except Exception as e:
-        logger.warning("opentelemetry_init_failed", error=str(e))
+    otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+    if otlp_endpoint:
+        try:
+            provider = TracerProvider()
+            provider.add_span_processor(
+                BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint, insecure=True))
+            )
+            trace.set_tracer_provider(provider)
+            FastAPIInstrumentor.instrument_app(app)
+            
+            # Add auto-instrumentations
+            from opentelemetry.instrumentation.asyncpg import AsyncPGInstrumentor
+            from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+            from opentelemetry.instrumentation.redis import RedisInstrumentor
+            AsyncPGInstrumentor().instrument()
+            HTTPXClientInstrumentor().instrument()
+            RedisInstrumentor().instrument()
+            
+            logger.info("opentelemetry_tracing_initialized", endpoint=otlp_endpoint)
+        except Exception as e:
+            logger.warning("opentelemetry_init_failed", error=str(e))
+    else:
+        logger.info("opentelemetry_tracing_disabled", reason="OTEL_EXPORTER_OTLP_ENDPOINT not configured")
 
 # Mount generated audio files directory
 app.mount("/audio", StaticFiles(directory=AUDIO_DIR), name="audio")
+
+
+@app.get("/")
+@app.head("/")
+async def root():
+    return {
+        "status": "online",
+        "service": "markova-orchestrator",
+        "version": "2.0.0",
+        "health": "/health",
+        "docs": "/docs",
+    }
 
 
 @app.get("/metrics")

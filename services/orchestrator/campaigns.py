@@ -84,56 +84,60 @@ async def launch_campaign(
     return {"message": "Campaign launched"}
 
 # Background worker for dispatching calls
-async def process_campaigns(db_pool):
+async def process_campaigns(db_pool_ref):
     """
     Background worker that polls for 'running' campaigns and dispatches calls.
-    Respects DNC lists and Twilio rate limits.
+    Respects DNC lists and Twilio rate limits. Safely handles None db_pool during sandbox/degraded mode.
     """
     logger.info("campaign_engine_started")
     while True:
         try:
+            pool = db_pool_ref() if callable(db_pool_ref) else db_pool_ref
+            if not pool:
+                await asyncio.sleep(5)
+                continue
+
             # Find running campaigns
-            campaigns = await db_pool.fetch("SELECT * FROM campaigns WHERE status = 'running'")
+            campaigns = await pool.fetch("SELECT * FROM campaigns WHERE status = 'running'")
             for camp in campaigns:
                 # Get next pending contact
-                contact = await db_pool.fetchrow(
+                contact = await pool.fetchrow(
                     "SELECT * FROM campaign_contacts WHERE campaign_id = $1 AND status = 'pending' LIMIT 1 FOR UPDATE SKIP LOCKED",
                     camp["id"]
                 )
                 if not contact:
                     # No more pending contacts, mark campaign complete
-                    await db_pool.execute("UPDATE campaigns SET status = 'completed' WHERE id = $1", camp["id"])
+                    await pool.execute("UPDATE campaigns SET status = 'completed' WHERE id = $1", camp["id"])
                     continue
                 
                 # Check DNC
-                dnc = await db_pool.fetchrow(
+                dnc = await pool.fetchrow(
                     "SELECT id FROM dnc_list WHERE company_id = $1 AND phone_number = $2",
                     camp["company_id"], contact["phone_number"]
                 )
                 if dnc:
-                    await db_pool.execute(
+                    await pool.execute(
                         "UPDATE campaign_contacts SET status = 'dnc_skipped' WHERE id = $1", 
                         contact["id"]
                     )
                     continue
 
                 # Retrieve Twilio credentials and from_number
-                number_row = await db_pool.fetchrow(
+                number_row = await pool.fetchrow(
                     "SELECT phone_number, account_sid, auth_token FROM phone_numbers WHERE id = $1",
                     camp["phone_number_id"]
                 )
                 if not number_row:
-                    await db_pool.execute(
+                    await pool.execute(
                         "UPDATE campaign_contacts SET status = 'failed', error_message = 'Missing phone configuration' WHERE id = $1", 
                         contact["id"]
                     )
                     continue
                 
                 # Mark in progress
-                await db_pool.execute("UPDATE campaign_contacts SET status = 'in_progress' WHERE id = $1", contact["id"])
+                await pool.execute("UPDATE campaign_contacts SET status = 'in_progress' WHERE id = $1", contact["id"])
                 
                 # Dispatch via Orchestrator's internal /v1/calls if we wanted, or call Twilio directly.
-                # To avoid circular HTTP calls, we'll call Twilio directly.
                 account_sid = number_row["account_sid"]
                 auth_token = number_row["auth_token"]
                 from_number = number_row["phone_number"]
@@ -156,17 +160,17 @@ async def process_campaigns(db_pool):
                             }
                         )
                         if resp.status_code in (200, 201):
-                            await db_pool.execute(
+                            await pool.execute(
                                 "UPDATE campaign_contacts SET status = 'completed' WHERE id = $1", 
                                 contact["id"]
                             )
                         else:
-                            await db_pool.execute(
+                            await pool.execute(
                                 "UPDATE campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2", 
                                 resp.text, contact["id"]
                             )
                 except Exception as ex:
-                    await db_pool.execute(
+                    await pool.execute(
                         "UPDATE campaign_contacts SET status = 'failed', error_message = $1 WHERE id = $2", 
                         str(ex), contact["id"]
                     )
