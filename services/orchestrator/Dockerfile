@@ -5,12 +5,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg curl && 
 
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy requirements and install dependencies from monorepo path
+COPY services/orchestrator/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy service code
-COPY . .
+# Copy service code from monorepo path
+COPY services/orchestrator/ ./
+
+# Copy migrations directly from infrastructure/migrations
+COPY infrastructure/migrations/ ./migrations_sql/
 
 # Default port for Render (Render passes PORT=10000)
 ENV PORT=10000

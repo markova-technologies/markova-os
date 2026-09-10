@@ -8,7 +8,7 @@ services:
     plan: free # Free tier compatible; upgrade to starter/standard anytime without code changes
     region: ohio
     dockerfilePath: services/orchestrator/Dockerfile
-    dockerContext: services/orchestrator
+    dockerContext: .
     healthCheckPath: /health
     envVars:
       - key: PORT
