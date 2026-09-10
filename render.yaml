@@ -1,0 +1,76 @@
+services:
+  # ============================================================================
+  # Production Multi-Tenant AI Orchestrator (Core Voice Runtime)
+  # ============================================================================
+  - type: web
+    name: markova-orchestrator
+    env: docker
+    plan: free # Free tier compatible; upgrade to starter/standard anytime without code changes
+    region: frankfurt
+    dockerfilePath: services/orchestrator/Dockerfile
+    dockerContext: services/orchestrator
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: WEB_CONCURRENCY
+        value: 1 # Free tier: 1 worker (~180MB RAM). Upgrade plan: increase to 2 or 4 for higher throughput
+      - key: DB_POOL_MIN_SIZE
+        value: 1 # Free tier: conservative pool size
+      - key: DB_POOL_MAX_SIZE
+        value: 5 # Upgrade plan: increase to 15 or 25
+      - key: DATABASE_URL
+        sync: false # Set in Render Dashboard (Supabase pooler port 6543)
+      - key: REDIS_URL
+        sync: false # Set in Render Dashboard (Upstash Redis)
+      - key: SERVICE_AUTH_SECRET
+        sync: false # Set in Render Dashboard
+      - key: GROQ_API_KEY
+        sync: false # Set in Render Dashboard
+      - key: OPENAI_API_KEY
+        sync: false # Set in Render Dashboard
+      - key: ELEVENLABS_API_KEY
+        sync: false # Set in Render Dashboard
+      - key: HASAB_API_KEY
+        sync: false # Optional
+      - key: JWT_SECRET
+        sync: false # Set in Render Dashboard
+      - key: SUPABASE_JWT_SECRET
+        sync: false # Set in Render Dashboard
+      - key: ALLOWED_ORIGINS
+        value: https://markova-os-client-dashboard.vercel.app,https://markova-os-admin.vercel.app,http://localhost:5173
+      - key: ORCHESTRATOR_BASE_URL
+        value: https://markova-orchestrator.onrender.com
+
+  # ============================================================================
+  # Experimental Voice Playground (Preserved for R&D & Voice Testing)
+  # ============================================================================
+  - type: web
+    name: markova-ai-backend
+    env: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ai call center/Dockerfile
+    dockerContext: ai call center
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: BASE_URL
+        value: https://markova-ai-backend.onrender.com
+      - key: LLM_MAX_TOKENS
+        value: 120
+      - key: TTS_SAMPLE_RATE
+        value: 8000
+      - key: VOICE_NATURAL_FILLERS
+        value: false
+      - key: LLM_MODEL
+        value: llama-3.3-70b-versatile
+      - key: DB_PATH
+        value: system.db
+      - key: AUDIO_DIR
+        value: ./audio
+      - key: MARKOVA_ADMIN_API_KEY
+        sync: false
+      - key: MARKOVA_VOICE_API_KEY
+        sync: false

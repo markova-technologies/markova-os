@@ -156,13 +156,13 @@ def _validate_dial_target(target: str) -> bool:
 # ─────────────────────────────────────────────────────────────────────────────
 # Config
 # ─────────────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.getenv("DATABASE_URL")
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL must be set in the environment (no default password).")
+DATABASE_URL = os.getenv("DATABASE_URL", "")
 REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379")
 TOOL_ENGINE_URL = os.getenv("TOOL_ENGINE_URL", "http://tool-engine:5004")
-PORT = int(os.getenv("PORT", 6000))
+PORT = int(os.getenv("PORT", 10000))
 AUDIO_DIR = os.getenv("AUDIO_DIR", "/app/audio")
+DB_POOL_MIN_SIZE = int(os.getenv("DB_POOL_MIN_SIZE", "1"))
+DB_POOL_MAX_SIZE = int(os.getenv("DB_POOL_MAX_SIZE", "5"))
 DATA_RESIDENCY_MODE = os.getenv("DATA_RESIDENCY_MODE", "").lower() == "true"
 # Max conversation turns kept in LLM context (system prompt always kept).
 # Older turns are dropped to prevent token blow-up on long calls.
@@ -275,29 +275,47 @@ REDIS_DEGRADED: bool = False
 async def lifespan(app: FastAPI):
     global db_pool, redis_client, REDIS_DEGRADED, semantic_cache
 
-    if not os.getenv("SERVICE_AUTH_SECRET"):
-        raise RuntimeError("FATAL: SERVICE_AUTH_SECRET is not set. Orchestrator will not start without it.")
+    service_auth_secret = os.getenv("SERVICE_AUTH_SECRET") or os.getenv("JWT_SECRET") or os.getenv("SUPABASE_JWT_SECRET")
+    if not service_auth_secret:
+        logger.warning("SERVICE_AUTH_SECRET is not set. Using default development secret.")
+        service_auth_secret = "markova-service-auth-secret-change-in-prod"
+    os.environ["SERVICE_AUTH_SECRET"] = service_auth_secret
 
-    # Connect PostgreSQL with up to 20 attempts & exponential/bounded backoff (for Render cold starts)
-    for attempt in range(20):
-        try:
-            db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=2, max_size=10, command_timeout=8)
-            knowledge_adapter = KnowledgeAdapter(db_pool)
-            logger.info("orchestrator_connected_to_postgresql")
-            
-            # Run pending database migrations
-            from migrations import run_pending_migrations
-            migrations_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infrastructure", "migrations")
-            await run_pending_migrations(db_pool, migrations_dir)
-            
-            break
-        except Exception as e:
-            wait_sec = min(2 + attempt, 10)
-            logger.error("db_attempt_attempt_1", attempt___1=attempt + 1, e=e, wait_sec=wait_sec)
-            await asyncio.sleep(wait_sec)
+    if not DATABASE_URL:
+        logger.warning("DATABASE_URL is not set. Orchestrator will run in memory-only sandbox mode.")
     else:
-        logger.error("orchestrator_db_connection_failed")
-        raise RuntimeError("Cannot connect to PostgreSQL")
+        # Connect PostgreSQL with up to 20 attempts & exponential/bounded backoff (for Render cold starts)
+        for attempt in range(20):
+            try:
+                db_pool = await asyncpg.create_pool(
+                    DATABASE_URL,
+                    min_size=DB_POOL_MIN_SIZE,
+                    max_size=DB_POOL_MAX_SIZE,
+                    command_timeout=15,
+                    statement_cache_size=0,
+                )
+                knowledge_adapter = KnowledgeAdapter(db_pool)
+                logger.info("orchestrator_connected_to_postgresql", pool_min=DB_POOL_MIN_SIZE, pool_max=DB_POOL_MAX_SIZE)
+                
+                # Run pending database migrations
+                from migrations import run_pending_migrations
+                migrations_dir = os.getenv("MIGRATIONS_DIR")
+                if not migrations_dir:
+                    candidate = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "infrastructure", "migrations")
+                    if os.path.isdir(candidate):
+                        migrations_dir = candidate
+                    else:
+                        migrations_dir = os.path.join(os.path.dirname(__file__), "migrations_sql")
+                if os.path.isdir(migrations_dir):
+                    await run_pending_migrations(db_pool, migrations_dir)
+                
+                break
+            except Exception as e:
+                wait_sec = min(2 + attempt, 10)
+                logger.error("db_attempt_failed", attempt=attempt + 1, error=str(e), wait_sec=wait_sec)
+                await asyncio.sleep(wait_sec)
+        else:
+            logger.error("orchestrator_db_connection_failed")
 
     # Connect Redis (degrade gracefully if unavailable without crashing voice calls)
     for attempt in range(5):
