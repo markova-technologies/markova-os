@@ -199,3 +199,21 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   2. Implemented Option A for knowledge association: real PostgreSQL join table (`agent_knowledge_sources`) with full attach/detach endpoints and an honest UI badge (`RAG: Pending Activation`) until orchestrator prompt injection is wired.
   3. Implemented auto-provisioning for the Commander Agent team ("Almaz - Commander") and standard teams on first tenant load in `agent-builder`.
   4. Built a domain-aware AI prompt suggester utility generating Amharic and bilingual Ethiopian call center archetypes with a one-click apply tray.
+
+---
+
+### [2026-09-10] Agent Builder Startup Crash: DDL Foreign Key Dependency Order (`relation "agents" does not exist`)
+- **Problem:**
+  - `markova-agent-builder` crashed continuously on Render startup with:
+    `⚠️ Database connection attempt failed (relation "agents" does not exist). Retrying in 3000ms...`
+    `❌ Database connection failed` and exited with code 1.
+- **How it happened:**
+  - In `services/agent-builder/server.js`, `connectDb()` was modified to create team and bridge tables (`team_agents`, `commander_agents`, `agent_tools`, `agent_knowledge_sources`) which declare foreign keys referencing `agents(id)`.
+  - However, `CREATE TABLE IF NOT EXISTS agents` was missing from `connectDb()` entirely, and `team_agents` was executed first. On an unmigrated or freshly provisioned Supabase Postgres database where `agents` did not exist yet, PostgreSQL immediately halted the batch with `relation "agents" does not exist`.
+  - In addition, putting all multi-statement DDLs in a single query caused any single table notice to crash the startup loop.
+- **Lesson Learned & Fix:**
+  1. In PostgreSQL, tables referencing other tables via foreign keys (`REFERENCES parent_table(id)`) require the parent table to already exist. DDL initialization scripts must execute in strict dependency order:
+     `companies` -> `teams` -> `agents` -> `agent_versions` -> `tools` -> `knowledge_sources` -> bridge tables (`team_agents`, `commander_agents`, `agent_tools`, `agent_knowledge_sources`) -> `calls` -> `audit_logs`.
+  2. Use `gen_random_uuid()` (standard built-in for Postgres 13+) to avoid failures when extensions like `uuid-ossp` require superuser privileges.
+  3. Execute DDL statements in individual `try/catch` blocks within the startup routine so non-fatal notices (or pre-existing constraints) log warnings instead of aborting the connection pool or terminating the service.
+

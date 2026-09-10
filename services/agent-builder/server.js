@@ -28,47 +28,160 @@ async function connectDb() {
     try {
       const client = await pool.connect();
       try {
-        // Ensure idempotent schema for teams, agents, tools, and knowledge bridge
-        await client.query(`
-          CREATE TABLE IF NOT EXISTS teams (
-            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        // Ensure UUID extension if available
+        try {
+          await client.query('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";');
+        } catch (extErr) {
+          console.warn('UUID extension notice:', extErr.message);
+        }
+
+        // Execute DDL statements in strict dependency order
+        const ddlStatements = [
+          // 1. Companies (tenants)
+          `CREATE TABLE IF NOT EXISTS companies (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            name VARCHAR(255) NOT NULL,
+            plan VARCHAR(50) DEFAULT 'starter',
+            status VARCHAR(50) DEFAULT 'active',
+            max_agents INT DEFAULT 5,
+            workflow_settings JSONB NOT NULL DEFAULT '{"confidence_thresholds":{"default":0.85,"refund":0.95,"update_address":0.70,"update_contact":0.75}}'::jsonb,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 2. Teams
+          `CREATE TABLE IF NOT EXISTS teams (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
             name VARCHAR(255) NOT NULL,
             type VARCHAR(50) DEFAULT 'general',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-          );
+          );`,
 
-          CREATE TABLE IF NOT EXISTS team_agents (
+          // 3. Agents (must precede any table that has foreign key REFERENCES agents(id))
+          `CREATE TABLE IF NOT EXISTS agents (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            prompt TEXT NOT NULL,
+            voice_provider VARCHAR(100) NOT NULL DEFAULT 'edge_tts',
+            voice_id VARCHAR(100) NOT NULL DEFAULT 'am-ET-MekdesNeural',
+            model_provider VARCHAR(100) NOT NULL DEFAULT 'groq',
+            model_id VARCHAR(100) NOT NULL DEFAULT 'llama-3.3-70b-versatile',
+            team_id UUID REFERENCES teams(id) ON DELETE SET NULL,
+            temperature NUMERIC DEFAULT 0.3,
+            stt_provider VARCHAR(100) DEFAULT 'elevenlabs_scribe',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 4. Agent Versions
+          `CREATE TABLE IF NOT EXISTS agent_versions (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
+            version_number INT NOT NULL,
+            prompt TEXT NOT NULL,
+            model_provider VARCHAR(100) NOT NULL,
+            model_id VARCHAR(100) NOT NULL,
+            voice_provider VARCHAR(100) NOT NULL,
+            voice_id VARCHAR(100) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 5. Tools
+          `CREATE TABLE IF NOT EXISTS tools (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            name VARCHAR(100) NOT NULL,
+            description TEXT,
+            webhook_url TEXT NOT NULL,
+            method VARCHAR(10) DEFAULT 'POST',
+            type VARCHAR(50) DEFAULT 'webhook',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 6. Knowledge Sources
+          `CREATE TABLE IF NOT EXISTS knowledge_sources (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            name VARCHAR(255) NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            status VARCHAR(50) DEFAULT 'ready',
+            metadata JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 7. Team Agents bridge
+          `CREATE TABLE IF NOT EXISTS team_agents (
             team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
             agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
             role VARCHAR(100) DEFAULT 'member',
             PRIMARY KEY (team_id, agent_id)
-          );
+          );`,
 
-          CREATE TABLE IF NOT EXISTS commander_agents (
+          // 8. Commander Agents bridge
+          `CREATE TABLE IF NOT EXISTS commander_agents (
             team_id UUID REFERENCES teams(id) ON DELETE CASCADE,
             agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
             routing_rules JSONB,
             PRIMARY KEY (team_id, agent_id)
-          );
+          );`,
 
-          CREATE TABLE IF NOT EXISTS agent_tools (
+          // 9. Agent Tools bridge
+          `CREATE TABLE IF NOT EXISTS agent_tools (
             agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
             tool_id UUID REFERENCES tools(id) ON DELETE CASCADE,
             PRIMARY KEY (agent_id, tool_id)
-          );
+          );`,
 
-          CREATE TABLE IF NOT EXISTS agent_knowledge_sources (
+          // 10. Agent Knowledge Sources bridge
+          `CREATE TABLE IF NOT EXISTS agent_knowledge_sources (
             agent_id UUID REFERENCES agents(id) ON DELETE CASCADE,
             source_id UUID REFERENCES knowledge_sources(id) ON DELETE CASCADE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (agent_id, source_id)
-          );
+          );`,
 
-          ALTER TABLE agents ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE SET NULL;
-          ALTER TABLE agents ADD COLUMN IF NOT EXISTS temperature NUMERIC DEFAULT 0.3;
-          ALTER TABLE agents ADD COLUMN IF NOT EXISTS stt_provider VARCHAR(100) DEFAULT 'elevenlabs_scribe';
-        `);
+          // 11. Calls
+          `CREATE TABLE IF NOT EXISTS calls (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            agent_id UUID REFERENCES agents(id) ON DELETE SET NULL,
+            customer_number VARCHAR(50),
+            status VARCHAR(50) DEFAULT 'initiated',
+            start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            end_time TIMESTAMP,
+            turn_count INT DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 12. Audit Logs
+          `CREATE TABLE IF NOT EXISTS audit_logs (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            user_id UUID,
+            action VARCHAR(100) NOT NULL,
+            entity_type VARCHAR(100) NOT NULL,
+            entity_id UUID NOT NULL,
+            details JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );`,
+
+          // 13. Column migrations for existing tables
+          `ALTER TABLE agents ADD COLUMN IF NOT EXISTS team_id UUID REFERENCES teams(id) ON DELETE SET NULL;`,
+          `ALTER TABLE agents ADD COLUMN IF NOT EXISTS temperature NUMERIC DEFAULT 0.3;`,
+          `ALTER TABLE agents ADD COLUMN IF NOT EXISTS stt_provider VARCHAR(100) DEFAULT 'elevenlabs_scribe';`,
+          `ALTER TABLE tools ADD COLUMN IF NOT EXISTS type VARCHAR(50) DEFAULT 'webhook';`
+        ];
+
+        for (const sql of ddlStatements) {
+          try {
+            await client.query(sql);
+          } catch (ddlErr) {
+            console.warn(`DDL Notice on statement: ${ddlErr.message}`);
+          }
+        }
       } finally {
         client.release();
       }
