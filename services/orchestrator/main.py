@@ -32,7 +32,7 @@ from email.mime.text import MIMEText
 from xml.sax.saxutils import escape as _xml_escape
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Any, List, Union, Set
 
 import asyncpg  # type: ignore
 import httpx
@@ -3820,7 +3820,7 @@ async def create_test_call(agent_id: str, request: Request):
     
     return {"session_id": session_id}
 
-_GREETING_AUDIO_CACHE: Dict[str, bytes] = {}
+_GREETING_AUDIO_CACHE: dict[str, bytes] = {}
 _NOISE_FILTER_SET = {
     "[noise]", "(noise)", "[silence]", "(silence)", 
     "[cough]", "(cough)", "[laughter]", "(laughter)", 

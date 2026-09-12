@@ -3177,7 +3177,7 @@ async def create_test_call(agent_id: str, request: Request):
     
     return {"session_id": session_id}
 
-_GREETING_AUDIO_CACHE: Dict[str, bytes] = {}
+_GREETING_AUDIO_CACHE: dict[str, bytes] = {}
 _NOISE_FILTER_SET = {
     "[noise]", "(noise)", "[silence]", "(silence)", 
     "[cough]", "(cough)", "[laughter]", "(laughter)", 

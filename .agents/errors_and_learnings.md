@@ -436,3 +436,21 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
      - Replaced deceptive placeholder with an honest error notification: `"ይቅርታ፣ አሁን መልስ መስጠት አልቻልኩም። እባክዎ ጥያቄዎን በድጋሚ ይጠይቁኝ።"`.
   3. **Noise Token Filter**: Added `NOISE_TOKENS` filter in `voice_session.py` and `main.py` to immediately ignore `[noise]`, `(noise)`, `[silence]`, `[applause]`, etc., preventing spurious LLM/TTS generation cycles.
   4. **Frontend Registry & Defaults**: Updated `apps/client-dashboard/src/constants/voiceModelRegistry.js` and `AgentStudio.jsx` to default to `groq/compound-mini` and surface Gemini models.
+
+---
+
+### [2026-09-12] Render Startup Failure: `NameError: name 'Dict' is not defined`
+- **Error/Fault:** Render deployment for `markova-orchestrator` crashed during startup with:
+  ```
+  File "/app/main.py", line 3823, in <module>
+    _GREETING_AUDIO_CACHE: Dict[str, bytes] = {}
+  NameError: name 'Dict' is not defined. Did you mean: 'dict'?
+  ```
+- **How it Happened:**
+  - `_GREETING_AUDIO_CACHE` was declared with type annotation `Dict[str, bytes] = {}`.
+  - In `services/orchestrator/main.py`, typing imports only included `from typing import Optional, Tuple`.
+  - `python -m py_compile` only validates AST bytecode syntax (variable annotations are syntactically valid even if the type symbol is unbound). At runtime, Python 3.11 evaluates module-level type annotations unless `from __future__ import annotations` is imported, raising `NameError`.
+- **Lesson Learned:**
+  1. In Python 3.9+, use built-in lowercase type generics (`dict[str, bytes]`, `list[str]`, `set[str]`) for variable annotations rather than `typing.Dict`.
+  2. Always include `Dict, Any, List, Union, Set` in `from typing import ...` at the top of the file if uppercase typing forms are used.
+  3. Verify runtime module execution with a Python import test (`python -c "import main"`) rather than relying only on `py_compile`.
