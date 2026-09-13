@@ -224,8 +224,17 @@ function normalizeAgentBody(body = {}) {
 
 // ── Teams & Commander Auto-Setup Endpoints ─────────────────────────────────
 
+// In-process cache to eliminate repeated ensureCommanderAgent DB roundtrips
+const commanderCache = new Map(); // companyId -> { agent, expiresAt }
+
 async function ensureCommanderAgent(ctx) {
   const companyId = ctx.tenantId;
+
+  // 0. Cache hit check (5-minute TTL)
+  const cached = commanderCache.get(companyId);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.agent;
+  }
 
   // 1. Fast path: check if an agent already exists as Commander or in a Commander team
   const existingAgent = await tenantDb.query(
@@ -248,6 +257,7 @@ async function ensureCommanderAgent(ctx) {
       );
       row.name = 'Markova - Commander Agent';
     }
+    commanderCache.set(companyId, { agent: row, expiresAt: Date.now() + 300000 });
     return row;
   }
 
@@ -354,9 +364,57 @@ Always maintain a professional, respectful, and helpful Ethiopian conversational
     );
 
     console.log(`✅ Auto-provisioned Commander Agent (Markova) for company ${companyId}`);
+    commanderCache.set(companyId, { agent, expiresAt: Date.now() + 300000 });
     return agent;
   });
 }
+
+// Composite Studio Data: single concurrent round-trip for teams and agents
+app.get('/api/builder/studio-data', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+
+  try {
+    // 1. Ensure Commander Agent and teams exist (uses in-memory 5-min cache)
+    await ensureCommanderAgent(ctx);
+
+    // 2. Query teams and agents concurrently in parallel
+    const [teamsResult, agentsResult] = await Promise.all([
+      tenantDb.query(
+        ctx,
+        `SELECT t.id, t.name, t.type, t.created_at, COUNT(a.id)::int as count
+         FROM teams t
+         LEFT JOIN agents a ON a.team_id = t.id
+         WHERE t.company_id = $1
+         GROUP BY t.id, t.name, t.type, t.created_at
+         ORDER BY CASE WHEN t.type = 'commander' THEN 0 ELSE 1 END, t.name ASC`,
+        [companyId]
+      ),
+      tenantDb.query(
+        ctx,
+        `SELECT id, name, prompt, voice_provider, voice_id, model_provider, model_id, team_id, temperature, stt_provider, created_at, updated_at 
+         FROM agents 
+         WHERE company_id = $1 
+         ORDER BY CASE WHEN name ILIKE '%commander%' THEN 0 ELSE 1 END, name ASC`,
+        [companyId]
+      )
+    ]);
+
+    const mapped = teamsResult.rows.map(t => ({
+      ...t,
+      isCommander: t.type === 'commander'
+    }));
+
+    res.set('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
+    res.json({
+      teams: mapped,
+      agents: agentsResult.rows
+    });
+  } catch (error) {
+    console.error('Studio Data Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
 
 // List teams for Company (guarantees Commander team and agent are auto-provisioned)
 app.get('/api/builder/teams', async (req, res) => {
@@ -371,11 +429,11 @@ app.get('/api/builder/teams', async (req, res) => {
     const teamsResult = await tenantDb.query(
       ctx,
       `SELECT t.id, t.name, t.type, t.created_at, COUNT(a.id)::int as count
-       FROM teams t
-       LEFT JOIN agents a ON a.team_id = t.id
-       WHERE t.company_id = $1
-       GROUP BY t.id, t.name, t.type, t.created_at
-       ORDER BY CASE WHEN t.type = 'commander' THEN 0 ELSE 1 END, t.name ASC`,
+         FROM teams t
+         LEFT JOIN agents a ON a.team_id = t.id
+         WHERE t.company_id = $1
+         GROUP BY t.id, t.name, t.type, t.created_at
+         ORDER BY CASE WHEN t.type = 'commander' THEN 0 ELSE 1 END, t.name ASC`,
       [companyId]
     );
 
@@ -384,6 +442,7 @@ app.get('/api/builder/teams', async (req, res) => {
       isCommander: t.type === 'commander'
     }));
 
+    res.set('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
     res.json(mapped);
   } catch (error) {
     console.error('List Teams Error:', error);
@@ -549,6 +608,8 @@ app.post('/api/builder/agents', async (req, res) => {
       return newAgent;
     });
 
+    commanderCache.delete(companyId);
+
     res.status(201).json({
       ...agent,
       language: language || 'am',
@@ -577,6 +638,7 @@ app.get('/api/builder/agents', async (req, res) => {
        ORDER BY CASE WHEN name ILIKE '%commander%' THEN 0 ELSE 1 END, name ASC`,
       [ctx.tenantId]
     );
+    res.set('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
     res.json(result.rows);
   } catch (error) {
     console.error('List Agents Error:', error);
@@ -704,6 +766,8 @@ app.put('/api/builder/agents/:id', async (req, res) => {
 
       return updatedAgentRecord;
     });
+
+    commanderCache.delete(companyId);
 
     res.json(updatedAgent);
   } catch (error) {
@@ -1095,6 +1159,8 @@ app.delete('/api/builder/agents/:id', async (req, res) => {
         [companyId, userId, 'AGENT_DELETED', 'agent', id]
       );
     });
+
+    commanderCache.delete(companyId);
 
     res.json({ success: true, message: 'Agent deleted successfully' });
   } catch (error) {

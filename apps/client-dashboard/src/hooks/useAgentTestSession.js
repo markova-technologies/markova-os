@@ -13,6 +13,26 @@ export const useAgentTestSession = (agentId) => {
   const mediaStreamRef = useRef(null)
   const audioQueueRef = useRef([])
   const isPlayingAudioRef = useRef(false)
+  const prewarmSessionRef = useRef(null)
+
+  // Pre-warm the test session in background on button hover or modal open
+  const preWarm = useCallback(async (agentConfig = null) => {
+    if (prewarmSessionRef.current && (Date.now() - prewarmSessionRef.current.timestamp < 45000)) {
+      return prewarmSessionRef.current.sessionId
+    }
+    try {
+      const targetId = agentId || agentConfig?.id || 'markova-commander-default'
+      const res = await startAgentTestSession(targetId, agentConfig || {})
+      const sessionId = res.data?.session_id
+      if (sessionId) {
+        prewarmSessionRef.current = { sessionId, timestamp: Date.now() }
+        return sessionId
+      }
+    } catch (e) {
+      console.warn('Silent session prewarm notice:', e)
+    }
+    return null
+  }, [agentId])
 
   // Play next audio chunk in queue
   const playNextInQueue = useCallback(() => {
@@ -50,9 +70,18 @@ export const useAgentTestSession = (agentId) => {
     setTranscript([])
 
     try {
-      // 1. Initialize test session on orchestrator (passes active agent draft if provided)
-      const res = await startAgentTestSession(targetId, agentConfig || {})
-      const sessionId = res.data?.session_id
+      let sessionId = null
+
+      // Check if we have a warm pre-created session ID from hover / modal open
+      if (prewarmSessionRef.current && (Date.now() - prewarmSessionRef.current.timestamp < 60000)) {
+        sessionId = prewarmSessionRef.current.sessionId
+        prewarmSessionRef.current = null
+      } else {
+        // 1. Initialize test session on orchestrator (passes active agent draft if provided)
+        const res = await startAgentTestSession(targetId, agentConfig || {})
+        sessionId = res.data?.session_id
+      }
+
       if (!sessionId) {
         throw new Error('No session ID returned from test call creation.')
       }
@@ -100,8 +129,8 @@ export const useAgentTestSession = (agentId) => {
               }
             }
 
-            // Slice audio every 2.5 seconds or on demand
-            recorder.start(2500)
+            // Slice audio every 500ms (drastically cuts latency from 2.5s to 0.5s)
+            recorder.start(500)
           }
         } catch (micErr) {
           console.warn('Microphone access denied or unavailable, text chat only:', micErr)
@@ -218,6 +247,7 @@ export const useAgentTestSession = (agentId) => {
     audioRef,
     startSession,
     endSession,
-    sendText
+    sendText,
+    preWarm
   }
 }

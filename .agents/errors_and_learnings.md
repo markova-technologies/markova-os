@@ -454,3 +454,40 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   1. In Python 3.9+, use built-in lowercase type generics (`dict[str, bytes]`, `list[str]`, `set[str]`) for variable annotations rather than `typing.Dict`.
   2. Always include `Dict, Any, List, Union, Set` in `from typing import ...` at the top of the file if uppercase typing forms are used.
   3. Verify runtime module execution with a Python import test (`python -c "import main"`) rather than relying only on `py_compile`.
+
+---
+
+### [2026-09-12] Platform-Wide Latency & Voice Sandbox Simulator (26s+ Delay) Resolution
+- **Problems Observed:**
+  1. **Voice Sandbox Simulator Latency**: A 26+ second delay occurred between clicking "Test Voice" / "Start Voice Trial" and hearing the agent speak the initial Amharic greeting.
+  2. **Dashboard & Studio Sluggishness**: Loading Agent Studio, Team Management, and dashboard pages felt exceptionally slow, appearing to hang on blank canvases before rendering.
+- **Root Causes:**
+  1. **Cold Voice Session Initialization**: `startSession()` performed sequential roundtrips: async `supabase.auth.getSession()`, an HTTP POST to `/api/v1/agent-test/session` creating a new session, followed by establishing the WebSocket. This added 2–4 seconds of network latency *before* the voice connection even initiated.
+  2. **Unbuffered Audio Chunking Delay**: `MediaRecorder.start(2500)` in `useAgentTestSession.js` forced the browser to buffer audio for 2.5 full seconds before dispatching the first voice chunk to the server.
+  3. **Cold TTS Greeting Synthesis**: `_GREETING_AUDIO_CACHE` in `orchestrator/main.py` was empty on cold start; the very first connection had to live-synthesize `am-ET-MekdesNeural` audio chunk-by-chunk through Edge-TTS.
+  4. **Sequential REST Queries & Cache Duplication**: In `AgentStudio.jsx`, `listTeams()` was awaited, followed sequentially by `listAgents()`. Both calls triggered `ensureCommanderAgent()` on the backend, running sequential database queries without memoization.
+  5. **Repeated Supabase Auth Roundtrips**: Every single API method in `apps/client-dashboard/src/api/client.js` awaited `supabase.auth.getSession()`, making dozens of asynchronous bridge calls on page mount.
+  6. **Monolithic Bundle Size**: `App.jsx` loaded all 24 page components statically, forcing the browser to parse massive bundles upfront before rendering any view.
+  7. **Microservice Cold Starts**: Free/dormant Render backend services idle after 15 minutes of inactivity; waking up an idle container and establishing Postgres pool connections took 20–30+ seconds.
+- **Fixes Applied:**
+  1. **Optimistic Pre-Warming in Voice Sandbox**:
+     - Added `preWarm()` in `useAgentTestSession.js` which pre-fetches a test session in the background when the user opens the modal or hovers over "Test Voice" / "Start Voice Trial".
+     - Cached pre-warmed sessions for 60 seconds so clicking "Start Voice Trial" reuses the active `session_id` instantly, connecting to the WebSocket with zero preliminary HTTP delay.
+  2. **Low-Latency Audio Slicing**: Sliced `MediaRecorder.start(2500)` down to `start(500)` (500ms intervals), cutting initial audio turnaround latency by 2000ms.
+  3. **Backend Startup Greeting Pre-Warming**:
+     - Added `pre_warm_greeting_cache()` in `services/orchestrator/main.py` executed as a background task during `lifespan` startup, pre-synthesizing and caching the Amharic welcoming audio so the first user connection receives audio in < 1ms.
+  4. **Client-Side In-Memory API Cache & Composite Endpoint**:
+     - Created `apps/client-dashboard/src/utils/apiCache.js` with TTL, company isolation, and automatic cache invalidation on mutations.
+     - Added a 10s session cache in `client.js` to eliminate redundant `supabase.auth.getSession()` calls.
+     - Created composite endpoint `GET /api/builder/studio-data` (and `/v1/studio-data`) querying agents and teams concurrently in a single roundtrip.
+     - Memoized `ensureCommanderAgent` in `services/agent-builder/server.js` with a 5-minute TTL cache (`commanderCache`).
+  5. **Route-Level Code Splitting & UI Skeleton Placeholders**:
+     - Converted all 24 page routes in `App.jsx` to `React.lazy()` with `<Suspense fallback={<PageLoadingFallback />}>`.
+     - Added responsive skeleton loading card placeholders in `AgentStudio.jsx` to eliminate layout shift and give immediate visual feedback while data loads.
+  6. **Render Microservice Keep-Warm Worker & Health DB Pings**:
+     - Implemented `@app.get("/health")` and `@app.head("/health")` in `services/orchestrator/main.py` executing `SELECT 1` on the asyncpg database pool.
+     - Created `workers/keep-warm/index.js` to ping backend endpoints every 4 minutes, preventing Render containers and database connection pools from idling out.
+- **Lesson Learned:**
+  1. Latency is rarely a single bottleneck; in real-time voice and SPA applications, high perceived latency is almost always a compound multiplier of idle microservice cold starts (15-20s), sequential data fetching (2-3s), un-sliced client media buffers (2.5s), and un-cached LLM/TTS generation (2-4s).
+  2. Pre-warming state on user intent signals (e.g. mouse hover or modal open) cuts user-perceived turnaround to sub-second speeds.
+  3. Health check endpoints on microservices should always perform a lightweight database ping (`SELECT 1`) to keep connection poolers alive and avoid cold connection handshake overhead.

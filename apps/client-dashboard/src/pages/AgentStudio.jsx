@@ -33,6 +33,7 @@ import {
   Edit3
 } from 'lucide-react'
 import { 
+  getStudioData,
   listTeams, 
   createTeam, 
   deleteTeam,
@@ -74,18 +75,21 @@ const AgentStudio = () => {
   const [builderTab, setBuilderTab] = useState('prompt')
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false)
   const [newTeamName, setNewTeamName] = useState('')
+  const [isDeploying, setIsDeploying] = useState(false)
 
-  // Sub-tabs data state
+  // Version History & Analytics state
+  const [agentVersions, setAgentVersions] = useState([])
+  const [selectedVersionPreview, setSelectedVersionPreview] = useState(null)
+  const [agentAnalytics, setAgentAnalytics] = useState(null)
+
+  // Knowledge & Tools connection state
   const [companyKnowledge, setCompanyKnowledge] = useState([])
   const [connectedKnowledge, setConnectedKnowledge] = useState([])
   const [companyTools, setCompanyTools] = useState([])
   const [connectedTools, setConnectedTools] = useState([])
-  const [agentStats, setAgentStats] = useState(null)
-  const [agentVersions, setAgentVersions] = useState([])
-  
+
   // Prompt Suggester UI state
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [selectedVersionPreview, setSelectedVersionPreview] = useState(null)
 
   // Voice Preview state
   const [isPlayingPreview, setIsPlayingPreview] = useState(false)
@@ -104,29 +108,33 @@ const AgentStudio = () => {
     audioRef,
     startSession,
     endSession,
-    sendText
+    sendText,
+    preWarm
   } = useAgentTestSession(editingAgent?.id)
 
-  // ── 1. Fetch Teams & Agents (Auto-Commander Enabled) ─────────────────────
-  // ── 1. Fetch Teams & Agents (Auto-Commander Guaranteed) ───────────────────
+  // Pre-warm the voice test session whenever sandbox modal opens
+  useEffect(() => {
+    if (isVoiceSandboxOpen && editingAgent) {
+      preWarm(editingAgent);
+    }
+  }, [isVoiceSandboxOpen, editingAgent, preWarm]);
+
+  // ── 1. Fetch Teams & Agents (Single Round-Trip / Parallel Guaranteed) ─────
   const loadStudioData = async () => {
     setLoading(true)
     try {
-      // 1. Fetch teams first (guarantees backend ensureCommanderAgent executes)
-      const teamsRes = await listTeams().catch(() => ({ data: [] }));
-      
-      // 2. Fetch agents (guaranteed to include commander agent)
-      const agentsRes = await listAgents().catch(() => ({ data: [] }));
+      // Single composite fetch with parallel fallback
+      const studioRes = await getStudioData().catch(() => ({ data: { teams: [], agents: [] } }));
+      const teamsData = studioRes.data?.teams || [];
+      const rawAgents = studioRes.data?.agents || [];
 
-      let fetchedTeams = (teamsRes.data || []).map(t => ({
+      let fetchedTeams = teamsData.map(t => ({
         id: t.id,
         name: t.name,
         icon: t.type === 'commander' ? ShieldAlert : Users,
         count: t.count || 0,
         isCommander: t.type === 'commander'
       }));
-
-      let rawAgents = agentsRes.data || [];
 
       // Guarantee Commander team exists in UI
       let commanderTeam = fetchedTeams.find(t => t.isCommander);
@@ -627,8 +635,27 @@ const AgentStudio = () => {
             </div>
           </div>
 
-          {/* Existing Agent Cards */}
-          {currentAgents.map((agent, i) => (
+          {/* Existing Agent Cards or Skeleton Placeholders */}
+          {loading ? (
+            [...Array(3)].map((_, idx) => (
+              <div 
+                key={`skel-${idx}`}
+                className="agent-card" 
+                style={{ opacity: 0.65, pointerEvents: 'none', borderStyle: 'dashed' }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ width: '55%', height: '14px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', marginBottom: '8px', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                    <div style={{ width: '35%', height: '10px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                  </div>
+                </div>
+                <div style={{ width: '90%', height: '12px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', marginBottom: '6px', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                <div style={{ width: '70%', height: '12px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', animation: 'pulse 1.5s infinite ease-in-out' }} />
+              </div>
+            ))
+          ) : (
+            currentAgents.map((agent, i) => (
             <motion.div 
               key={agent.id}
               className={`agent-card ${agent.isCommander ? 'commander-card' : ''}`}
@@ -665,7 +692,7 @@ const AgentStudio = () => {
                 </button>
               </div>
             </motion.div>
-          ))}
+          )))}
         </div>
       </div>
 
@@ -779,7 +806,14 @@ const AgentStudio = () => {
                 <Trash2 size={16} /> Delete
               </button>
             )}
-            <button className="btn btn-secondary" onClick={() => setIsVoiceSandboxOpen(true)}>
+            <button 
+              className="btn btn-secondary" 
+              onMouseEnter={() => preWarm(editingAgent)}
+              onClick={() => {
+                preWarm(editingAgent);
+                setIsVoiceSandboxOpen(true);
+              }}
+            >
               <Play size={16} /> Test Voice
             </button>
             <button className="btn btn-secondary" onClick={handleSave}>
@@ -1537,6 +1571,7 @@ const AgentStudio = () => {
                     </p>
                   </div>
                   <button 
+                    onMouseEnter={() => preWarm(editingAgent)}
                     onClick={startSandboxCall}
                     className="btn btn-primary"
                     style={{ background: '#10b981', borderColor: '#10b981', padding: '0.75rem 2rem', borderRadius: '2rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1rem', fontWeight: 600 }}

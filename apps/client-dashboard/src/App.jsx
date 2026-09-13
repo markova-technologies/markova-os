@@ -1,35 +1,37 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Header from './components/Header'
-import CommandCenter from './pages/CommandCenter'
-import OnboardingCenter from './pages/OnboardingCenter'
-import AgentStudio from './pages/AgentStudio'
-import AgentBuilder from './pages/AgentBuilder'
-import KnowledgeCenter from './pages/KnowledgeCenter'
-import IntegrationHub from './pages/IntegrationHub'
-import CallCenter from './pages/CallCenter'
-import UsageCenter from './pages/UsageCenter'
-import AnalyticsCenter from './pages/AnalyticsCenter'
-import Settings from './pages/Settings'
-import BillingCenter from './pages/BillingCenter'
-import Keys from './pages/Keys'
-import PhoneChannels from './pages/PhoneChannels'
-import Login from './pages/Login'
-import Signup from './pages/Signup'
-import ForgotPassword from './pages/ForgotPassword'
-import ResetPassword from './pages/ResetPassword'
-import Pricing from './pages/Pricing'
-import DocsSite from './pages/DocsSite'
-import CRM from './pages/CRM'
-import Governance from './pages/Governance'
-import Organization from './pages/Organization'
-import Notifications from './pages/Notifications'
-import LandingPage from './pages/LandingPage'
+
+// Lazy loaded page components for optimal initial bundle & fast navigation
+const CommandCenter = lazy(() => import('./pages/CommandCenter'))
+const OnboardingCenter = lazy(() => import('./pages/OnboardingCenter'))
+const AgentStudio = lazy(() => import('./pages/AgentStudio'))
+const AgentBuilder = lazy(() => import('./pages/AgentBuilder'))
+const KnowledgeCenter = lazy(() => import('./pages/KnowledgeCenter'))
+const IntegrationHub = lazy(() => import('./pages/IntegrationHub'))
+const CallCenter = lazy(() => import('./pages/CallCenter'))
+const UsageCenter = lazy(() => import('./pages/UsageCenter'))
+const AnalyticsCenter = lazy(() => import('./pages/AnalyticsCenter'))
+const Settings = lazy(() => import('./pages/Settings'))
+const BillingCenter = lazy(() => import('./pages/BillingCenter'))
+const Keys = lazy(() => import('./pages/Keys'))
+const PhoneChannels = lazy(() => import('./pages/PhoneChannels'))
+const Login = lazy(() => import('./pages/Login'))
+const Signup = lazy(() => import('./pages/Signup'))
+const ForgotPassword = lazy(() => import('./pages/ForgotPassword'))
+const ResetPassword = lazy(() => import('./pages/ResetPassword'))
+const Pricing = lazy(() => import('./pages/Pricing'))
+const DocsSite = lazy(() => import('./pages/DocsSite'))
+const CRM = lazy(() => import('./pages/CRM'))
+const Governance = lazy(() => import('./pages/Governance'))
+const Organization = lazy(() => import('./pages/Organization'))
+const Notifications = lazy(() => import('./pages/Notifications'))
+const LandingPage = lazy(() => import('./pages/LandingPage'))
+
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
 import { supabase } from './config/supabase'
 import { ROUTES } from './config/site'
-
 
 import { ToastProvider } from './contexts/ToastContext'
 import { EnvironmentProvider } from './contexts/EnvironmentContext'
@@ -39,6 +41,40 @@ import ImpersonationBanner from './components/ImpersonationBanner'
 import MobileBottomBar from './components/MobileBottomBar'
 import ErrorBoundary from './components/ErrorBoundary'
 import './App.css'
+
+const PageLoadingFallback = () => (
+  <div style={{
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1.5rem',
+    padding: '2rem',
+    width: '100%',
+    boxSizing: 'border-box'
+  }}>
+    <div style={{
+      height: '34px',
+      width: '260px',
+      background: 'rgba(255, 255, 255, 0.08)',
+      borderRadius: '8px',
+      animation: 'pulse 1.5s infinite ease-in-out'
+    }} />
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+      gap: '1.25rem'
+    }}>
+      {[1, 2, 3, 4].map(k => (
+        <div key={k} style={{
+          height: '160px',
+          background: 'rgba(255, 255, 255, 0.04)',
+          borderRadius: '14px',
+          border: '1px solid rgba(255, 255, 255, 0.06)',
+          animation: 'pulse 1.5s infinite ease-in-out'
+        }} />
+      ))}
+    </div>
+  </div>
+)
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -177,110 +213,112 @@ function App() {
 
   return (
     <ToastProvider>
-      <Routes>
-        {/* Root: redirect authenticated users to /app, everyone else to LandingPage */}
-        <Route
-          path={ROUTES.home}
-          element={
-            isAuthenticated
-              ? <Navigate to={ROUTES.app} replace />
-              : <LandingPage />
-          }
-        />
+      <Suspense fallback={<PageLoadingFallback />}>
+        <Routes>
+          {/* Root: redirect authenticated users to /app, everyone else to LandingPage */}
+          <Route
+            path={ROUTES.home}
+            element={
+              isAuthenticated
+                ? <Navigate to={ROUTES.app} replace />
+                : <LandingPage />
+            }
+          />
 
-        {/* Public product pages — before authenticated /app dashboard */}
-        <Route path={ROUTES.pricing} element={<Pricing />} />
-        <Route path={`${ROUTES.docs}/*`} element={<DocsSite />} />
+          {/* Public product pages — before authenticated /app dashboard */}
+          <Route path={ROUTES.pricing} element={<Pricing />} />
+          <Route path={`${ROUTES.docs}/*`} element={<DocsSite />} />
 
-        {/* Public auth */}
-        <Route
-          path={ROUTES.login}
-          element={
-            isAuthenticated ? (
-              <Navigate to={ROUTES.app} replace />
-            ) : (
-              <Login
-                onLogin={handleLogin}
-                onSwitchToSignup={() => navigate(ROUTES.signup)}
-              />
-            )
-          }
-        />
-        <Route
-          path={ROUTES.signup}
-          element={
-            isAuthenticated ? (
-              <Navigate to={ROUTES.app} replace />
-            ) : (
-              <Signup onBackToLogin={() => navigate(ROUTES.login)} onLogin={handleLogin} />
-            )
-          }
-        />
-        <Route path={ROUTES.forgotPassword} element={<ForgotPassword />} />
-        <Route path={ROUTES.resetPassword} element={<ResetPassword />} />
+          {/* Public auth */}
+          <Route
+            path={ROUTES.login}
+            element={
+              isAuthenticated ? (
+                <Navigate to={ROUTES.app} replace />
+              ) : (
+                <Login
+                  onLogin={handleLogin}
+                  onSwitchToSignup={() => navigate(ROUTES.signup)}
+                />
+              )
+            }
+          />
+          <Route
+            path={ROUTES.signup}
+            element={
+              isAuthenticated ? (
+                <Navigate to={ROUTES.app} replace />
+              ) : (
+                <Signup onBackToLogin={() => navigate(ROUTES.login)} onLogin={handleLogin} />
+              )
+            }
+          />
+          <Route path={ROUTES.forgotPassword} element={<ForgotPassword />} />
+          <Route path={ROUTES.resetPassword} element={<ResetPassword />} />
 
-        {/* Authenticated product shell — all console UI under /app/* */}
-        <Route
-          path={`${ROUTES.app}/*`}
-          element={
-            isAuthenticated ? (
-              <EnvironmentProvider>
-                <div className="app-container">
-                  <ImpersonationBanner user={user} />
-                  <SystemHealthBar />
-                  <EnvironmentStrip />
-                  <Sidebar
-                    onLogout={handleLogout}
-                    isOpen={isMobileMenuOpen}
-                    toggleMenu={toggleMobileMenu}
-                  />
-                  <div className={`main-content ${isMobileMenuOpen ? 'menu-open' : ''}`}>
-                    <Header
-                      user={user}
+          {/* Authenticated product shell — all console UI under /app/* */}
+          <Route
+            path={`${ROUTES.app}/*`}
+            element={
+              isAuthenticated ? (
+                <EnvironmentProvider>
+                  <div className="app-container">
+                    <ImpersonationBanner user={user} />
+                    <SystemHealthBar />
+                    <EnvironmentStrip />
+                    <Sidebar
                       onLogout={handleLogout}
-                      toggleMobileMenu={toggleMobileMenu}
+                      isOpen={isMobileMenuOpen}
+                      toggleMenu={toggleMobileMenu}
                     />
-                    {isMobileMenuOpen && (
-                      <div className="mobile-overlay" onClick={toggleMobileMenu} />
-                    )}
-                    <div className="content-wrapper">
-                      <ErrorBoundary>
-                        <Routes>
-                          <Route index element={<CommandCenter />} />
-                          <Route path="onboarding" element={<OnboardingCenter />} />
-                          <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
-                          <Route path="agent-studio" element={<AgentStudio />} />
-                          <Route path="agent-builder" element={<AgentBuilder />} />
-                          <Route path="knowledge" element={<KnowledgeCenter />} />
-                          <Route path="phone-channels" element={<PhoneChannels />} />
-                          <Route path="keys" element={<Keys />} />
-                          <Route path="integrations" element={<IntegrationHub />} />
-                          <Route path="call-center" element={<CallCenter />} />
-                          <Route path="call-center/:callId" element={<CallCenter />} />
-                          <Route path="usage" element={<UsageCenter />} />
-                          <Route path="analytics" element={<AnalyticsCenter />} />
-                          <Route path="settings" element={<Settings />} />
-                          <Route path="billing" element={<BillingCenter />} />
-                          <Route path="crm" element={<CRM />} />
-                          <Route path="governance" element={<Governance />} />
-                          <Route path="organization" element={<Organization />} />
-                          <Route path="notifications" element={<Notifications />} />
-                          <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
-                        </Routes>
-                      </ErrorBoundary>
+                    <div className={`main-content ${isMobileMenuOpen ? 'menu-open' : ''}`}>
+                      <Header
+                        user={user}
+                        onLogout={handleLogout}
+                        toggleMobileMenu={toggleMobileMenu}
+                      />
+                      {isMobileMenuOpen && (
+                        <div className="mobile-overlay" onClick={toggleMobileMenu} />
+                      )}
+                      <div className="content-wrapper">
+                        <ErrorBoundary>
+                          <Routes>
+                            <Route index element={<CommandCenter />} />
+                            <Route path="onboarding" element={<OnboardingCenter />} />
+                            <Route path="dashboard" element={<Navigate to={ROUTES.app} replace />} />
+                            <Route path="agent-studio" element={<AgentStudio />} />
+                            <Route path="agent-builder" element={<AgentBuilder />} />
+                            <Route path="knowledge" element={<KnowledgeCenter />} />
+                            <Route path="phone-channels" element={<PhoneChannels />} />
+                            <Route path="keys" element={<Keys />} />
+                            <Route path="integrations" element={<IntegrationHub />} />
+                            <Route path="call-center" element={<CallCenter />} />
+                            <Route path="call-center/:callId" element={<CallCenter />} />
+                            <Route path="usage" element={<UsageCenter />} />
+                            <Route path="analytics" element={<AnalyticsCenter />} />
+                            <Route path="settings" element={<Settings />} />
+                            <Route path="billing" element={<BillingCenter />} />
+                            <Route path="crm" element={<CRM />} />
+                            <Route path="governance" element={<Governance />} />
+                            <Route path="organization" element={<Organization />} />
+                            <Route path="notifications" element={<Notifications />} />
+                            <Route path="*" element={<Navigate to={ROUTES.app} replace />} />
+                          </Routes>
+                        </ErrorBoundary>
+                      </div>
                     </div>
+                    <MobileBottomBar toggleMobileMenu={toggleMobileMenu} />
                   </div>
-                  <MobileBottomBar toggleMobileMenu={toggleMobileMenu} />
-                </div>
-              </EnvironmentProvider>
-            ) : (
-              <Navigate to={ROUTES.login} state={{ from: location }} replace />
-            )
-          }
-        />
+                </EnvironmentProvider>
+              ) : (
+                <Navigate to={ROUTES.login} state={{ from: location }} replace />
+              )
+            }
+          />
 
-        <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
-      </Routes>
+          <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
+        </Routes>
+      </Suspense>
     </ToastProvider>
   )
 }

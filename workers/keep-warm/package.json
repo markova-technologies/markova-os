@@ -1,0 +1,12 @@
+{
+  "name": "markova-keep-warm-worker",
+  "version": "1.0.0",
+  "description": "Pings Markova AI backend microservices to eliminate cold starts on cloud hosts",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": ["keep-warm", "cron", "markova"],
+  "author": "Markova AI",
+  "license": "MIT"
+}

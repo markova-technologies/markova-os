@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 import { supabase } from '../config/supabase'
+import apiCache from '../utils/apiCache'
 
 // Single gateway. Dev: '' -> Vite proxies /v1 to :8000. Prod: set VITE_API_URL to the gateway.
 const API_BASE = import.meta.env.VITE_API_URL || '';
@@ -8,6 +9,10 @@ const API_BASE = import.meta.env.VITE_API_URL || '';
 const api = axios.create({
   baseURL: `${API_BASE}/v1`,
 });
+
+// --- In-memory session cache to eliminate per-request getSession() overhead ---
+let _cachedSession = null;
+let _sessionExpiry = 0;
 
 // --- Token storage (single source of truth) ---
 export const DEMO_MODE_KEY = 'markova_demo_mode'
@@ -44,6 +49,9 @@ export const tokenStore = {
     localStorage.removeItem('refreshToken');
     localStorage.removeItem('user');
     localStorage.removeItem(DEMO_MODE_KEY);
+    _cachedSession = null;
+    _sessionExpiry = 0;
+    apiCache.clear();
     supabase.auth.signOut().catch(() => {});
   },
 };
@@ -57,9 +65,14 @@ export const currentEnvironment = () =>
 // Attach bearer JWT and the active environment on every request.
 api.interceptors.request.use(async (config) => {
   let token = tokenStore.get();
-  // Check if Supabase session is active
+  // Check if Supabase session is active with 10s memory cache to prevent latency spikes
   if (!token || token === 'demo-token') {
-    const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+    if (!_cachedSession || Date.now() > _sessionExpiry) {
+      const { data: { session } } = await supabase.auth.getSession().catch(() => ({ data: {} }));
+      _cachedSession = session;
+      _sessionExpiry = Date.now() + 10000;
+    }
+    const session = _cachedSession;
     if (session?.access_token) {
       token = session.access_token;
       tokenStore.set(session.access_token, session.refresh_token);
@@ -269,13 +282,34 @@ export const deleteKey = (id) => {
 };
 
 // ---------- Agents ----------
-export const listAgents = () => api.get('/agents');
-export const getAgent = (id) => api.get(`/agents/${id}`);
-export const createAgent = (data) => api.post('/agents', data);
-export const updateAgent = (id, data) => api.put(`/agents/${id}`, data);
-export const deleteAgent = (id) => api.delete(`/agents/${id}`);
+export const listAgents = () => apiCache.wrap('agents', () => api.get('/agents'), 30000);
+export const getAgent = (id) => apiCache.wrap(`agent:${id}`, () => api.get(`/agents/${id}`), 30000);
+export const createAgent = (data) => {
+  apiCache.invalidate('agents');
+  apiCache.invalidate('teams');
+  apiCache.invalidate('studio-data');
+  return api.post('/agents', data);
+};
+export const updateAgent = (id, data) => {
+  apiCache.invalidate('agents');
+  apiCache.invalidate(`agent:${id}`);
+  apiCache.invalidate('studio-data');
+  return api.put(`/agents/${id}`, data);
+};
+export const deleteAgent = (id) => {
+  apiCache.invalidate('agents');
+  apiCache.invalidate(`agent:${id}`);
+  apiCache.invalidate('teams');
+  apiCache.invalidate('studio-data');
+  return api.delete(`/agents/${id}`);
+};
 export const getAgentVersions = (id) => api.get(`/agents/${id}/versions`);
-export const rollbackAgent = (id, versionId) => api.post(`/agents/${id}/versions/${versionId}/rollback`);
+export const rollbackAgent = (id, versionId) => {
+  apiCache.invalidate('agents');
+  apiCache.invalidate(`agent:${id}`);
+  apiCache.invalidate('studio-data');
+  return api.post(`/agents/${id}/versions/${versionId}/rollback`);
+};
 export const testCallAgent = (id, to_number) => api.post(`/agents/${id}/test-call`, { to_number });
 
 // ---------- Calls ----------
@@ -299,15 +333,26 @@ export const updateRoutingRule = (id, ruleId, data) => api.put(`/numbers/${id}/r
 export const deleteRoutingRule = (id, ruleId) => api.delete(`/numbers/${id}/routing-rules/${ruleId}`);
 
 // ---------- Knowledge ----------
-export const listKnowledgeSources = () => api.get('/knowledge/sources');
-export const createKnowledgeSource = (data) => api.post('/knowledge/sources', data); // {name, type, config?}
+export const listKnowledgeSources = () => apiCache.wrap('knowledge:sources', () => api.get('/knowledge/sources'), 30000);
+export const createKnowledgeSource = (data) => {
+  apiCache.invalidate('knowledge');
+  return api.post('/knowledge/sources', data);
+};
 export const listKnowledgeDocuments = (id) => api.get(`/knowledge/sources/${id}/documents`);
-export const uploadKnowledgeDocument = (id, formData) =>
-  api.post(`/knowledge/sources/${id}/documents`, formData, {
+export const uploadKnowledgeDocument = (id, formData) => {
+  apiCache.invalidate('knowledge');
+  return api.post(`/knowledge/sources/${id}/documents`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-export const deleteKnowledgeSource = (id) => api.delete(`/knowledge/sources/${id}`).catch(() => ({ data: {} }));
-export const deleteKnowledgeDocument = (sourceId, docId) => api.delete(`/knowledge/sources/${sourceId}/documents/${docId}`).catch(() => ({ data: {} }));
+};
+export const deleteKnowledgeSource = (id) => {
+  apiCache.invalidate('knowledge');
+  return api.delete(`/knowledge/sources/${id}`).catch(() => ({ data: {} }));
+};
+export const deleteKnowledgeDocument = (sourceId, docId) => {
+  apiCache.invalidate('knowledge');
+  return api.delete(`/knowledge/sources/${sourceId}/documents/${docId}`).catch(() => ({ data: {} }));
+};
 export const searchKnowledge = (query, limit = 10) => api.post('/knowledge/search', { query, limit });
 
 // ---------- Tools & Workflow ----------
@@ -428,9 +473,41 @@ export const getGovernanceSummary = async () => {
 export default api;
 
 
-export const listTeams = () => api.get('/teams');
-export const createTeam = (data) => api.post('/teams', data);
-export const deleteTeam = (id) => api.delete(`/teams/${id}`);
+export const listTeams = () => apiCache.wrap('teams', () => api.get('/teams'), 30000);
+export const createTeam = (data) => {
+  apiCache.invalidate('teams');
+  apiCache.invalidate('studio-data');
+  return api.post('/teams', data);
+};
+export const deleteTeam = (id) => {
+  apiCache.invalidate('teams');
+  apiCache.invalidate('studio-data');
+  return api.delete(`/teams/${id}`);
+};
+
+// ---------- Composite Studio Data Loader (Single Round-Trip) ----------
+export const getStudioData = async () => {
+  return apiCache.wrap('studio-data', async () => {
+    try {
+      const res = await api.get('/studio-data');
+      if (res.data && (res.data.teams || res.data.agents)) {
+        return res;
+      }
+    } catch (e) {
+      // Graceful fallback to parallel endpoint queries
+    }
+    const [teamsRes, agentsRes] = await Promise.all([
+      api.get('/teams').catch(() => ({ data: [] })),
+      api.get('/agents').catch(() => ({ data: [] })),
+    ]);
+    return {
+      data: {
+        teams: teamsRes.data || [],
+        agents: agentsRes.data || []
+      }
+    };
+  }, 30000);
+};
 
 export const getCommander = () => api.get('/teams/commander').catch(() => ({ data: null }));
 export const getAgentAnalytics = (id) => api.get(`/agents/${id}/stats`).catch(() => ({ data: { totalCalls: 0, avgDuration: '0s', successRate: '100%', totalTurns: 0 } }));
@@ -452,4 +529,5 @@ export const getAgentVoicePreview = (id, text) =>
 export const deployAgent = (id) => api.post(`/agents/${id}/deploy`);
 
 export const startAgentTestSession = (id, config = {}) => api.post(`/agents/${id}/test-call`, { config });
+
 

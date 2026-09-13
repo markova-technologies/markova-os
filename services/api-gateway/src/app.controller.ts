@@ -117,6 +117,13 @@ export class AppController {
       url => url.replace(/^\/v1/, '/api'));
   }
 
+  @All('v1/studio-data*')
+  proxyStudioDataV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.agentBuilderUrl, req, res, (url) =>
+      url.replace(/^\/v1\/studio-data/, '/api/builder/studio-data'),
+    );
+  }
+
   @All('v1/agents*')
   proxyAgentsV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.agentBuilderUrl, req, res, (url) =>

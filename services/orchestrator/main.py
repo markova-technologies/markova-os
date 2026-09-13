@@ -262,8 +262,28 @@ db_pool: Optional[asyncpg.Pool] = None
 redis_client: Optional[aioredis.Redis] = None
 knowledge_adapter: Optional[KnowledgeAdapter] = None
 
+# Pre-warmed TTS audio cache for instant agent test sandbox response
+_GREETING_AUDIO_CACHE: dict[str, bytes] = {}
+
 # Persistent HTTP clients pool — per provider (reuses TCP connection pools)
 _http_clients: dict[str, httpx.AsyncClient] = {}
+
+async def pre_warm_greeting_cache():
+    """Pre-synthesizes the initial Amharic greeting audio so test sandbox calls have 0s audio latency."""
+    greeting = "ሰላም! እኔ ማርኮቫ ነኝ፤ እንኳን ደህና መጡ። እንዴት ልርዳዎት?"
+    voice_id = "am-ET-MekdesNeural"
+    try:
+        import edge_tts
+        communicate = edge_tts.Communicate(greeting, voice_id)
+        audio_buffer = bytearray()
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                audio_buffer.extend(chunk["data"])
+        if audio_buffer:
+            _GREETING_AUDIO_CACHE[voice_id] = bytes(audio_buffer)
+            logger.info("greeting_audio_prewarmed", voice_id=voice_id, bytes=len(audio_buffer))
+    except Exception as e:
+        logger.warning("greeting_audio_prewarm_failed", error=str(e))
 
 def get_http_client(provider: str = "default", timeout: float = 30.0) -> httpx.AsyncClient:
     if provider not in _http_clients or _http_clients[provider].is_closed:
@@ -432,6 +452,9 @@ async def lifespan(app: FastAPI):
     from campaigns import process_campaigns
     campaign_processor_task = asyncio.create_task(process_campaigns(lambda: db_pool))
 
+    # Pre-warm sandbox greeting audio cache
+    asyncio.create_task(pre_warm_greeting_cache())
+
     # Phase 3: Telephony Barge-In Controller
     from barge_in import barge_in_controller
     barge_in_controller.start()
@@ -523,6 +546,32 @@ async def root():
         "version": "2.0.0",
         "health": "/health",
         "docs": "/docs",
+    }
+
+
+@app.get("/health")
+@app.head("/health")
+async def health():
+    db_ok = False
+    redis_ok = False
+    if db_pool:
+        try:
+            val = await db_pool.fetchval("SELECT 1")
+            db_ok = val == 1
+        except Exception:
+            db_ok = False
+    if redis_client:
+        try:
+            pong = await redis_client.ping()
+            redis_ok = pong is True or pong == "PONG"
+        except Exception:
+            redis_ok = False
+    
+    return {
+        "status": "healthy" if (db_ok or db_pool is None) else "degraded",
+        "database": "connected" if db_ok else "disconnected",
+        "redis": "connected" if redis_ok else ("degraded" if REDIS_DEGRADED else "disconnected"),
+        "greeting_cache_warm": len(_GREETING_AUDIO_CACHE) > 0,
     }
 
 
@@ -3820,7 +3869,6 @@ async def create_test_call(agent_id: str, request: Request):
     
     return {"session_id": session_id}
 
-_GREETING_AUDIO_CACHE: dict[str, bytes] = {}
 _NOISE_FILTER_SET = {
     "[noise]", "(noise)", "[silence]", "(silence)", 
     "[cough]", "(cough)", "[laughter]", "(laughter)", 
