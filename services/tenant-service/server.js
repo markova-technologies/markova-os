@@ -38,6 +38,26 @@ async function initializeServices() {
       client.release();
       dbConnected = true;
       console.log('✅ Tenant Service connected to PostgreSQL');
+
+      // Auto-heal / ensure tenant_api_keys table and indexes exist
+      try {
+        await pool.query(`
+          CREATE TABLE IF NOT EXISTS tenant_api_keys (
+            id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
+            name VARCHAR(100),
+            key_hash VARCHAR(255) NOT NULL UNIQUE,
+            key_prefix VARCHAR(16) NOT NULL,
+            environment VARCHAR(10) NOT NULL DEFAULT 'test' CHECK (environment IN ('test', 'live')),
+            status VARCHAR(50) DEFAULT 'active',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          );
+          CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_hash ON tenant_api_keys (key_hash);
+          CREATE INDEX IF NOT EXISTS idx_tenant_api_keys_company ON tenant_api_keys (company_id, environment);
+        `);
+      } catch (ddlErr) {
+        console.warn('Notice ensuring tenant_api_keys schema:', ddlErr.message);
+      }
       break;
     } catch (err) {
       console.log(`⚠️ Database connection attempt ${i + 1} failed (${err.message}). Retrying in 3000ms...`);
@@ -532,6 +552,24 @@ app.post('/api/tenant/keys', async (req, res) => {
     });
   } catch (error) {
     console.error('Create API Key Error:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Revoke API Key (Soft Revocation)
+app.patch('/api/tenant/keys/:id/revoke', async (req, res) => {
+  try {
+    const ctx = req.securityContext;
+    const result = await tenantDb.query(ctx,
+      `UPDATE tenant_api_keys SET status = 'revoked' WHERE id = $1 AND company_id = $2 RETURNING id, name, key_prefix, environment, status`,
+      [req.params.id, ctx.tenantId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'API key not found' });
+    }
+    res.json({ success: true, ...result.rows[0] });
+  } catch (error) {
+    console.error('Revoke API Key Error:', error);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

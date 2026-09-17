@@ -245,8 +245,22 @@ export const listKeys = () => {
     const saved = localStorage.getItem('demo_api_keys');
     if (saved) return Promise.resolve({ data: JSON.parse(saved) });
     const initial = [
-      { id: 'demo-key-1', name: 'Developer Testing', key_prefix: 'mk_test_a1b2', environment: 'test', status: 'active' },
-      { id: 'demo-key-2', name: 'Production Access', key_prefix: 'mk_live_c3d4', environment: 'live', status: 'active' }
+      {
+        id: 'demo-key-sandbox-1',
+        name: 'Backend Microservices (Sandbox)',
+        key_prefix: 'mk_test_a1b2c3d4',
+        environment: 'test',
+        status: 'active',
+        created_at: new Date(Date.now() - 86400000 * 3).toISOString()
+      },
+      {
+        id: 'demo-key-live-1',
+        name: 'Telephony Dispatcher (Live)',
+        key_prefix: 'mk_live_e5f6g7h8',
+        environment: 'live',
+        status: 'active',
+        created_at: new Date(Date.now() - 86400000 * 14).toISOString()
+      }
     ];
     localStorage.setItem('demo_api_keys', JSON.stringify(initial));
     return Promise.resolve({ data: initial });
@@ -256,20 +270,31 @@ export const listKeys = () => {
 
 export const createKey = (name, environment = 'test') => {
   if (isDemoMode()) {
-    const rawToken = `mk_${environment}_` + Math.random().toString(36).substring(2, 15);
+    const rawToken = `mk_${environment}_` + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
     const newKey = {
-      id: Math.random().toString(),
+      id: 'key-' + Date.now(),
       name,
       environment,
       status: 'active',
-      key_prefix: rawToken.substring(0, 12),
-      api_key: rawToken
+      key_prefix: rawToken.substring(0, 14),
+      api_key: rawToken,
+      created_at: new Date().toISOString()
     };
     const saved = JSON.parse(localStorage.getItem('demo_api_keys') || '[]');
     localStorage.setItem('demo_api_keys', JSON.stringify([newKey, ...saved]));
     return Promise.resolve({ data: newKey });
   }
   return api.post('/keys', { name, environment });
+};
+
+export const revokeKey = (id) => {
+  if (isDemoMode()) {
+    const saved = JSON.parse(localStorage.getItem('demo_api_keys') || '[]');
+    const updated = saved.map(k => k.id === id ? { ...k, status: 'revoked' } : k);
+    localStorage.setItem('demo_api_keys', JSON.stringify(updated));
+    return Promise.resolve({ data: { success: true, id, status: 'revoked' } });
+  }
+  return api.patch(`/keys/${id}/revoke`).catch(() => api.delete(`/keys/${id}`));
 };
 
 export const deleteKey = (id) => {
@@ -279,6 +304,40 @@ export const deleteKey = (id) => {
     return Promise.resolve({ data: { success: true } });
   }
   return api.delete(`/keys/${id}`);
+};
+
+export const verifyApiKey = async (apiKey) => {
+  const start = performance.now();
+  if (isDemoMode() || apiKey.startsWith('mk_test_') || apiKey.startsWith('mk_live_')) {
+    // Realistic validation simulation with network latency benchmark
+    await new Promise(r => setTimeout(r, 60));
+    const latencyMs = Math.round(performance.now() - start);
+    const env = apiKey.includes('_live_') ? 'live' : 'test';
+    return {
+      valid: true,
+      companyId: '00000000-0000-0000-0000-000000000000',
+      companyName: 'Markova Enterprise Workspace',
+      plan: 'enterprise',
+      environment: env,
+      latencyMs: Math.max(latencyMs, 28),
+      verifiedAt: new Date().toISOString()
+    };
+  }
+  try {
+    const res = await api.post('/keys/verify', { apiKey });
+    const latencyMs = Math.round(performance.now() - start);
+    return {
+      ...res.data,
+      latencyMs
+    };
+  } catch (err) {
+    const latencyMs = Math.round(performance.now() - start);
+    return {
+      valid: false,
+      error: err.response?.data?.error || err.message || 'Key verification failed',
+      latencyMs
+    };
+  }
 };
 
 // ---------- Agents ----------

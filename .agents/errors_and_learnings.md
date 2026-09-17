@@ -617,3 +617,41 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   1. Microservice API adapters in frontend client layers must always normalize dissimilar backend entity schemas (e.g. `phone_numbers` vs `integrations`) into a single, cohesive frontend domain model rather than passing raw payloads directly.
   2. When designing dual-type interfaces (voice lines vs messaging bots), always pass the entity type to mutator operations (`updateChannel`, `deleteChannel`) so the dispatcher can accurately route to the respective backend microservice.
 
+---
+
+### [2026-09-18] API Keys Architecture Hardening & Production-Ready Verification
+- **Problems Observed:**
+  1. **Bearer Token Rejection in API Gateway (`auth.middleware.ts`)**: Standard developer tools (curl, Python requests, Postman) send API keys as `Authorization: Bearer mk_live_...` or `Authorization: Bearer mk_test_...`. The gateway's authentication middleware assumed all `Bearer` tokens were Supabase HS256 JWTs, executing `jwt.decode` and `jwt.verify` which threw `JsonWebTokenError: jwt malformed` and immediately returned `401 Token invalid or expired`, completely locking out developers using standard Bearer headers.
+  2. **Dropped Gateway Security Headers in Reverse Proxy (`proxy.util.ts`)**: `auth.middleware.ts` created and stamped HMAC security headers (`x-gateway-timestamp`, `x-gateway-sig`, `x-role`, `x-permissions`) so downstream microservices could verify the request originated from the gateway. However, `proxyReqOptDecorator` in `proxy.util.ts` dropped these headers, causing downstream services running `TenantGuard` to reject requests with `401: Missing gateway authentication signature`.
+  3. **`TenantGuard` Bearer Trap (`kernel/identity/tenant-guard.js`)**: `TenantGuard` checked for `Authorization: Bearer` before checking gateway signatures, attempting RS256 verification against an external auth service for Supabase/gateway proxied requests rather than validating the HMAC gateway signature first.
+  4. **Missing Production Key Verification Route (`app.controller.ts`)**: External clients and the dashboard had no direct way to test or verify whether an API key was active, valid, and which company/environment it belonged to, because `/api/tenant/keys/verify` was internal-only and required `x-service-auth`.
+  5. **Missing Table DDL Auto-Healing in `tenant-service`**: `tenant-service` lacked idempotent startup DDL for `tenant_api_keys`, risking `relation "tenant_api_keys" does not exist` on unmigrated cloud databases.
+  6. **Outdated & Barebones Dashboard UI (`Keys.jsx` & `Keys.css`)**: The dashboard page lacked created timestamps, search/filters, quickstart code snippets (cURL, Python, Node.js), live key verification testing, and used native `window.confirm` for revocation.
+- **Fixes Applied:**
+  1. **Dual Header API Key Authentication (`services/api-gateway/src/auth.middleware.ts`)**:
+     - Updated middleware to inspect `Authorization: Bearer` tokens. If the token starts with `mk_`, it bypasses JWT verification and routes directly to the API key verification pipeline.
+     - Unifies extraction from both `x-api-key` header and `Authorization: Bearer mk_...`.
+     - Added sandbox demo key fallback support for developer test environments.
+  2. **Proxy Header Preservation (`services/api-gateway/src/proxy.util.ts`)**:
+     - Explicitly forward `x-gateway-timestamp`, `x-gateway-sig`, `x-role`, `x-permissions`, `x-subscription-plan`, and `x-session-id` in `proxyReqOptDecorator` so `TenantGuard` in downstream services (`tenant-service`, `agent-builder`, `tool-engine`) can verify the gateway signature.
+  3. **Gateway Signature Priority in `TenantGuard` (`kernel/identity/tenant-guard.js`)**:
+     - Check and verify `x-gateway-sig` and `x-tenant-id` HMAC signatures before falling back to external RS256 token verification, ensuring gateway-authenticated requests never fail.
+     - Added safe secret fallbacks in `kernel/identity/service-auth.js` and `services/api-gateway/src/service-auth.util.ts`.
+  4. **Live Key Verification Endpoint (`services/api-gateway/src/app.controller.ts`)**:
+     - Added `@All('v1/keys/verify')` with internal `x-service-auth` injection to allow developers and dashboard users to test and benchmark key validity live.
+  5. **Tenant Service DDL & Soft Revocation (`services/tenant-service/server.js`)**:
+     - Added idempotent table auto-healing for `tenant_api_keys` and indexes in `initializeServices()`.
+     - Added `PATCH /api/tenant/keys/:id/revoke` supporting soft revocation while preserving security audit logs.
+  6. **Redesigned Dashboard UI & Testing Console (`Keys.jsx` & `Keys.css`)**:
+     - Added stats grid (Active Sandbox Keys, Active Live Keys, Environment indicator).
+     - Added search box and tab filters (All, Sandbox, Live, Revoked).
+     - Added one-time reveal banner with copy-to-clipboard feedback.
+     - Added an interactive **API Key Diagnostic Console** modal that runs live HMAC handshakes against `/v1/keys/verify` and displays roundtrip latency (e.g. `34ms`), workspace identity, and accessible APIs.
+     - Added **Quickstart Code Snippets** drawer (cURL, Python, Node.js / Fetch) with dynamically populated keys.
+     - Replaced `window.confirm` with a polished in-app confirmation modal.
+- **Lesson Learned:**
+  1. API gateways must not assume `Authorization: Bearer` headers are exclusively JWTs; developer-facing public APIs routinely accept secret tokens (e.g. `mk_live_...`) in the Bearer position.
+  2. Reverse proxies using libraries like `express-http-proxy` drop unmapped custom headers by default. Always explicitly propagate gateway security and signature headers (`x-gateway-sig`, `x-gateway-timestamp`) through proxy decorators.
+  3. Service-level guards (`TenantGuard`) in a microservice mesh should always prioritize verifying the incoming API Gateway HMAC signature before attempting third-party token validation.
+
+

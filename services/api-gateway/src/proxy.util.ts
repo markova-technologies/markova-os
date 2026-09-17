@@ -41,6 +41,30 @@ export function proxyTo(
       if (srcReq.headers['authorization']) {
         headers['authorization'] = srcReq.headers['authorization'] as string;
       }
+      if (srcReq.headers['x-gateway-timestamp']) {
+        headers['x-gateway-timestamp'] = srcReq.headers['x-gateway-timestamp'] as string;
+      }
+      if (srcReq.headers['x-gateway-sig']) {
+        headers['x-gateway-sig'] = srcReq.headers['x-gateway-sig'] as string;
+      }
+      if (srcReq.headers['x-role']) {
+        headers['x-role'] = srcReq.headers['x-role'] as string;
+      }
+      if (srcReq.headers['x-permissions']) {
+        headers['x-permissions'] = srcReq.headers['x-permissions'] as string;
+      }
+      if (srcReq.headers['x-subscription-plan']) {
+        headers['x-subscription-plan'] = srcReq.headers['x-subscription-plan'] as string;
+      }
+      if (srcReq.headers['x-session-id']) {
+        headers['x-session-id'] = srcReq.headers['x-session-id'] as string;
+      }
+      if (srcReq.headers['x-admin-role']) {
+        headers['x-admin-role'] = srcReq.headers['x-admin-role'] as string;
+      }
+      if (srcReq.headers['x-api-key']) {
+        headers['x-api-key'] = srcReq.headers['x-api-key'] as string;
+      }
       proxyReqOpts.headers = headers;
       return proxyReqOpts;
     },

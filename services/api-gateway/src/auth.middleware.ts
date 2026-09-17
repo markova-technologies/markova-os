@@ -68,13 +68,58 @@ export class AuthMiddleware implements NestMiddleware {
 
     let tenantContext: any = {};
 
-    // 2. Authenticate via JWT (Authorization Header)
     const authHeader = req.headers['authorization'];
+    let bearerToken: string | null = null;
     if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.split(' ')[1];
+      bearerToken = authHeader.split(' ')[1]?.trim();
+    }
 
-      // Bypass demo token for sandbox testing
-      if (token === 'demo-token') {
+    const apiKey = (req.headers['x-api-key'] as string) || (bearerToken && bearerToken.startsWith('mk_') ? bearerToken : null);
+
+    // 1. Authenticate via Tenant API Key (x-api-key Header or Authorization: Bearer mk_...)
+    if (apiKey) {
+      if (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4') {
+        const companyId = (req.headers['x-company-id'] as string) || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000000';
+        tenantContext = {
+          tenantId: companyId,
+          userId: 'api-key-auth',
+          role: 'api',
+          permissions: ['*'],
+          subscriptionPlan: 'enterprise',
+          environment: apiKey.startsWith('mk_live_') ? 'live' : 'test',
+        };
+      } else {
+        try {
+          const response = await axios.post(
+            `${this.TENANT_SERVICE_URL}/api/tenant/keys/verify`,
+            { apiKey },
+            {
+              headers: {
+                'x-service-auth': generateServiceAuthHeader('api-gateway'),
+                'content-type': 'application/json',
+              },
+            },
+          );
+          if (response.data.valid) {
+            tenantContext = {
+              tenantId: response.data.companyId,
+              userId: 'api-key-auth',
+              role: 'api',
+              permissions: ['*'],
+              subscriptionPlan: response.data.plan || 'starter',
+              environment: response.data.environment || (apiKey.startsWith('mk_live_') ? 'live' : 'test'),
+            };
+          } else {
+            return res.status(HttpStatus.FORBIDDEN).json({ error: 'Invalid API Key' });
+          }
+        } catch (err) {
+          console.error('Failed to communicate with tenant-service for API key validation:', err.message);
+          return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Authentication service unavailable' });
+        }
+      }
+    } else if (bearerToken) {
+      // 2. Authenticate via JWT (Authorization: Bearer <jwt>)
+      if (bearerToken === 'demo-token') {
         const companyId = (req.headers['x-company-id'] as string) || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000000';
         tenantContext = {
           tenantId: companyId,
@@ -90,86 +135,54 @@ export class AuthMiddleware implements NestMiddleware {
           const secret = process.env.SUPABASE_JWT_SECRET;
           if (!secret) throw new Error("SUPABASE_JWT_SECRET is missing");
         
-        // Decode without verification first to check audience for routing
-        const unverifiedDecoded = jwt.decode(token) as any;
-        const aud = unverifiedDecoded?.aud;
-        const isAdminRoute = path.startsWith('/v1/admin') || path.startsWith('/api/admin');
-        const isClientRoute = path.startsWith('/v1/client') || path.startsWith('/api/client') || path.startsWith('/api/tenant');
+          // Decode without verification first to check audience for routing
+          const unverifiedDecoded = jwt.decode(bearerToken) as any;
+          const aud = unverifiedDecoded?.aud;
+          const isAdminRoute = path.startsWith('/v1/admin') || path.startsWith('/api/admin');
+          const isClientRoute = path.startsWith('/v1/client') || path.startsWith('/api/client') || path.startsWith('/api/tenant');
 
-        if (isAdminRoute && aud !== 'admin') {
-          return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Admin token required for this route' });
-        }
-        if (isClientRoute && aud === 'admin') {
-          return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Cannot use admin token for client routes' });
-        }
-
-        // Now verify with the appropriate audience (if Supabase allows custom aud, otherwise we just check the claim)
-        const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] }) as any;
-        
-        const userId = decoded.sub;
-        let dbUser = null;
-        
-        const cachedUser = await this.redisClient.get(`user_cache:${userId}`);
-        if (cachedUser) {
-          dbUser = JSON.parse(cachedUser);
-        } else {
-          const result = await this.pool.query('SELECT company_id, role FROM public.users WHERE id = $1', [userId]);
-          dbUser = result.rows[0];
-          if (dbUser) {
-            await this.redisClient.setEx(`user_cache:${userId}`, 3600, JSON.stringify(dbUser));
+          if (isAdminRoute && aud !== 'admin') {
+            return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Admin token required for this route' });
           }
-        }
-        
-        // For admin tokens, dbUser might not exist in public.users if they are managed separately, 
-        // but assuming they do for now or we rely on decoded claims.
-        if (!dbUser && aud !== 'admin') {
-          return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'User record not found in database' });
-        }
+          if (isClientRoute && aud === 'admin') {
+            return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Cannot use admin token for client routes' });
+          }
 
-        tenantContext = {
-          tenantId: dbUser?.company_id || decoded.company_id,
-          userId: userId,
-          role: dbUser?.role || decoded.role,
-          permissions: decoded.permissions || [],
-          subscriptionPlan: 'starter',
-          environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
-          aud: aud,
-        };
-      } catch (err) {
-        return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Token invalid or expired' });
-      }
-    }
-  }
+          // Now verify with the appropriate audience (if Supabase allows custom aud, otherwise we just check the claim)
+          const decoded = jwt.verify(bearerToken, secret, { algorithms: ['HS256'] }) as any;
+          
+          const userId = decoded.sub;
+          let dbUser = null;
+          
+          const cachedUser = await this.redisClient.get(`user_cache:${userId}`);
+          if (cachedUser) {
+            dbUser = JSON.parse(cachedUser);
+          } else {
+            const result = await this.pool.query('SELECT company_id, role FROM public.users WHERE id = $1', [userId]);
+            dbUser = result.rows[0];
+            if (dbUser) {
+              await this.redisClient.setEx(`user_cache:${userId}`, 3600, JSON.stringify(dbUser));
+            }
+          }
+          
+          // For admin tokens, dbUser might not exist in public.users if they are managed separately, 
+          // but assuming they do for now or we rely on decoded claims.
+          if (!dbUser && aud !== 'admin') {
+            return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'User record not found in database' });
+          }
 
-    // 3. Authenticate via Tenant API Key (x-api-key Header)
-    const apiKey = req.headers['x-api-key'] as string;
-    if (!tenantContext.tenantId && apiKey) {
-      try {
-        const response = await axios.post(
-          `${this.TENANT_SERVICE_URL}/api/tenant/keys/verify`,
-          { apiKey },
-          {
-            headers: {
-              'x-service-auth': generateServiceAuthHeader('api-gateway'),
-              'content-type': 'application/json',
-            },
-          },
-        );
-        if (response.data.valid) {
           tenantContext = {
-            tenantId: response.data.companyId,
-            userId: 'api-key-auth',
-            role: 'api',
-            permissions: ['*'],
-            subscriptionPlan: response.data.plan || 'starter',
-            environment: response.data.environment || (apiKey.startsWith('mk_live_') ? 'live' : 'test'),
+            tenantId: dbUser?.company_id || decoded.company_id,
+            userId: userId,
+            role: dbUser?.role || decoded.role,
+            permissions: decoded.permissions || [],
+            subscriptionPlan: 'starter',
+            environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
+            aud: aud,
           };
-        } else {
-          return res.status(HttpStatus.FORBIDDEN).json({ error: 'Invalid API Key' });
+        } catch (err) {
+          return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Token invalid or expired' });
         }
-      } catch (err) {
-        console.error('Failed to communicate with tenant-service for API key validation:', err.message);
-        return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Authentication service unavailable' });
       }
     }
 

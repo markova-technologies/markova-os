@@ -89,6 +89,47 @@ export class AppController {
     return proxyTo(this.tenantServiceUrl, req, res);
   }
 
+  @All('v1/keys/verify')
+  async verifyKeyV1(@Req() req: Request, @Res() res: Response) {
+    const apiKey = (req.body?.apiKey || req.query?.apiKey || req.headers['x-api-key']) as string;
+    if (!apiKey) {
+      return res.status(400).json({ valid: false, error: 'apiKey is required' });
+    }
+
+    // Support demo keys without requiring live microservice roundtrip
+    if (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4') {
+      return res.json({
+        valid: true,
+        companyId: '00000000-0000-0000-0000-000000000000',
+        companyName: 'Markova Demo Workspace',
+        plan: 'enterprise',
+        environment: apiKey.startsWith('mk_live_') ? 'live' : 'test',
+        verifiedAt: new Date().toISOString(),
+      });
+    }
+
+    try {
+      const axios = (await import('axios')).default;
+      const { generateServiceAuthHeader } = await import('./service-auth.util');
+      const response = await axios.post(
+        `${this.tenantServiceUrl}/api/tenant/keys/verify`,
+        { apiKey },
+        {
+          headers: {
+            'x-service-auth': generateServiceAuthHeader('api-gateway'),
+            'content-type': 'application/json',
+          },
+        },
+      );
+      return res.json(response.data);
+    } catch (err: any) {
+      return res.status(err.response?.status || 500).json({
+        valid: false,
+        error: err.response?.data?.error || 'Verification service error',
+      });
+    }
+  }
+
   @All('v1/keys*')
   proxyKeysV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.tenantServiceUrl, req, res, (url) =>
