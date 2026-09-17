@@ -521,3 +521,36 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lesson Learned:**
   1. Always run an AST scope analysis or linter before pushing changes that refactor or clean up component state variables to detect undeclared identifier references.
   2. Route-level Error Boundaries must ALWAYS be keyed by `location.pathname` (or reset in `componentDidUpdate`). A global or un-keyed error boundary will lock users into a broken state across all pages even if only one route had a defect.
+
+---
+
+### [2026-09-17] Knowledge Center Button Contrast Conflicts & Demo Mode Error Banner
+- **Problems Observed:**
+  1. **Top Right "Add Knowledge" Button**: Appeared as a blank, solid white pill without legible text or icon.
+  2. **Card "Add Knowledge" Buttons**: Buttons inside the 4 category cards ("Business information", "Policies and FAQs", "Tone and language", "Sample scripts") had dark text on dark `#121212` backgrounds, rendering them nearly invisible.
+  3. **Jarring Red Error Banner**: Navigating to Knowledge Center in Sandbox / Demo mode displayed `We couldn't load your knowledge sources. Refresh to try again.`.
+- **Root Causes:**
+  1. **CSS `!important` Conflict on Primary Button**:
+     - Global `.btn-primary` in `index.css` applied `background: #ffffff !important; color: #000000 !important;`.
+     - In `KnowledgeCenter.css`, `.kc-global-add` applied `color: #ffffff !important;` alongside a gradient background without `!important`.
+     - Specificity resolution favored `background: #ffffff !important` from `index.css` and `color: #ffffff !important` from `KnowledgeCenter.css`, producing white text on a white button.
+  2. **Missing Card Button Class & Global Secondary Button**:
+     - Card buttons used `<button className="btn-secondary kc-card-add">`, but `.kc-card-add` had no CSS rule in `KnowledgeCenter.css`, and `.btn-secondary` was missing in `index.css` (only defined locally in isolated page stylesheets).
+     - Browsers fell back to default dark text styles on dark card containers.
+  3. **Missing Demo Mode Mocks in Knowledge API Client**:
+     - In `api/client.js`, `listKnowledgeSources()` and related knowledge functions called the backend gateway directly without checking `if (isDemoMode())`.
+     - In sandbox/demo mode, the unauthenticated/missing endpoint threw an error, triggering `loadError` in `KnowledgeCenter.jsx`.
+- **Fixes Applied:**
+  1. **High Contrast Primary Action Button**:
+     - Updated `.kc-global-add` in `KnowledgeCenter.css` to explicitly define `background: #ffffff !important; color: #000000 !important; font-weight: 600 !important;` with `.kc-global-add svg { color: #000000 !important; stroke: #000000 !important; }`, rendering crisp, bold black text and icon on a clean white pill button.
+  2. **Modern Glassmorphic Secondary Button & Card Actions**:
+     - Defined global `.btn-secondary` in `index.css` (`background: rgba(255, 255, 255, 0.06) !important; color: #ffffff !important; border: 1px solid rgba(255, 255, 255, 0.14) !important;`).
+     - Styled `.kc-card-add` in `KnowledgeCenter.css` with clean glassmorphic borders, crisp white text, and white icons with hover elevation.
+     - Added `.kc-category-empty-box` flex layout to ensure card buttons align cleanly at the bottom.
+  3. **Robust Demo Mode Handling**:
+     - Implemented `isDemoMode()` mock persistence via `localStorage` for `listKnowledgeSources`, `createKnowledgeSource`, `listKnowledgeDocuments`, `uploadKnowledgeDocument`, `deleteKnowledgeSource`, `deleteKnowledgeDocument`, and `searchKnowledge`.
+     - In `KnowledgeCenter.jsx`, imported `isDemoMode` and ensured errors in demo mode are gracefully suppressed rather than rendering a red error banner, and added a retry button for production network drops.
+- **Lesson Learned:**
+  1. Avoid mixing conflicting `!important` declarations across global utility classes (`.btn-primary`) and page-specific component classes.
+  2. Always declare design-system primitives like `.btn-secondary` at the root stylesheet (`index.css`) rather than redefining them piecemeal inside individual page CSS files.
+  3. Every API module consumed by the client dashboard must implement an `isDemoMode()` mock layer to ensure sandboxes and demo accounts provide an error-free preview experience.

@@ -74,6 +74,27 @@
   border-radius: 8px;
   margin-bottom: 1.5rem;
   font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.kc-error-retry {
+  background: rgba(232, 92, 74, 0.15);
+  border: 1px solid rgba(232, 92, 74, 0.4);
+  color: #ffffff;
+  padding: 0.35rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.kc-error-retry:hover {
+  background: rgba(232, 92, 74, 0.25);
+  border-color: rgba(232, 92, 74, 0.6);
 }
 
 .kc-categories {
@@ -125,11 +146,49 @@
   line-height: 1.5;
 }
 
+.kc-category-empty-box {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  justify-content: space-between;
+}
+
 .kc-category-empty {
   font-size: 0.85rem;
   color: var(--text-muted);
   margin: 0 0 1rem;
   flex: 1;
+  line-height: 1.5;
+}
+
+.kc-card-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  margin-top: auto;
+}
+
+.kc-card-add svg {
+  color: #ffffff !important;
+  stroke: #ffffff !important;
+}
+
+.kc-card-add:hover {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
 }
 
 .kc-skeleton {
@@ -425,25 +484,32 @@
 .kc-global-add {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.5rem;
   white-space: nowrap;
   flex-shrink: 0;
-  background: linear-gradient(135deg, #3b82f6, #2563eb);
-  color: #ffffff !important;
-  font-weight: 600;
+  background: #ffffff !important;
+  color: #000000 !important;
+  font-weight: 600 !important;
+  font-size: 0.88rem;
   padding: 0.65rem 1.25rem;
-  border-radius: 10px;
+  border-radius: 8px;
   border: none;
   cursor: pointer;
   transition: all 0.2s ease;
-  box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+
+.kc-global-add svg {
+  color: #000000 !important;
+  stroke: #000000 !important;
 }
 
 .kc-global-add:hover {
-  background: linear-gradient(135deg, #2563eb, #1d4ed8) !important;
-  color: #ffffff !important;
+  background: #f3f4f6 !important;
+  color: #000000 !important;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
 }
 
 /* ── Step 1: category picker ───────────────────────────────────────────────── */

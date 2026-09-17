@@ -333,27 +333,106 @@ export const updateRoutingRule = (id, ruleId, data) => api.put(`/numbers/${id}/r
 export const deleteRoutingRule = (id, ruleId) => api.delete(`/numbers/${id}/routing-rules/${ruleId}`);
 
 // ---------- Knowledge ----------
-export const listKnowledgeSources = () => apiCache.wrap('knowledge:sources', () => api.get('/knowledge/sources'), 30000);
+export const listKnowledgeSources = () => {
+  if (isDemoMode()) {
+    const saved = localStorage.getItem('demo_knowledge_sources');
+    return Promise.resolve({ data: saved ? JSON.parse(saved) : [] });
+  }
+  return apiCache.wrap('knowledge:sources', () => api.get('/knowledge/sources'), 30000);
+};
+
 export const createKnowledgeSource = (data) => {
   apiCache.invalidate('knowledge');
+  if (isDemoMode()) {
+    const newSource = {
+      id: 'demo-ks-' + Math.random().toString(36).substring(2, 9),
+      name: data.name,
+      type: data.type || 'upload',
+      config: data.config || {},
+      created_at: new Date().toISOString(),
+    };
+    const saved = JSON.parse(localStorage.getItem('demo_knowledge_sources') || '[]');
+    localStorage.setItem('demo_knowledge_sources', JSON.stringify([...saved, newSource]));
+    return Promise.resolve({ data: newSource });
+  }
   return api.post('/knowledge/sources', data);
 };
-export const listKnowledgeDocuments = (id) => api.get(`/knowledge/sources/${id}/documents`);
+
+export const listKnowledgeDocuments = (id) => {
+  if (isDemoMode()) {
+    const saved = localStorage.getItem(`demo_knowledge_docs_${id}`);
+    return Promise.resolve({ data: saved ? JSON.parse(saved) : [] });
+  }
+  return api.get(`/knowledge/sources/${id}/documents`);
+};
+
 export const uploadKnowledgeDocument = (id, formData) => {
   apiCache.invalidate('knowledge');
+  if (isDemoMode()) {
+    const file = formData.get('file');
+    const fileName = file ? file.name : 'uploaded_document.pdf';
+    const newDoc = {
+      id: 'demo-doc-' + Math.random().toString(36).substring(2, 9),
+      source_id: id,
+      file_name: fileName,
+      status: 'indexed',
+      created_at: new Date().toISOString(),
+    };
+    const key = `demo_knowledge_docs_${id}`;
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
+    localStorage.setItem(key, JSON.stringify([...saved, newDoc]));
+    return Promise.resolve({ data: newDoc });
+  }
   return api.post(`/knowledge/sources/${id}/documents`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };
+
 export const deleteKnowledgeSource = (id) => {
   apiCache.invalidate('knowledge');
+  if (isDemoMode()) {
+    const saved = JSON.parse(localStorage.getItem('demo_knowledge_sources') || '[]');
+    localStorage.setItem('demo_knowledge_sources', JSON.stringify(saved.filter((s) => s.id !== id)));
+    localStorage.removeItem(`demo_knowledge_docs_${id}`);
+    return Promise.resolve({ data: { success: true } });
+  }
   return api.delete(`/knowledge/sources/${id}`).catch(() => ({ data: {} }));
 };
+
 export const deleteKnowledgeDocument = (sourceId, docId) => {
   apiCache.invalidate('knowledge');
+  if (isDemoMode()) {
+    const key = `demo_knowledge_docs_${sourceId}`;
+    const saved = JSON.parse(localStorage.getItem(key) || '[]');
+    localStorage.setItem(key, JSON.stringify(saved.filter((d) => d.id !== docId)));
+    return Promise.resolve({ data: { success: true } });
+  }
   return api.delete(`/knowledge/sources/${sourceId}/documents/${docId}`).catch(() => ({ data: {} }));
 };
-export const searchKnowledge = (query, limit = 10) => api.post('/knowledge/search', { query, limit });
+
+export const searchKnowledge = (query, limit = 10) => {
+  if (isDemoMode()) {
+    return Promise.resolve({
+      data: {
+        results: [
+          {
+            chunk_id: 'demo-chunk-1',
+            score: 0.94,
+            source_name: 'Business Guidelines.pdf',
+            content: 'Our business operates Monday through Friday from 8:30 AM to 6:00 PM, and Saturday from 9:00 AM to 2:00 PM. Callers asking for support after hours will be routed to voicemail.',
+          },
+          {
+            chunk_id: 'demo-chunk-2',
+            score: 0.88,
+            source_name: 'FAQ & Pricing Table',
+            content: 'Standard consultation fee is 500 ETB for the first 30 minutes, or included with an active enterprise retainer.',
+          },
+        ],
+      },
+    });
+  }
+  return api.post('/knowledge/search', { query, limit });
+};
 
 // ---------- Tools & Workflow ----------
 export const listTools = () => api.get('/tools');
@@ -513,9 +592,18 @@ export const getCommander = () => api.get('/teams/commander').catch(() => ({ dat
 export const getAgentAnalytics = (id) => api.get(`/agents/${id}/stats`).catch(() => ({ data: { totalCalls: 0, avgDuration: '0s', successRate: '100%', totalTurns: 0 } }));
 
 // Agent-Knowledge bridge (Option A)
-export const getAgentKnowledge = (id) => api.get(`/agents/${id}/knowledge`);
-export const connectKnowledgeToAgent = (agentId, sourceId) => api.post(`/agents/${agentId}/knowledge/${sourceId}`);
-export const disconnectKnowledgeFromAgent = (agentId, sourceId) => api.delete(`/agents/${agentId}/knowledge/${sourceId}`);
+export const getAgentKnowledge = (id) => {
+  if (isDemoMode()) return Promise.resolve({ data: [] });
+  return api.get(`/agents/${id}/knowledge`);
+};
+export const connectKnowledgeToAgent = (agentId, sourceId) => {
+  if (isDemoMode()) return Promise.resolve({ data: { success: true } });
+  return api.post(`/agents/${agentId}/knowledge/${sourceId}`);
+};
+export const disconnectKnowledgeFromAgent = (agentId, sourceId) => {
+  if (isDemoMode()) return Promise.resolve({ data: { success: true } });
+  return api.delete(`/agents/${agentId}/knowledge/${sourceId}`);
+};
 
 // Agent-Tools bridge
 export const getAgentTools = (id) => api.get(`/agents/${id}/tools`);

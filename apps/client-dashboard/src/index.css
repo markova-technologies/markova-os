@@ -217,6 +217,21 @@ code, .mono, kbd {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
 }
 
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12) !important;
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  color: #ffffff !important;
+  transform: translateY(-1px);
+}
+
 @media (max-width: 1024px) {
   .main-content {
     margin-left: 0;

@@ -24,6 +24,7 @@ import {
   searchKnowledge,
   deleteKnowledgeSource,
   deleteKnowledgeDocument,
+  isDemoMode,
 } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import './KnowledgeCenter.css'
@@ -208,8 +209,14 @@ const KnowledgeCenter = () => {
         })
       )
       setDocuments(Object.fromEntries(docEntries))
-    } catch {
-      setLoadError('We couldn’t load your knowledge sources. Refresh to try again.')
+    } catch (err) {
+      console.warn('Could not load knowledge sources:', err)
+      if (!isDemoMode()) {
+        setLoadError('We couldn’t load your knowledge sources. Refresh to try again.')
+      } else {
+        setSources([])
+        setDocuments({})
+      }
     } finally {
       setLoading(false)
     }
@@ -525,7 +532,12 @@ const KnowledgeCenter = () => {
         )}
       </AnimatePresence>
 
-      {loadError && <div className="kc-error">{loadError}</div>}
+      {loadError && !isDemoMode() && (
+        <div className="kc-error">
+          <span>{loadError}</span>
+          <button type="button" className="kc-error-retry" onClick={load}>Retry</button>
+        </div>
+      )}
 
       <section className="kc-categories">
         {CATEGORIES.map((category) => {
