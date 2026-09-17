@@ -770,4 +770,5 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lessons Learned:**
   - Never hardcode raw Unicode symbols or emojis directly into JSX source files; use semantic Lucide SVG icons and CSS bullet dots to eliminate encoding corruption across disparate operating systems.
   - Telephony cockpits must defensively normalize backend records to support both active FreeSWITCH/Twilio SIP sessions and completed database calls with uniform property access.
+  - Authentic "glassmorphism" requires true translucency (`rgba(18, 20, 27, 0.45)` to `rgba(24, 26, 35, 0.55)`), heavy blur (`backdrop-filter: blur(28px) saturate(190%)`), and specular light reflections (`inset 0 1px 0 rgba(255, 255, 255, 0.12)`). Avoid setting solid opaque darks (`#000000` or `rgba(..., 0.9)`) on container roots, as this obliterates the underlying window depth and prevents background ambiance from showing through.
 
