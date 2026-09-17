@@ -132,9 +132,15 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       transition={{ duration: 0.5 }}
     >
       <div className="sidebar-header">
-        <div className="logo">
-          <span className="logo-text">MARKOVA</span>
-        </div>
+        <Link to={ROUTES.app} className="sidebar-brand">
+          <div className="sidebar-brand-icon">
+            <Bot size={22} className="brand-bot-icon" />
+          </div>
+          <div className="sidebar-brand-text">
+            <span className="brand-name">MARKOVA</span>
+            <span className="brand-badge">OS</span>
+          </div>
+        </Link>
         <button className="mobile-close-btn" onClick={toggleMenu}>
           <X size={24} />
         </button>

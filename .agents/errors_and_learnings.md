@@ -491,3 +491,33 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   1. Latency is rarely a single bottleneck; in real-time voice and SPA applications, high perceived latency is almost always a compound multiplier of idle microservice cold starts (15-20s), sequential data fetching (2-3s), un-sliced client media buffers (2.5s), and un-cached LLM/TTS generation (2-4s).
   2. Pre-warming state on user intent signals (e.g. mouse hover or modal open) cuts user-perceived turnaround to sub-second speeds.
   3. Health check endpoints on microservices should always perform a lightweight database ping (`SELECT 1`) to keep connection poolers alive and avoid cold connection handshake overhead.
+
+---
+
+### [2026-09-14] 'This page hit a snag' ErrorBoundary Cascading Lock & Dashboard Logo Parity
+- **Problems Observed:**
+  1. Navigating to Agent Studio, Knowledge Center, Integrations, Governance, etc., caused the UI to display:
+     `This page hit a snag - Something didn't load right. Reloading usually fixes it — your data is safe. [Reload page]`.
+  2. Once the snag error appeared on one page, every subsequent page clicked in the sidebar also displayed "This page hit a snag", creating a platform-wide navigation lock.
+  3. The dashboard sidebar header displayed a plain text "MARKOVA" logo instead of the unified brand logo seen on the pre-login page (`PublicHeader.jsx`).
+- **Root Causes:**
+  1. **Undeclared Variables in `AgentStudio.jsx`**: During recent refactoring, `const [agentAnalytics, setAgentAnalytics] = useState(null)` replaced `agentStats`, but lines 238 and 249 called `setAgentStats(...)`. On initial render when `editingAgent` was null, line 249 called `setAgentStats(null)`, throwing `ReferenceError: setAgentStats is not defined`.
+  2. **Undeclared Variables in `KnowledgeCenter.jsx`**: `<Plus size={14} />` was used at line 583 without being imported from `lucide-react`, and `totalDocs` was used at line 610 without declaration, throwing runtime ReferenceErrors.
+  3. **Static ErrorBoundary Lifecycle without Route Reset**: `ErrorBoundary` was wrapped once around `<Routes>` without listening to `location.pathname` or resetting `this.state.hasError`. Consequently, once any page threw an uncaught error, `hasError: true` was permanently latched. Clicking any other sidebar link did not reset the boundary, creating the impression that every single page was broken.
+  4. **Suspense Boundary Placement**: `<Suspense>` was positioned only at the root level instead of wrapping the nested `<Routes>` inside `.content-wrapper`, preventing local graceful fallback rendering during dynamic chunk loading.
+  5. **Sidebar Brand Logo Discrepancy**: `Sidebar.jsx` had a legacy `<div className="logo"><span className="logo-text">MARKOVA</span></div>`, whereas `PublicHeader.jsx` featured the updated brand with the white rounded container, `<Bot size={22} />` icon, `MARKOVA` font, and `OS` pill badge.
+- **Fixes Applied:**
+  1. **State & Import Restorations**:
+     - In `AgentStudio.jsx`: Declared `const [agentStats, setAgentStats] = useState(null)`, resolving the ReferenceError on initial mount.
+     - In `KnowledgeCenter.jsx`: Added `Plus` to `lucide-react` imports and calculated `totalDocs` from sources and documents.
+     - Performed an automated AST scope analysis across all `.jsx` files in `apps/client-dashboard/src/` to guarantee zero remaining undeclared identifiers.
+  2. **Route-Isolated Error Boundaries**:
+     - Keyed `<ErrorBoundary key={location.pathname} resetKey={location.pathname}>` in `App.jsx`. Navigating to any other route now automatically unmounts the error state and mounts a fresh page boundary.
+     - Added `componentDidUpdate` in `ErrorBoundary.jsx` to reset state when `resetKey` changes, and added an error message banner with a direct "Command Center" recovery button.
+     - Nested `<Suspense fallback={<PageLoadingFallback />}>` directly inside `<ErrorBoundary>` within `.content-wrapper` to keep the shell interactive during page transitions.
+  3. **Unified Brand Logo**:
+     - Replaced `Sidebar.jsx` logo markup with `<Link to={ROUTES.app} className="sidebar-brand">` containing the rounded white bot icon, `MARKOVA` display text, and `OS` badge.
+     - Styled `.sidebar-brand`, `.sidebar-brand-icon`, `.sidebar-brand-text`, `.brand-name`, and `.brand-badge` in `Sidebar.css` matching `PublicHeader.css` 1:1.
+- **Lesson Learned:**
+  1. Always run an AST scope analysis or linter before pushing changes that refactor or clean up component state variables to detect undeclared identifier references.
+  2. Route-level Error Boundaries must ALWAYS be keyed by `location.pathname` (or reset in `componentDidUpdate`). A global or un-keyed error boundary will lock users into a broken state across all pages even if only one route had a defect.

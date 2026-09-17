@@ -80,7 +80,7 @@ const AgentStudio = () => {
   // Version History & Analytics state
   const [agentVersions, setAgentVersions] = useState([])
   const [selectedVersionPreview, setSelectedVersionPreview] = useState(null)
-  const [agentAnalytics, setAgentAnalytics] = useState(null)
+  const [agentStats, setAgentStats] = useState(null)
 
   // Knowledge & Tools connection state
   const [companyKnowledge, setCompanyKnowledge] = useState([])

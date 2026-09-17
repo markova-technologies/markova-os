@@ -14,6 +14,7 @@ import {
   BookOpen,
   Table,
   Trash2,
+  Plus,
 } from 'lucide-react'
 import {
   listKnowledgeSources,
@@ -100,6 +101,7 @@ const KnowledgeCenter = () => {
   const [documents, setDocuments] = useState({})
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const totalDocs = Object.values(documents).reduce((sum, docs) => sum + (docs?.length || 0), 0) + sources.filter(s => s.type !== 'upload').length
   const [uploadingKey, setUploadingKey] = useState(null)
   const [query, setQuery] = useState('')
   const [searching, setSearching] = useState(false)
