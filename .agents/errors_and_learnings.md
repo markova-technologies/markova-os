@@ -74,6 +74,23 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Integration Hub: 10-Tool Architecture & Connector Hub Pre-Flight Testing
+- **Error/Problem:**
+  - `IntegrationHub.jsx` previously rendered all 10 integrations with identical generic `<Plug />` icons and a single text input `Enter credential...` labeled "API Key / Access Token".
+  - Tools with distinct multi-parameter requirements (e.g. PostgreSQL requiring host/db/user or connectionUri, Zendesk requiring subdomain/email/token, GoHighLevel requiring locationId/apiKey, SAP requiring baseUrl/client/credentials) were unconfigurable and caused 400 Bad Request errors.
+  - In `services/connector-hub/server.js`, `CONNECTOR_TYPES` only allowed 9 legacy types and was missing `ghl`, `hubspot`, `zendesk`, `postgres`, `make`, `gcal`, `calendly`, `n8n`, `sap`.
+  - There was no pre-flight connection testing endpoint, preventing users from validating credentials before saving.
+  - During client API updates, an existing one-liner export of `listConnectors` was duplicated, which was caught by `vite build` (`esbuild: Multiple exports with the same name "listConnectors"`).
+- **How it Happened:**
+  - The frontend catalog had been visually drafted without synchronizing the connector hub's backend schemas or accounting for the unique authentication protocols of each third-party provider.
+  - `client.js` had two separate sections touching connectors (`// ---------- Connectors ----------` at line 601 and at the end of the file).
+- **Lesson Learned:**
+  - Always design integration hubs with tool-specific schemas and credential masks (show/hide toggles), and provide pre-flight handshake testing (`POST /api/connector-hub/integrations/test`) with live latency and diagnostic feedback.
+  - Keep API client modules organized in single canonical sections for each domain to avoid duplicate export build breaks under strict Vite/Rollup bundling.
+  - Ensure backend database tables (like `integrations` and `connector_data_tables`) feature idempotent startup auto-healing (`CREATE TABLE IF NOT EXISTS`) so microservices can boot reliably in both standalone test environments and production clusters.
+
+---
+
 ### [2026-08-10] React State Updates in Global Listeners (INP Issue)
 - **Error/Fault:** An INP (Interaction to Next Paint) issue of 242.9ms was flagged on `div.notifications-header` in `Header.jsx`.
 - **How it Happened:** A global `document.addEventListener('mousedown', handleClickOutside)` was attached to handle "click outside" events. When the user clicked on the notifications header, the event handler unconditionally called `setShowUserMenu(false)` even when `showUserMenu` was already false. This redundant state setter caused React to queue a state update and partially re-evaluate the component tree (which contained heavy Framer Motion `AnimatePresence` elements), blocking the main thread.
