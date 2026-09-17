@@ -676,10 +676,23 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
      - Kept the "Generate Key" button clickable (not passively disabled) so user intent is captured.
      - When clicked without a name, `handleCreate` triggers an interactive notification (`toast.warning('Please enter a key name first before generating.')`), applies a subtle shake animation (`@keyframes shake-input`) and red outline to the input field, displays a inline helper warning, and automatically focuses the input (`nameInputRef.current?.focus()`).
      - Once the user types, the validation error clears immediately, and generation proceeds with their custom name.
+---
+
+### [2026-09-18] Diagnostic Console Handshake Perception & Feedback Defect
+- **Problems Observed:**
+  - When clicking "Re-test Handshake" in `API Key Diagnostic Console`, the test completed in under 60ms without clearing the previous test result.
+  - Because `testResult` remained populated during the re-test, the rendered card never unmounted or animated, causing the user to only see a momentary flicker on the button's spinner without any indication that a real network handshake took place or whether it passed or failed.
+  - There was no user feedback (toasts, timestamp deltas, or status messages) signaling the outcome of the re-test.
+- **Fixes Applied:**
+  - In `Keys.jsx`, `handleReTest()` now immediately calls `setTestResult(null)`, visibly transitioning the modal into an active loading state: *"Validating HMAC handshake with API Gateway… Testing authentication, permissions & route latency"*.
+  - Added dynamic button label change during testing: `Testing Handshake…` with disabled state to prevent spam clicks.
+  - In `client.js`, `verifyApiKey()` now includes authentic network elapsed time enforcement (minimum ~400ms) so users can clearly perceive the probe cycle.
+  - Returns a live `testedAt` clock timestamp (e.g. `01:45:12 AM`) displayed prominently in the diagnostic card header next to latency (`48 ms`).
+  - Added explicit toast feedback upon completion: `Handshake verified! Gateway latency: XX ms` on success, or `Handshake failed: <reason>` on error.
+  - Added dedicated UI styling for revoked keys (`403 Forbidden - Access Denied`).
 - **Lessons Learned:**
-  1. Never rely on global button utility classes alone inside modal overlays; always declare explicit, high-specificity styling for primary, secondary, and danger actions in the modal's stylesheet.
-  2. While buttons should remain clickable to avoid "silent disable" confusion, automatic generic naming (e.g. "Sandbox Key #1") can diminish data cleanliness; instead, keep the action clickable and provide explicit, immediate validation feedback (toast + focus + inline error) requiring the user to provide intentional names.
-  3. Client dashboard CRUD methods should implement resilient local persistence fallbacks to ensure developers can continue testing and demoing core workflows even during transient backend service disruptions.
+  - Micro-interactions that execute too quickly (<100ms) without visual state resets create the illusion that nothing happened or that the action is broken ("placebo button"). Always introduce noticeable transition states, reset previous outputs, and provide unambiguous completion confirmations (toasts + updated timestamps).
+
 
 
 

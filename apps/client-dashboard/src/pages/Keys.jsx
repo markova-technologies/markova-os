@@ -120,8 +120,9 @@ const Keys = () => {
     setTestResult(null)
     setTestingLoading(true)
     try {
-      const result = await verifyApiKey(k.key_prefix || k.id)
-      setTestResult(result)
+      const result = await verifyApiKey(k.key_prefix || k.id, k)
+      const testedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      setTestResult({ ...result, testedAt })
     } catch {
       setTestResult({ valid: false, error: 'Network validation error' })
     } finally {
@@ -131,12 +132,20 @@ const Keys = () => {
 
   const handleReTest = async () => {
     if (!testingKey) return
+    setTestResult(null)
     setTestingLoading(true)
     try {
-      const result = await verifyApiKey(testingKey.key_prefix || testingKey.id)
-      setTestResult(result)
+      const result = await verifyApiKey(testingKey.key_prefix || testingKey.id, testingKey)
+      const testedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+      setTestResult({ ...result, testedAt })
+      if (result.valid) {
+        toast.success(`Handshake verified! Gateway latency: ${result.latencyMs} ms`)
+      } else {
+        toast.error(`Handshake failed: ${result.error || 'Key invalid or revoked'}`)
+      }
     } catch {
       setTestResult({ valid: false, error: 'Network validation error' })
+      toast.error('Handshake failed: Network validation error')
     } finally {
       setTestingLoading(false)
     }
@@ -659,8 +668,9 @@ fetchAgents();`
                 <div className="diagnostic-results">
                   {testingLoading ? (
                     <div className="diag-loading">
-                      <RefreshCw size={22} className="spinning" />
+                      <RefreshCw size={26} className="spinning" />
                       <span>Validating HMAC handshake with API Gateway…</span>
+                      <span className="diag-loading-sub">Testing authentication, permissions & route latency</span>
                     </div>
                   ) : testResult ? (
                     <div className={`diag-card ${testResult.valid ? 'success' : 'error'}`}>
@@ -671,14 +681,21 @@ fetchAgents();`
                           </div>
                         ) : (
                           <div className="diag-badge-error">
-                            <AlertTriangle size={18} /> Invalid or Expired Key
+                            <AlertTriangle size={18} /> Invalid or Revoked Key
                           </div>
                         )}
-                        {testResult.latencyMs !== undefined && (
-                          <span className="diag-latency">
-                            <Activity size={12} /> {testResult.latencyMs} ms
-                          </span>
-                        )}
+                        <div className="diag-head-meta">
+                          {testResult.testedAt && (
+                            <span className="diag-timestamp">
+                              <Clock size={12} /> {testResult.testedAt}
+                            </span>
+                          )}
+                          {testResult.latencyMs !== undefined && (
+                            <span className="diag-latency">
+                              <Activity size={12} /> {testResult.latencyMs} ms
+                            </span>
+                          )}
+                        </div>
                       </div>
 
                       <div className="diag-details">
@@ -692,12 +709,22 @@ fetchAgents();`
                         </div>
                         <div className="diag-row">
                           <span>Assigned Tier:</span>
-                          <strong>{testResult.plan || 'Production Ready'}</strong>
+                          <strong>{testResult.plan || 'enterprise'}</strong>
                         </div>
                         <div className="diag-row">
                           <span>Accessible APIs:</span>
-                          <span className="diag-caps">Voice Calls, Agents, Telephony, Webhooks</span>
+                          {testResult.valid ? (
+                            <span className="diag-caps">Voice Calls, Agents, Telephony, Webhooks</span>
+                          ) : (
+                            <span className="diag-caps-revoked">Access Denied (Key Revoked / 403)</span>
+                          )}
                         </div>
+                        {testResult.error && (
+                          <div className="diag-row diag-error-row">
+                            <span>Diagnostic Error:</span>
+                            <strong className="text-danger">{testResult.error}</strong>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -721,7 +748,7 @@ fetchAgents();`
                   disabled={testingLoading}
                 >
                   <RefreshCw size={14} className={testingLoading ? 'spinning' : ''} />
-                  <span>Re-test Handshake</span>
+                  <span>{testingLoading ? 'Testing Handshake…' : 'Re-test Handshake'}</span>
                 </button>
               </div>
             </motion.div>
