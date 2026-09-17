@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react'
+import React, { useEffect, useState, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Key,
@@ -29,6 +29,8 @@ const Keys = () => {
   const [keys, setKeys] = useState([])
   const [loading, setLoading] = useState(true)
   const [name, setName] = useState('')
+  const [nameError, setNameError] = useState(false)
+  const nameInputRef = useRef(null)
   const [keyEnv, setKeyEnv] = useState(environment || 'test')
   const [creating, setCreating] = useState(false)
   const [newKey, setNewKey] = useState(null) // full secret, shown once
@@ -76,10 +78,17 @@ const Keys = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault()
-    const finalName = name.trim() || `${keyEnv === 'live' ? 'Production' : 'Sandbox'} Key #${keys.length + 1}`
+    const trimmed = name.trim()
+    if (!trimmed) {
+      setNameError(true)
+      toast.warning('Please enter a key name first before generating.')
+      nameInputRef.current?.focus()
+      return
+    }
+    setNameError(false)
     setCreating(true)
     try {
-      const res = await createKey(finalName, keyEnv)
+      const res = await createKey(trimmed, keyEnv)
       setNewKey(res.data) // includes api_key
       setName('')
       toast.success(`${keyEnv === 'live' ? 'Live' : 'Sandbox'} API key generated successfully.`)
@@ -369,15 +378,22 @@ fetchAgents();`
           <span className="card-hint">Keys are hashed with SHA-256 at rest</span>
         </div>
 
-        <form className="key-create-form" onSubmit={handleCreate}>
+        <form className="key-create-form" onSubmit={handleCreate} noValidate>
           <div className="input-group">
             <input
+              ref={nameInputRef}
               type="text"
-              className="key-name-input"
-              placeholder="Name this key (e.g. Production Backend, Telephony IVR, CRM Webhook)"
+              className={`key-name-input ${nameError ? 'input-error' : ''}`}
+              placeholder="Name this key (e.g. Production Backend, Telephony IVR, CRM Webhook) *"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value)
+                if (nameError) setNameError(false)
+              }}
             />
+            {nameError && (
+              <span className="field-error-msg">Please enter a name for this key first</span>
+            )}
           </div>
 
           <div className="env-selector">
@@ -403,7 +419,7 @@ fetchAgents();`
             type="submit"
             className="btn-create-key"
             disabled={creating}
-            title={name.trim() ? `Create key: "${name.trim()}"` : `Create ${keyEnv === 'live' ? 'Live' : 'Sandbox'} key`}
+            title="Generate API Key"
           >
             <Plus size={16} />
             <span>{creating ? 'Generating…' : 'Generate Key'}</span>

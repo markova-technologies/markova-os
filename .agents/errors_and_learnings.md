@@ -671,13 +671,16 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   2. **Confirm Modal Layout Alignment (`Keys.jsx` & `Keys.css`)**:
      - Wrapped the warning triangle icon and heading/description inside `<div className="modal-title-wrap confirm-title-wrap">` with `align-items: flex-start` and `gap: 1rem`.
      - Added top-right modal close button (`X`) matching other system dialogs.
-  3. **Resilient Key Generation & Auto-Naming (`Keys.jsx` & `client.js`)**:
-     - Removed blocking `!name.trim()` check from the submit button so it is never locked. If the user leaves the name input blank, `handleCreate` automatically generates a clean default name (`"Sandbox Key #2"` or `"Production Key #2"`).
-     - Added graceful fallback in `createKey()` in `client.js`: if remote microservice `/keys` is unavailable or returns an error, it immediately falls back to minting and storing a valid cryptographically formatted token (`mk_test_...` or `mk_live_...`) in `localStorage` (`demo_api_keys`) and updates the table and stats counters in real time.
+  3. **Mandatory Key Naming with Interactive Validation UX (`Keys.jsx` & `client.js`)**:
+     - User feedback indicated keys should never be auto-named with generic strings; names must be intentionally assigned by developers.
+     - Kept the "Generate Key" button clickable (not passively disabled) so user intent is captured.
+     - When clicked without a name, `handleCreate` triggers an interactive notification (`toast.warning('Please enter a key name first before generating.')`), applies a subtle shake animation (`@keyframes shake-input`) and red outline to the input field, displays a inline helper warning, and automatically focuses the input (`nameInputRef.current?.focus()`).
+     - Once the user types, the validation error clears immediately, and generation proceeds with their custom name.
 - **Lessons Learned:**
   1. Never rely on global button utility classes alone inside modal overlays; always declare explicit, high-specificity styling for primary, secondary, and danger actions in the modal's stylesheet.
-  2. Form creation buttons should not be passively disabled when simple defaults can be provided. Auto-generating smart default names prevents user confusion when input placeholders resemble pre-filled values.
+  2. While buttons should remain clickable to avoid "silent disable" confusion, automatic generic naming (e.g. "Sandbox Key #1") can diminish data cleanliness; instead, keep the action clickable and provide explicit, immediate validation feedback (toast + focus + inline error) requiring the user to provide intentional names.
   3. Client dashboard CRUD methods should implement resilient local persistence fallbacks to ensure developers can continue testing and demoing core workflows even during transient backend service disruptions.
+
 
 
 

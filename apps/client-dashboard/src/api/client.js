@@ -283,7 +283,10 @@ export const listKeys = async () => {
 };
 
 export const createKey = async (name, environment = 'test') => {
-  const finalName = (name && name.trim()) || `${environment === 'live' ? 'Live' : 'Sandbox'} Key`;
+  if (!name || !name.trim()) {
+    throw new Error('Key name is required');
+  }
+  const finalName = name.trim();
 
   if (isDemoMode()) {
     const rawToken = `mk_${environment}_` + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
