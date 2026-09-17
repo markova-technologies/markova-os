@@ -76,10 +76,10 @@ const Keys = () => {
 
   const handleCreate = async (e) => {
     e.preventDefault()
-    if (!name.trim()) return
+    const finalName = name.trim() || `${keyEnv === 'live' ? 'Production' : 'Sandbox'} Key #${keys.length + 1}`
     setCreating(true)
     try {
-      const res = await createKey(name.trim(), keyEnv)
+      const res = await createKey(finalName, keyEnv)
       setNewKey(res.data) // includes api_key
       setName('')
       toast.success(`${keyEnv === 'live' ? 'Live' : 'Sandbox'} API key generated successfully.`)
@@ -377,7 +377,6 @@ fetchAgents();`
               placeholder="Name this key (e.g. Production Backend, Telephony IVR, CRM Webhook)"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              required
             />
           </div>
 
@@ -403,7 +402,8 @@ fetchAgents();`
           <button
             type="submit"
             className="btn-create-key"
-            disabled={creating || !name.trim()}
+            disabled={creating}
+            title={name.trim() ? `Create key: "${name.trim()}"` : `Create ${keyEnv === 'live' ? 'Live' : 'Sandbox'} key`}
           >
             <Plus size={16} />
             <span>{creating ? 'Generating…' : 'Generate Key'}</span>
@@ -812,21 +812,30 @@ fetchAgents();`
               exit={{ opacity: 0, scale: 0.95, y: 15 }}
             >
               <div className="modal-header">
-                <div className="modal-icon-wrap danger">
-                  <AlertTriangle size={20} />
+                <div className="modal-title-wrap confirm-title-wrap">
+                  <div className="modal-icon-wrap danger">
+                    <AlertTriangle size={20} />
+                  </div>
+                  <div>
+                    <h3>
+                      {actionTarget.action === 'revoke'
+                        ? `Revoke “${actionTarget.key.name}”?`
+                        : `Permanently Delete “${actionTarget.key.name}”?`}
+                    </h3>
+                    <p>
+                      {actionTarget.action === 'revoke'
+                        ? 'Any backend server or integration using this key will immediately be rejected with 403 Forbidden.'
+                        : 'This record will be permanently deleted from the database audit log.'}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h3>
-                    {actionTarget.action === 'revoke'
-                      ? `Revoke “${actionTarget.key.name}”?`
-                      : `Permanently Delete “${actionTarget.key.name}”?`}
-                  </h3>
-                  <p>
-                    {actionTarget.action === 'revoke'
-                      ? 'Any backend server or integration using this key will immediately be rejected with 403 Forbidden.'
-                      : 'This record will be permanently deleted from the database audit log.'}
-                  </p>
-                </div>
+                <button
+                  className="modal-close-btn"
+                  onClick={() => setActionTarget(null)}
+                  title="Close modal"
+                >
+                  <X size={16} />
+                </button>
               </div>
 
               <div className="modal-footer">

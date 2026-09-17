@@ -654,4 +654,30 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   2. Reverse proxies using libraries like `express-http-proxy` drop unmapped custom headers by default. Always explicitly propagate gateway security and signature headers (`x-gateway-sig`, `x-gateway-timestamp`) through proxy decorators.
   3. Service-level guards (`TenantGuard`) in a microservice mesh should always prioritize verifying the incoming API Gateway HMAC signature before attempting third-party token validation.
 
+---
+
+### [2026-09-18] API Keys Modal Button Design Issues & Resilient Key Generation
+- **Problems Observed:**
+  1. **Modal Footer Button Contrast & Styling Defect (`Keys.css`)**: In the `API Key Diagnostic Console` modal (`test-key-modal`), the "Re-test Handshake" button (`.btn-primary`) rendered as an unpadded white rectangle with illegible white text, while "Close Console" (`.btn-secondary`) rendered as muddy, low-contrast text without borders. This occurred because global `.btn` utility classes were missing from `.modal-footer button`, and `.btn-primary` lacked explicit high-specificity overrides for text and SVG icon colors (`#090d16`).
+  2. **Confirm Modal Header Misalignment & Danger Icon Blowout (`confirm-modal` in `Keys.jsx` & `Keys.css`)**: In the Revoke Key confirmation dialog, the warning triangle icon box was directly nested inside `.modal-header` without a `.modal-title-wrap` flex wrapper. Combined with `.modal-header`'s `justify-content: space-between`, the danger icon floated awkwardly to the far left edge, separated from the title and warning copy.
+  3. **Key Generation UI Lockout (`Keys.jsx` & `client.js`)**:
+     - The "Generate Key" button had `disabled={creating || !name.trim()}`. Because the input field had gray placeholder text (`Name this key...`), users assumed a default name was pre-populated and found the button unclickable.
+     - When remote backend endpoints (`/keys`) failed due to cold starts, unmigrated database instances, or tenant isolation constraints in demo accounts, `client.js` threw an unhandled rejection, preventing developers from testing key creation.
+- **Fixes Applied:**
+  1. **High-Contrast Modal Footer Buttons (`Keys.css`)**:
+     - Added dedicated `.modal-footer button` rules with explicit padding (`0.62rem 1.25rem`), border-radius (`9px`), flex alignment, and smooth cubic-bezier transitions.
+     - Styled `.modal-footer .btn-primary` with crisp dark text (`#090d16 !important`) and dark SVG strokes on a pure white background.
+     - Styled `.modal-footer .btn-secondary` (`Close Console`, `Cancel`) with frosted-glass background (`rgba(255, 255, 255, 0.07)`), crisp white text (`#f1f5f9`), and defined borders (`rgba(255, 255, 255, 0.18)`).
+  2. **Confirm Modal Layout Alignment (`Keys.jsx` & `Keys.css`)**:
+     - Wrapped the warning triangle icon and heading/description inside `<div className="modal-title-wrap confirm-title-wrap">` with `align-items: flex-start` and `gap: 1rem`.
+     - Added top-right modal close button (`X`) matching other system dialogs.
+  3. **Resilient Key Generation & Auto-Naming (`Keys.jsx` & `client.js`)**:
+     - Removed blocking `!name.trim()` check from the submit button so it is never locked. If the user leaves the name input blank, `handleCreate` automatically generates a clean default name (`"Sandbox Key #2"` or `"Production Key #2"`).
+     - Added graceful fallback in `createKey()` in `client.js`: if remote microservice `/keys` is unavailable or returns an error, it immediately falls back to minting and storing a valid cryptographically formatted token (`mk_test_...` or `mk_live_...`) in `localStorage` (`demo_api_keys`) and updates the table and stats counters in real time.
+- **Lessons Learned:**
+  1. Never rely on global button utility classes alone inside modal overlays; always declare explicit, high-specificity styling for primary, secondary, and danger actions in the modal's stylesheet.
+  2. Form creation buttons should not be passively disabled when simple defaults can be provided. Auto-generating smart default names prevents user confusion when input placeholders resemble pre-filled values.
+  3. Client dashboard CRUD methods should implement resilient local persistence fallbacks to ensure developers can continue testing and demoing core workflows even during transient backend service disruptions.
+
+
 
