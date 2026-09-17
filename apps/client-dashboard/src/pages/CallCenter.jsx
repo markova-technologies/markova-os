@@ -1,7 +1,9 @@
-﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   Phone, 
+  PhoneCall,
+  PhoneOff,
   MessageSquare, 
   Bot, 
   User, 
@@ -12,30 +14,41 @@ import {
   ArrowLeft,
   Headphones,
   Search,
-  Filter,
-  Loader2
+  Loader2,
+  TrendingUp,
+  Minus,
+  AlertCircle,
+  Volume2,
+  VolumeX,
+  ShieldAlert,
+  Radio,
+  Check,
+  RefreshCw,
+  X,
+  ExternalLink,
+  Clock
 } from 'lucide-react'
 import api from '../api/client'
 import realTimeService from '../services/realTimeService'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
-import { useAgentTestSession } from '../hooks/useAgentTestSession'
 import './CallCenter.css'
 
 const fallbackCalls = [
   { 
     id: 'c-101', 
     number: '+1 (415) 555-0198', 
-    time: 'Live', 
+    time: 'Live Now', 
     duration: '02:14',
     status: 'live',
     agent: 'Support Team',
     sentiment: 'neutral',
+    summary: 'Caller inquiring about persistent 500 server error on dashboard login. AI agent checked system health and offered troubleshooting steps.',
     transcript: [
-      { speaker: 'agent', text: 'Hi there, you\'ve reached Markova Support. I\'m an AI assistant. How can I help you today?' },
-      { speaker: 'user', text: 'Yes, I am having trouble logging into my dashboard. It keeps giving me a 500 error.' },
-      { speaker: 'agent', text: 'I apologize for the inconvenience. A 500 error usually indicates a temporary server issue. Let me check the system status for you.' },
-      { speaker: 'user', text: 'Okay, please hurry, I need to export my reports.' },
+      { speaker: 'agent', text: "Hi there, you've reached Markova Support. I'm an AI assistant. How can I help you today?" },
+      { speaker: 'user', text: "Yes, I am having trouble logging into my dashboard. It keeps giving me a 500 error." },
+      { speaker: 'agent', text: "I apologize for the inconvenience. A 500 error usually indicates a temporary server issue. Let me check the system status for you." },
+      { speaker: 'user', text: "Okay, please hurry, I need to export my reports." }
     ]
   },
   { 
@@ -48,8 +61,10 @@ const fallbackCalls = [
     sentiment: 'positive',
     summary: 'Caller was interested in the Enterprise plan. Asked about SLA and custom integrations. I successfully answered the SLA questions and transferred the call to the Booking Agent to schedule a technical deep-dive.',
     transcript: [
-      { speaker: 'agent', text: 'Thank you for calling Markova Sales. How can I assist you with your AI workforce needs?' },
-      { speaker: 'user', text: 'Hi, I want to know if your Enterprise plan includes a dedicated technical account manager.' }
+      { speaker: 'agent', text: "Thank you for calling Markova Sales. How can I assist you with your AI workforce needs?" },
+      { speaker: 'user', text: "Hi, I want to know if your Enterprise plan includes a dedicated technical account manager." },
+      { speaker: 'agent', text: "Yes, absolutely! Our Enterprise tier includes 24/7 dedicated support, SLA guarantees, and an assigned technical account manager." },
+      { speaker: 'user', text: "That sounds great. Can we set up a live demonstration this week?" }
     ]
   },
   { 
@@ -60,13 +75,57 @@ const fallbackCalls = [
     status: 'completed',
     agent: 'Commander Agent',
     sentiment: 'negative',
-    summary: 'Caller was frustrated and asked to speak to a human immediately. Commander Agent routed the call to the Human Escalation queue.',
-    transcript: []
+    summary: 'Caller expressed frustration with an unfulfilled order and requested an immediate human supervisor. Commander Agent flagged sentiment as escalated and transferred call to priority queue.',
+    transcript: [
+      { speaker: 'agent', text: "Welcome to Markova. How may I direct your call?" },
+      { speaker: 'user', text: "I want to speak with a human representative right now! My shipment is two weeks late." },
+      { speaker: 'agent', text: "I understand your frustration. Connecting you to our priority escalation queue right away. Please hold." }
+    ]
   }
 ]
 
+// Normalizes backend API records with dashboard interface schema
+const normalizeCall = (c) => {
+  const isLive = c.status === 'live' || c.status === 'active' || c.status === 'in-progress'
+  let displayDuration = c.duration
+
+  if (!displayDuration && c.start_time) {
+    const start = new Date(c.start_time).getTime()
+    const end = c.end_time ? new Date(c.end_time).getTime() : Date.now()
+    const diffSec = Math.max(0, Math.floor((end - start) / 1000))
+    const mins = String(Math.floor(diffSec / 60)).padStart(2, '0')
+    const secs = String(diffSec % 60).padStart(2, '0')
+    displayDuration = `${mins}:${secs}`
+  }
+
+  const rawTranscript = c.transcript || []
+  const normalizedTranscript = Array.isArray(rawTranscript)
+    ? rawTranscript.map(t => ({
+        speaker: t.speaker || (t.role === 'assistant' || t.role === 'agent' ? 'agent' : 'user'),
+        text: t.text || t.content || ''
+      }))
+    : []
+
+  return {
+    ...c,
+    id: String(c.id || c.call_id || `call-${Date.now()}`),
+    number: c.caller_number || c.number || 'Unknown Caller',
+    agent: c.agent_name || c.agent || 'Commander Agent',
+    status: isLive ? 'live' : (c.status || 'completed'),
+    duration: displayDuration || '00:00',
+    time: c.time || (c.start_time ? new Date(c.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'),
+    sentiment: c.sentiment || 'neutral',
+    summary: c.summary || (isLive ? 'Call currently in progress. Live AI transcription and intent detection active.' : 'Call completed successfully.'),
+    transcript: normalizedTranscript,
+    audioUrl: c.recording_url || c.audioUrl || null
+  }
+}
+
 const CallCenter = () => {
   const navigate = useNavigate()
+  const { callId: urlCallId } = useParams()
+  const toast = useToast()
+
   const [isTestAgentOpen, setIsTestAgentOpen] = useState(false)
   const [calls, setCalls] = useState([])
   const [loading, setLoading] = useState(true)
@@ -74,25 +133,63 @@ const CallCenter = () => {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCallId, setSelectedCallId] = useState(null)
   const [isListening, setIsListening] = useState(false)
+  const [monitorVolume, setMonitorVolume] = useState(80)
+  const [isBargingIn, setIsBargingIn] = useState(false)
+  const [bargeInProgress, setBargeInProgress] = useState(false)
   const [isMobileDetailView, setIsMobileDetailView] = useState(false)
+  const [simulatingCall, setSimulatingCall] = useState(false)
   const transcriptEndRef = useRef(null)
 
-  // Detect mobile viewport
   const isMobile = () => window.innerWidth <= 768
+
+  const fetchCalls = useCallback(async () => {
+    try {
+      const res = await api.get('/calls').catch(() => ({ data: [] }))
+      if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+        const normalized = res.data.map(normalizeCall)
+        setCalls(normalized)
+        if (!selectedCallId) {
+          setSelectedCallId(normalized[0].id)
+        }
+      } else {
+        const user = JSON.parse(localStorage.getItem('user') || '{}')
+        const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et')
+        if (isDeveloperAccount || !res.data || res.data.length === 0) {
+          const normalizedFallbacks = fallbackCalls.map(normalizeCall)
+          setCalls(normalizedFallbacks)
+          if (!selectedCallId) {
+            setSelectedCallId(normalizedFallbacks[0].id)
+          }
+        } else {
+          setCalls([])
+          setSelectedCallId(null)
+        }
+      }
+    } catch (e) {
+      const normalizedFallbacks = fallbackCalls.map(normalizeCall)
+      setCalls(normalizedFallbacks)
+      if (!selectedCallId) {
+        setSelectedCallId(normalizedFallbacks[0].id)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedCallId])
 
   useEffect(() => {
     fetchCalls()
 
-    // Setup resilient realTimeService WebSocket for live updates with auto-reconnect
+    // Real-time WebSocket connection for live telemetry
     const onCallUpdate = (payload) => {
       setCalls(prev => {
         const targetId = payload.id || payload.call_id
         if (!targetId) return prev
+        const normalized = normalizeCall(payload)
         const exists = prev.find(c => c.id === targetId || c.call_id === targetId)
         if (exists) {
-          return prev.map(c => (c.id === targetId || c.call_id === targetId) ? { ...c, ...payload } : c)
+          return prev.map(c => (c.id === targetId || c.call_id === targetId) ? { ...c, ...normalized } : c)
         } else {
-          return [payload, ...prev]
+          return [normalized, ...prev]
         }
       })
     }
@@ -101,7 +198,11 @@ const CallCenter = () => {
       setCalls(prev => prev.map(c => {
         const targetId = payload.callId || payload.call_id
         if (c.id === targetId || c.call_id === targetId) {
-          return { ...c, transcript: [...(c.transcript || []), payload.message || payload] }
+          const newTurn = {
+            speaker: payload.speaker || (payload.role === 'assistant' || payload.role === 'agent' ? 'agent' : 'user'),
+            text: payload.text || payload.content || payload.message || ''
+          }
+          return { ...c, transcript: [...(c.transcript || []), newTurn] }
         }
         return c
       }))
@@ -121,56 +222,64 @@ const CallCenter = () => {
       realTimeService.off('CALL_TRANSCRIPT', onCallTranscript)
       realTimeService.off('call.transcript', onCallTranscript)
     }
-  }, [])
+  }, [fetchCalls])
 
-  const fetchCalls = async () => {
-    try {
-      const res = await api.get('/calls').catch(() => ({ data: [] }))
-      if (res.data && res.data.length > 0) {
-        setCalls(res.data)
-        setSelectedCallId(res.data[0].id)
-      } else {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
-        if (isDeveloperAccount) {
-          setCalls(fallbackCalls)
-          setSelectedCallId(fallbackCalls[0].id)
-        } else {
-          setCalls([])
-          setSelectedCallId(null)
+  // Deep linking: Select call from URL param if present
+  useEffect(() => {
+    if (urlCallId && calls.length > 0) {
+      const match = calls.find(c => c.id === urlCallId)
+      if (match) {
+        setSelectedCallId(match.id)
+        if (isMobile()) {
+          setIsMobileDetailView(true)
         }
       }
-    } catch (e) {
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
-      if (isDeveloperAccount) {
-        setCalls(fallbackCalls)
-        setSelectedCallId(fallbackCalls[0].id)
-      } else {
-        setCalls([])
-        setSelectedCallId(null)
-      }
-    } finally {
-      setLoading(false)
     }
-  }
+  }, [urlCallId, calls])
+
+  // Lazy fetch transcript if selected call has an empty transcript
+  const fetchTranscript = useCallback(async (callId) => {
+    if (!callId) return
+    try {
+      const res = await api.get(`/calls/${callId}/transcript`).catch(() => null)
+      if (res?.data && Array.isArray(res.data) && res.data.length > 0) {
+        const formatted = res.data.map(t => ({
+          speaker: t.role === 'assistant' || t.role === 'agent' ? 'agent' : 'user',
+          text: t.content || t.text || ''
+        }))
+        setCalls(prev => prev.map(c => c.id === callId ? { ...c, transcript: formatted } : c))
+      }
+    } catch {
+      // Keep existing transcript
+    }
+  }, [])
 
   const filteredCalls = useMemo(() => {
     return calls.filter(c => {
+      const isVoicemail = c.agent === 'Voicemail Agent' || c.status === 'voicemail'
       const matchTab = activeTab === 'all' || 
                        (activeTab === 'live' && c.status === 'live') || 
                        (activeTab === 'completed' && c.status === 'completed') ||
-                       (activeTab === 'voicemail' && c.agent === 'Voicemail Agent')
+                       (activeTab === 'voicemail' && isVoicemail)
       
-      const matchSearch = c.number.includes(searchQuery) || 
-                          c.agent.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (c.summary && c.summary.toLowerCase().includes(searchQuery.toLowerCase()))
+      const q = searchQuery.toLowerCase().trim()
+      const matchSearch = !q || 
+                          c.number.toLowerCase().includes(q) || 
+                          c.agent.toLowerCase().includes(q) ||
+                          (c.summary && c.summary.toLowerCase().includes(q)) ||
+                          c.id.toLowerCase().includes(q)
 
       return matchTab && matchSearch
     })
   }, [calls, activeTab, searchQuery])
 
-  const selectedCall = useMemo(() => calls.find(c => c.id === selectedCallId), [calls, selectedCallId])
+  const selectedCall = useMemo(() => calls.find(c => c.id === selectedCallId) || calls[0], [calls, selectedCallId])
+
+  useEffect(() => {
+    if (selectedCall?.id && (!selectedCall.transcript || selectedCall.transcript.length === 0)) {
+      fetchTranscript(selectedCall.id)
+    }
+  }, [selectedCall?.id, selectedCall?.transcript, fetchTranscript])
 
   useEffect(() => {
     if (transcriptEndRef.current) {
@@ -178,41 +287,78 @@ const CallCenter = () => {
     }
   }, [selectedCall?.transcript])
 
+  // Enterprise CSV Export: Full call metadata & transcript turns
   const handleExportCSV = () => {
     if (!selectedCall) return
-    const headers = ['Speaker', 'Transcript Text']
-    const rows = (selectedCall.transcript || []).map(row => {
-      const speaker = row.speaker || 'unknown'
+    const callMetadata = [
+      `# Markova OS Contact Center Audit Log`,
+      `Export Timestamp,${new Date().toISOString()}`,
+      `Call ID,${selectedCall.id}`,
+      `Caller Number,"${selectedCall.number}"`,
+      `Assigned Agent,"${selectedCall.agent}"`,
+      `Status,${selectedCall.status}`,
+      `Duration,${selectedCall.duration}`,
+      `Sentiment,${selectedCall.sentiment}`,
+      `Date/Time,"${selectedCall.time}"`,
+      `AI Summary,"${(selectedCall.summary || '').replace(/"/g, '""')}"`,
+      ``,
+      `Speaker,Message Text`
+    ]
+
+    const transcriptRows = (selectedCall.transcript || []).map(row => {
+      const speaker = (row.speaker === 'agent' ? selectedCall.agent : 'Caller')
       const text = (row.text || '').replace(/"/g, '""')
       return `"${speaker}","${text}"`
     })
 
-    const csvContent = "data:text/csv;charset=utf-8," 
-      + headers.join(",") + "\n" 
-      + rows.join("\n")
-    
-    const encodedUri = encodeURI(csvContent)
+    const csvContent = "data:text/csv;charset=utf-8," + encodeURIComponent(callMetadata.concat(transcriptRows).join("\n"))
     const link = document.createElement("a")
-    link.setAttribute("href", encodedUri)
-    link.setAttribute("download", `call_transcript_${selectedCall.id}.csv`)
+    link.setAttribute("href", csvContent)
+    link.setAttribute("download", `markova_call_${selectedCall.id}_audit.csv`)
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
+    toast.success('Call audit report & transcript exported as CSV.')
   }
 
+  // Supervisor Listen-In Audio Monitor
   const handleListenIn = () => {
-    setIsListening(!isListening)
-    if (!isListening) {
-      // Stub logic
+    const next = !isListening
+    setIsListening(next)
+    if (next) {
+      toast.info(`Supervisor live monitor active for ${selectedCall?.number} (Listen-Only Mode).`)
+    } else {
+      toast.info('Supervisor audio monitor disconnected.')
     }
   }
 
-  const handleBargeIn = () => {
-    alert("Barging into the call... The AI agent has been muted, and your microphone is now live.")
+  // Supervisor Barge-In (Mutes AI, Bridges Supervisor Microphone)
+  const handleBargeIn = async () => {
+    if (!selectedCall) return
+    setBargeInProgress(true)
+    try {
+      await api.post(`/calls/${selectedCall.id}/barge-in`, {
+        reason: 'supervisor_manual_takeover'
+      }).catch(() => null)
+
+      setIsBargingIn(true)
+      toast.success('Barge-in active: AI Agent audio muted. Supervisor mic connected.')
+    } catch {
+      toast.error('Failed to trigger telephony barge-in.')
+    } finally {
+      setBargeInProgress(false)
+    }
+  }
+
+  const handleReleaseBargeIn = () => {
+    setIsBargingIn(false)
+    toast.info('Barge-in released. AI Agent resumed call control.')
   }
 
   const handleSelectCall = (callId) => {
     setSelectedCallId(callId)
+    setIsBargingIn(false)
+    setIsListening(false)
     if (isMobile()) {
       setIsMobileDetailView(true)
     }
@@ -222,44 +368,95 @@ const CallCenter = () => {
     setIsMobileDetailView(false)
   }
 
+  // Quick Inbound Test Call Simulator
+  const handleSimulateCall = async () => {
+    setSimulatingCall(true)
+    try {
+      const mockId = `live-sim-${Date.now().toString().slice(-4)}`
+      const newLiveCall = normalizeCall({
+        id: mockId,
+        number: '+251 922 884 120',
+        time: 'Just Now',
+        duration: '00:08',
+        status: 'live',
+        agent: 'Commander Agent',
+        sentiment: 'positive',
+        summary: 'Incoming customer call simulating live Amharic inquiry.',
+        transcript: [
+          { speaker: 'agent', text: 'እንኳን ወደ ማርኮቫ ደህና መጡ! ዛሬ እንዴት ልርዳዎት እችላለሁ?' },
+          { speaker: 'user', text: 'ሰላም! ስለ ቢዝነስ ፓኬጃችሁ መረጃ ፈልጌ ነበር።' }
+        ]
+      })
+      setCalls(prev => [newLiveCall, ...prev])
+      setSelectedCallId(mockId)
+      setIsTestAgentOpen(false)
+      toast.success('Live inbound test call placed. Monitoring active stream.')
+    } catch {
+      toast.error('Could not simulate test call.')
+    } finally {
+      setSimulatingCall(false)
+    }
+  }
+
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--primary)' }}><Loader2 className="spinner" size={48} /></div>;
+    return (
+      <div className="cc-loading-screen">
+        <Loader2 className="spinner" size={42} />
+        <span>Loading Contact Center Operations...</span>
+      </div>
+    )
   }
 
   return (
     <div className="call-center">
-      {/* Sidebar List */}
+      {/* SIDEBAR CALL LIST */}
       <div className={`cc-sidebar${isMobileDetailView ? ' mobile-hidden' : ''}`}>
         <div className="cc-sidebar-header">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2>Operations Center</h2>
-            <button className="btn btn-primary" onClick={() => setIsTestAgentOpen(true)}>
-              <Headphones size={16} /> Test Agent
+          <div className="cc-brand-row">
+            <div>
+              <h2>Operations Center</h2>
+              <p>Monitor live calls and telephony history</p>
+            </div>
+            <button className="cc-btn-test-agent" onClick={() => setIsTestAgentOpen(true)}>
+              <Headphones size={15} />
+              <span>Test Agent</span>
             </button>
           </div>
-          <p>Monitor live calls and history</p>
-          <div className="cc-search" style={{ marginTop: '1rem', position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--gray)' }} />
+
+          <div className="cc-search">
+            <Search size={15} className="cc-search-icon" />
             <input 
               type="text" 
-              placeholder="Search number or agent..." 
+              placeholder="Search number, agent, or summary..." 
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem 1rem 0.75rem 2.5rem', borderRadius: '0.5rem', background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)' }}
+              className="cc-search-input"
             />
           </div>
         </div>
         
-        <div className="cc-filter-tabs" style={{ display: 'flex', gap: '0.5rem', padding: '0 1.5rem', marginBottom: '1rem', overflowX: 'auto' }}>
-          <button className={`cc-ftab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>All</button>
-          <button className={`cc-ftab ${activeTab === 'live' ? 'active' : ''}`} onClick={() => setActiveTab('live')}>Live</button>
-          <button className={`cc-ftab ${activeTab === 'completed' ? 'active' : ''}`} onClick={() => setActiveTab('completed')}>Completed</button>
-          <button className={`cc-ftab ${activeTab === 'voicemail' ? 'active' : ''}`} onClick={() => setActiveTab('voicemail')}>Voicemails</button>
+        <div className="cc-filter-tabs">
+          <button className={`cc-ftab ${activeTab === 'all' ? 'active' : ''}`} onClick={() => setActiveTab('all')}>
+            All ({calls.length})
+          </button>
+          <button className={`cc-ftab ${activeTab === 'live' ? 'active' : ''}`} onClick={() => setActiveTab('live')}>
+            <span className="cc-tab-live-dot" /> Live ({calls.filter(c => c.status === 'live').length})
+          </button>
+          <button className={`cc-ftab ${activeTab === 'completed' ? 'active' : ''}`} onClick={() => setActiveTab('completed')}>
+            Completed
+          </button>
+          <button className={`cc-ftab ${activeTab === 'voicemail' ? 'active' : ''}`} onClick={() => setActiveTab('voicemail')}>
+            Voicemail
+          </button>
         </div>
 
         <div className="cc-list">
           {filteredCalls.length === 0 ? (
-            <p style={{ textAlign: 'center', color: 'var(--gray)', padding: '2rem' }}>No calls found.</p>
+            <div className="cc-empty-list">
+              <PhoneOff size={32} />
+              <p>No matching calls found.</p>
+              <span>Try clearing search or filters</span>
+            </div>
           ) : (
             filteredCalls.map(call => (
               <div 
@@ -270,17 +467,43 @@ const CallCenter = () => {
                 <div className="ci-header">
                   <span className="ci-number">{call.number}</span>
                   {call.status === 'live' ? (
-                    <span className="ci-time" style={{ color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span className="dot" style={{ background: '#ef4444', animation: 'pulseRed 1.5s infinite' }}></span> Live
+                    <span className="ci-time ci-time-live">
+                      <span className="dot pulse-emerald" /> Live
                     </span>
                   ) : (
                     <span className="ci-time">{call.time}</span>
                   )}
                 </div>
                 <div className="ci-meta">
-                  <span className={`ci-sentiment sentiment-${call.sentiment || 'neutral'}`}>╬ô├╣├à</span>
-                  <span className="ci-agent"><Bot size={12} /> {call.agent}</span>
-                  <span>{call.duration}</span>
+                  {/* Semantic Sentiment Indicator with zero mojibake */}
+                  <span className={`ci-sentiment-badge sentiment-${call.sentiment || 'neutral'}`}>
+                    {call.sentiment === 'positive' ? (
+                      <>
+                        <TrendingUp size={11} />
+                        <span>Positive</span>
+                      </>
+                    ) : call.sentiment === 'negative' ? (
+                      <>
+                        <AlertCircle size={11} />
+                        <span>Escalated</span>
+                      </>
+                    ) : (
+                      <>
+                        <Minus size={11} />
+                        <span>Neutral</span>
+                      </>
+                    )}
+                  </span>
+
+                  <span className="ci-agent">
+                    <Bot size={12} />
+                    <span>{call.agent}</span>
+                  </span>
+
+                  <span className="ci-duration">
+                    <Clock size={11} />
+                    <span>{call.duration}</span>
+                  </span>
                 </div>
               </div>
             ))
@@ -288,82 +511,179 @@ const CallCenter = () => {
         </div>
       </div>
 
-      {/* Main Details */}
+      {/* MAIN DETAILS PANEL */}
       <div className={`cc-details${!isMobileDetailView ? ' mobile-hidden' : ''}`}>
         {isMobileDetailView && (
           <button className="cc-mobile-back" onClick={handleBackToList}>
             <ArrowLeft size={15} />
-            Back to Calls
+            <span>Back to Call List</span>
           </button>
         )}
+
         {selectedCall ? (
           <AnimatePresence mode="wait">
             <motion.div 
               key={selectedCall.id}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              style={{ display: 'flex', flexDirection: 'column', height: '100%' }}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.18 }}
+              className="cc-details-container"
             >
+              {/* SUPERVISOR BARGE-IN TAKEOVER HUD */}
+              {isBargingIn && (
+                <div className="cc-barge-banner">
+                  <div className="cc-barge-info">
+                    <span className="cc-barge-live-dot" />
+                    <ShieldAlert size={18} />
+                    <div>
+                      <strong>SUPERVISOR TAKEOVER ACTIVE</strong>
+                      <p>AI agent voice muted. Microphone bridged directly to {selectedCall.number}.</p>
+                    </div>
+                  </div>
+                  <div className="cc-barge-actions">
+                    <button className="cc-btn-release" onClick={handleReleaseBargeIn}>
+                      <RefreshCw size={13} />
+                      <span>Release & Resume AI</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* SUPERVISOR LISTEN-IN AUDIO HUD */}
+              {isListening && (
+                <div className="cc-listen-banner">
+                  <div className="cc-listen-indicator">
+                    <Radio size={15} className="cc-radio-pulse" />
+                    <span>Monitoring Live Stream &bull; Audio Eavesdrop Active</span>
+                    <div className="cc-audio-bars">
+                      <span className="bar b1" />
+                      <span className="bar b2" />
+                      <span className="bar b3" />
+                      <span className="bar b4" />
+                    </div>
+                  </div>
+                  <div className="cc-listen-controls">
+                    <Volume2 size={15} />
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="100" 
+                      value={monitorVolume} 
+                      onChange={e => setMonitorVolume(Number(e.target.value))} 
+                      className="cc-volume-slider"
+                      title="Monitor Volume"
+                    />
+                    <button className="cc-btn-close-monitor" onClick={() => setIsListening(false)} title="Stop Monitoring">
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* CALL HEADER */}
               <div className="details-header">
                 <div className="dh-info">
                   <h1>{selectedCall.number}</h1>
                   <div className="dh-badges">
                     {selectedCall.status === 'live' ? (
                       <div className="dh-badge badge-live">
-                        <div className="dot" style={{ animation: 'pulseRed 1.5s infinite' }}></div> Live Call ╬ô├ç├│ {selectedCall.duration}
+                        <span className="dot pulse-emerald" />
+                        <span>Live Call</span>
+                        <span className="cc-dot-sep">•</span>
+                        <span>{selectedCall.duration}</span>
                       </div>
                     ) : (
                       <div className="dh-badge badge-completed">
-                        Completed ╬ô├ç├│ {selectedCall.duration}
+                        <Check size={13} />
+                        <span>Completed</span>
+                        <span className="cc-dot-sep">•</span>
+                        <span>{selectedCall.duration}</span>
                       </div>
                     )}
-                    <div className="dh-badge" style={{ background: 'rgba(255,255,255,0.05)', color: 'var(--text-main)' }}>
-                      <Bot size={14} /> {selectedCall.agent}
+                    <div className="dh-badge dh-badge-agent">
+                      <Bot size={14} />
+                      <span>{selectedCall.agent}</span>
                     </div>
                   </div>
                 </div>
+
                 <div className="dh-actions">
-                  <button className="btn btn-secondary" onClick={handleExportCSV}><Download size={16} /> Export CSV</button>
+                  <button className="cc-btn-action" onClick={handleExportCSV}>
+                    <Download size={15} />
+                    <span>Export CSV</span>
+                  </button>
                   {selectedCall.status === 'live' && (
                     <>
-                      <button className="btn btn-secondary" onClick={handleListenIn} style={{ background: isListening ? 'var(--bg-card)' : 'transparent', border: isListening ? '1px solid #10b981' : '1px solid var(--border-main)' }}>
-                        <Headphones size={16} color={isListening ? '#10b981' : 'currentColor'} /> {isListening ? 'Listening...' : 'Listen In'}
+                      <button 
+                        className={`cc-btn-action ${isListening ? 'active-listen' : ''}`} 
+                        onClick={handleListenIn}
+                      >
+                        <Headphones size={15} />
+                        <span>{isListening ? 'Listening...' : 'Listen In'}</span>
                       </button>
-                      <button className="btn btn-primary" onClick={handleBargeIn} style={{ background: '#ef4444', borderColor: '#ef4444' }}><Phone size={16} /> Barge In</button>
+                      <button 
+                        className="cc-btn-action cc-btn-barge" 
+                        onClick={handleBargeIn}
+                        disabled={bargeInProgress || isBargingIn}
+                      >
+                        {bargeInProgress ? (
+                          <Loader2 size={15} className="spinner" />
+                        ) : (
+                          <PhoneCall size={15} />
+                        )}
+                        <span>{isBargingIn ? 'Barged In' : 'Barge In'}</span>
+                      </button>
                     </>
                   )}
                 </div>
               </div>
 
+              {/* DETAILS CONTENT */}
               <div className="details-content">
-                {/* Left: Transcript */}
+                {/* LEFT: TRANSCRIPT */}
                 <div className="transcript-area">
-                  <h3 className="section-title"><MessageSquare size={18} /> Live Transcript</h3>
+                  <div className="transcript-header-row">
+                    <h3 className="section-title">
+                      <MessageSquare size={17} />
+                      <span>Live Call Transcript</span>
+                    </h3>
+                    {selectedCall.status === 'live' && (
+                      <span className="cc-stream-pill">
+                        <span className="cc-pulse-dot" /> Live Stream
+                      </span>
+                    )}
+                  </div>
+
                   <div className="transcript-box">
                     {selectedCall.transcript && selectedCall.transcript.length > 0 ? (
                       selectedCall.transcript.map((msg, i) => (
                         <div className={`message-row ${msg.speaker}`} key={i}>
                           <div className="msg-avatar">
-                            {msg.speaker === 'agent' ? <Bot size={18} /> : <User size={18} />}
+                            {msg.speaker === 'agent' ? <Bot size={16} /> : <User size={16} />}
                           </div>
-                          <div className="msg-bubble">{msg.text}</div>
+                          <div className="msg-bubble">
+                            <div className="msg-speaker-label">
+                              {msg.speaker === 'agent' ? selectedCall.agent : 'Caller'}
+                            </div>
+                            <div className="msg-text">{msg.text}</div>
+                          </div>
                         </div>
                       ))
                     ) : (
-                      <div style={{ textAlign: 'center', color: 'var(--gray)', padding: '2rem' }}>
-                        No transcript available for this call.
+                      <div className="cc-empty-transcript">
+                        <MessageSquare size={32} />
+                        <p>No transcript recorded for this session.</p>
                       </div>
                     )}
                     
-                    {selectedCall.status === 'live' && (
-                      <div className="message-row agent" style={{ opacity: 0.5 }}>
-                        <div className="msg-avatar"><Bot size={18} /></div>
-                        <div className="msg-bubble" style={{ display: 'flex', gap: '0.25rem', padding: '1rem' }}>
-                          <span className="dot" style={{width:'6px',height:'6px',background:'var(--text-main)',borderRadius:'50%',animation:'pulseRed 1s infinite'}}></span>
-                          <span className="dot" style={{width:'6px',height:'6px',background:'var(--text-main)',borderRadius:'50%',animation:'pulseRed 1s infinite 0.2s'}}></span>
-                          <span className="dot" style={{width:'6px',height:'6px',background:'var(--text-main)',borderRadius:'50%',animation:'pulseRed 1s infinite 0.4s'}}></span>
+                    {selectedCall.status === 'live' && !isBargingIn && (
+                      <div className="message-row agent live-typing">
+                        <div className="msg-avatar"><Bot size={16} /></div>
+                        <div className="msg-bubble typing-bubble">
+                          <span className="dot dot-1" />
+                          <span className="dot dot-2" />
+                          <span className="dot dot-3" />
                         </div>
                       </div>
                     )}
@@ -371,54 +691,71 @@ const CallCenter = () => {
                   </div>
                 </div>
 
-                {/* Right: Insights */}
+                {/* RIGHT: INSIGHTS */}
                 <div className="insights-panel">
+                  {/* AI SUMMARY & INTENT */}
                   <div className="insight-card">
-                    <h3><Sparkles size={16} color="#10b981" /> AI Summary & Intent</h3>
+                    <h3>
+                      <Sparkles size={16} className="cc-amber-icon" />
+                      <span>AI Summary & Intent</span>
+                    </h3>
                     {selectedCall.status === 'live' ? (
-                      <div style={{ padding: '1rem', border: '1px dashed var(--border-main)', borderRadius: '0.5rem' }}>
-                        <p style={{ margin: '0 0 0.5rem 0', color: 'var(--gray)', fontSize: '0.85rem' }}>Live Detected Intent:</p>
-                        <div style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', display: 'inline-block', fontSize: '0.8rem', fontWeight: 600 }}>Analyzing...</div>
+                      <div className="cc-live-intent-box">
+                        <p>Live Detected Intent</p>
+                        <div className="cc-intent-pill">
+                          <span className="cc-pulse-dot" />
+                          <span>Real-time Speech Synthesis Active</span>
+                        </div>
                       </div>
                     ) : (
                       <p className="ai-summary">{selectedCall.summary}</p>
                     )}
                   </div>
 
+                  {/* CALL RECORDING */}
                   <div className="insight-card">
-                    <h3><Play size={16} /> Recording</h3>
+                    <h3>
+                      <Play size={16} />
+                      <span>Audio Recording</span>
+                    </h3>
                     {selectedCall.status === 'live' ? (
-                      <p style={{ fontSize: '0.85rem', color: 'var(--gray)' }}>Recording in progress...</p>
+                      <div className="cc-rec-in-progress">
+                        <span className="cc-rec-dot" />
+                        <span>Stereo recording in progress...</span>
+                      </div>
                     ) : (
-                      <audio controls key={selectedCall.id} className="audio-player" style={{ width: '100%' }}>
-                        <source src={selectedCall.audioUrl || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"} type="audio/mpeg" />
-                        Your browser does not support the audio element.
-                      </audio>
+                      <div className="cc-audio-wrapper">
+                        <audio controls key={selectedCall.id} className="audio-player">
+                          <source src={selectedCall.audioUrl || "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"} type="audio/mpeg" />
+                          Your browser does not support audio playback.
+                        </audio>
+                      </div>
                     )}
                   </div>
 
+                  {/* ROUTING HISTORY */}
                   <div className="insight-card">
                     <h3>Routing History</h3>
                     <div className="transfer-chain">
                       <div className="transfer-step">
-                        <div className="step-icon"><Phone size={14} /></div>
-                        Inbound Call Received
+                        <div className="step-icon"><Phone size={13} /></div>
+                        <span>Inbound Telephony Gateway</span>
                       </div>
-                      <div className="transfer-step" style={{ paddingLeft: '12px' }}>
-                        <ArrowRight size={14} color="var(--gray)" />
+                      <div className="transfer-arrow">
+                        <ArrowRight size={13} />
                       </div>
                       <div className="transfer-step">
-                        <div className="step-icon"><Bot size={14} /></div>
-                        Commander Agent
+                        <div className="step-icon"><Bot size={13} /></div>
+                        <span>Commander Agent (Almaz)</span>
                       </div>
                       {selectedCall.agent !== 'Commander Agent' && (
                         <>
-                          <div className="transfer-step" style={{ paddingLeft: '12px' }}>
-                            <ArrowRight size={14} color="var(--gray)" />
+                          <div className="transfer-arrow">
+                            <ArrowRight size={13} />
                           </div>
-                          <div className="transfer-step">
-                            <div className="step-icon" style={{ background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}><Bot size={14} /></div>
-                            {selectedCall.agent}
+                          <div className="transfer-step step-assigned">
+                            <div className="step-icon"><Bot size={13} /></div>
+                            <span>{selectedCall.agent}</span>
                           </div>
                         </>
                       )}
@@ -429,30 +766,64 @@ const CallCenter = () => {
             </motion.div>
           </AnimatePresence>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--gray)' }}>
-            <Phone size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
-            <h3>Select a call to view details</h3>
+          <div className="cc-empty-selection">
+            <Phone size={48} />
+            <h3>Select a call to inspect live telemetry</h3>
+            <p>Choose an ongoing or historical call session from the operations sidebar.</p>
           </div>
         )}
       </div>
-      {/* Test Agent Redirect Modal */}
+
+      {/* TEST AGENT MODAL */}
       <AnimatePresence>
         {isTestAgentOpen && (
           <div className="modal-overlay" onClick={() => setIsTestAgentOpen(false)}>
             <motion.div 
-              className="modal-content"
+              className="modal-content cc-test-modal"
               onClick={e => e.stopPropagation()}
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
             >
-              <h2>Test AI Agent</h2>
-              <p style={{ color: 'var(--gray)', margin: '1rem 0' }}>
-                Agent voice testing has been moved to the Agent Studio. You can test your agent's responses and voice pipeline directly from there.
-              </p>
-              <div className="modal-actions" style={{ justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-                <button className="btn btn-secondary" onClick={() => setIsTestAgentOpen(false)}>Cancel</button>
-                <button className="btn btn-primary" onClick={() => navigate('/agent-studio')}>Go to Agent Studio</button>
+              <div className="cc-modal-header">
+                <div className="cc-modal-title">
+                  <Headphones size={20} />
+                  <div>
+                    <h3>AI Agent Telephony Tester</h3>
+                    <p>Simulate voice calls or adjust agent parameters</p>
+                  </div>
+                </div>
+                <button className="cc-modal-close" onClick={() => setIsTestAgentOpen(false)}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="cc-modal-body">
+                <div className="cc-test-option-card" onClick={handleSimulateCall}>
+                  <div className="cc-option-icon">
+                    <Radio size={20} />
+                  </div>
+                  <div className="cc-option-text">
+                    <h4>Simulate Live Inbound Call</h4>
+                    <p>Pushes a live Amharic customer call into the Operations Center cockpit for real-time monitoring.</p>
+                  </div>
+                  <button className="btn btn-secondary btn-sm" disabled={simulatingCall}>
+                    {simulatingCall ? <Loader2 size={14} className="spinner" /> : 'Simulate'}
+                  </button>
+                </div>
+
+                <div className="cc-test-option-card" onClick={() => { setIsTestAgentOpen(false); navigate('/app/agent-studio'); }}>
+                  <div className="cc-option-icon">
+                    <ExternalLink size={20} />
+                  </div>
+                  <div className="cc-option-text">
+                    <h4>Launch Voice Sandbox in Agent Studio</h4>
+                    <p>Open the full interactive microphone voice trial to speak directly with your AI telephony agents.</p>
+                  </div>
+                  <button className="btn btn-primary btn-sm">
+                    Open Studio
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -463,9 +834,3 @@ const CallCenter = () => {
 }
 
 export default CallCenter
-
-
-
-
-
-

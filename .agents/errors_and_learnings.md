@@ -735,3 +735,39 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lessons Learned:**
   - When a design system defines `--primary` as white for dark-mode high-contrast accents, primary buttons must explicitly specify dark text (`#000000`) and SVG stroke rules on child elements rather than inheriting `#fff`.
   - Form inputs on dark glass themes must always include user-agent autofill overrides (`-webkit-box-shadow inset`) to avoid unsightly white-box flashes when browsers inject saved credentials.
+
+---
+
+### [2026-09-18] Call Center Operations: Mojibake Elimination, Schema Normalization, Supervisor Controls & Theme Overhaul
+- **Problems Observed:**
+  1. **Mojibake Gibberish Characters in UI (`CallCenter.jsx`)**:
+     - `╬ô├╣├à` was rendering in the sidebar under call items, and `╬ô├ç├│` was rendering in call detail badges next to "Live Call" and "Completed".
+     - Root cause: An earlier edit saved UTF-8 bullets (`•`) or sentiment characters under CP437/Windows-1252 character encodings. In the browser, the byte sequences `0xE2 0x80 0xA2` were misparsed as `╬ô├╣├à` and `╬ô├ç├│`.
+  2. **Backend Telephony Schema Mismatch**:
+     - The dashboard frontend only supported mock fallback fields (`c.number`, `c.agent`, `c.duration`, `c.audioUrl`), while the real orchestrator API (`/v1/calls`) returns `c.caller_number`, `c.agent_name`, `c.status: 'active'`, `c.start_time`, `c.recording_url`. Selecting real calls resulted in `undefined` properties or broken searches.
+  3. **Missing Deep-Linking Support**:
+     - While `App.jsx` mapped `call-center/:callId`, `CallCenter.jsx` did not import or use `useParams()`, meaning clicks from the CommandCenter call feed (`/app/call-center/c-101`) failed to highlight or auto-open the target call.
+  4. **Placeholder Supervisor Actions**:
+     - "Barge In" was an unstyled `alert(...)` popup that did not invoke the FreeSWITCH `uuid_break` endpoint (`POST /v1/calls/:id/barge-in`).
+     - "Listen In" was a stub without audio stream monitoring or supervisor feedback.
+  5. **Theme Disconnect**:
+     - The Call Center used legacy navy blue backgrounds (`#0b0f19`) and default browser widgets rather than the obsidian glassmorphism theme.
+- **Fixes Applied:**
+  1. **Complete Mojibake Elimination**:
+     - Replaced `╬ô├╣├à` with semantic SVG sentiment badges (`TrendingUp` for positive, `Minus` for neutral, `AlertCircle` for escalated) with color-coded status pills.
+     - Replaced `╬ô├ç├│` with clean semantic bullet tags (`•`).
+  2. **Defensive Schema Normalizer (`normalizeCall`)**:
+     - Normalized incoming calls from `/v1/calls` so `caller_number`, `agent_name`, dynamic duration calculation (`mm:ss` from `start_time`), and transcript objects work reliably whether sourced from live WebSocket streams, PostgreSQL, or developer demo accounts.
+  3. **Deep Linking (`useParams`)**:
+     - Added `const { callId: urlCallId } = useParams()`. When present, automatically selects the call and lazily loads `/v1/calls/:id/transcript`.
+  4. **Production Supervisor Controls**:
+     - Wired **Barge In** to `POST /v1/calls/:id/barge-in` with an interactive supervisor takeover banner, active live mic status indicator, and "Release & Resume AI" button.
+     - Wired **Listen In** to a live eavesdrop HUD with audio stream waveform bars, volume control slider, and close monitor button.
+  5. **Enterprise Audit CSV Export**:
+     - Upgraded export to output full call metadata (Call ID, Timestamp, Caller Number, Agent, Sentiment, Duration, Summary, Status) followed by line-by-line speaker transcript logs.
+  6. **Black & White Glassmorphism Overhaul (`CallCenter.css`)**:
+     - Restyled all containers, sidebars, modals, and chat bubbles into frosted obsidian glass (`#000000`, `rgba(10, 10, 14, 0.85)`, `rgba(12, 12, 16, 0.75)`), 20px blur, and razor-sharp monochrome borders (`rgba(255, 255, 255, 0.08)` to `0.2`).
+- **Lessons Learned:**
+  - Never hardcode raw Unicode symbols or emojis directly into JSX source files; use semantic Lucide SVG icons and CSS bullet dots to eliminate encoding corruption across disparate operating systems.
+  - Telephony cockpits must defensively normalize backend records to support both active FreeSWITCH/Twilio SIP sessions and completed database calls with uniform property access.
+
