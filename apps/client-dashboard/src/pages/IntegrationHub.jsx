@@ -677,12 +677,17 @@ const IntegrationHub = () => {
       {/* SIDEBAR */}
       <aside className="ih-sidebar">
         <div className="ih-sidebar-header">
-          <div className="ih-brand-title">
-            <Plug size={18} color="var(--primary)" />
-            <span>Connectors</span>
-          </div>
-          <div className="ih-connected-summary">
-            <span className="ih-connected-num">{connectedCount}</span> / 10 Connected
+          <div className="ih-brand-row">
+            <div className="ih-brand-title">
+              <div className="ih-brand-icon-box">
+                <Plug size={15} />
+              </div>
+              <span>Connectors</span>
+            </div>
+            <div className="ih-connected-pill">
+              <span className="ih-live-dot" />
+              <span>{connectedCount} / 10 Active</span>
+            </div>
           </div>
         </div>
 
@@ -711,8 +716,8 @@ const IntegrationHub = () => {
 
         <div className="ih-sidebar-footer">
           <div className="ih-info-box">
-            <ShieldCheck size={16} color="var(--live-green, #10B981)" />
-            <p>Credentials are encrypted with AES-256 at rest and verified per call.</p>
+            <ShieldCheck size={16} />
+            <p>Credentials are encrypted with AES-256 at rest & verified per call session.</p>
           </div>
         </div>
       </aside>
@@ -722,8 +727,12 @@ const IntegrationHub = () => {
         {/* HEADER */}
         <div className="ih-header">
           <div className="ih-header-left">
+            <div className="ih-badge-pill">
+              <Sparkles size={12} color="#fbbf24" />
+              <span>Enterprise Telephony Ecosystem</span>
+            </div>
             <h1>Integrations Hub</h1>
-            <p>Connect and orchestrate your AI telephony agents with your business systems & databases.</p>
+            <p>Connect and orchestrate your AI voice agents with your business CRM, databases, and workflows.</p>
           </div>
 
           <div className="ih-search-box">
@@ -748,12 +757,16 @@ const IntegrationHub = () => {
             <section className="ih-suggested-section">
               <div className="ih-suggested-header">
                 <div className="ih-suggested-title">
-                  <Sparkles size={18} color="#FFB800" />
-                  <h2>AI Suggested for Your Agents</h2>
+                  <div className="ih-suggested-icon-wrap">
+                    <Sparkles size={16} color="#fbbf24" />
+                  </div>
+                  <div>
+                    <h2>AI Suggested for Your Agents</h2>
+                    <span className="ih-suggested-subtitle">
+                      Recommended based on your deployed Sales, Support, and Appointment agents
+                    </span>
+                  </div>
                 </div>
-                <span className="ih-suggested-subtitle">
-                  Recommended based on your deployed Sales, Support, and Appointment agents
-                </span>
               </div>
 
               <div className="ih-grid">
@@ -1004,12 +1017,12 @@ const IntegrationHub = () => {
                     {connecting ? (
                       <>
                         <Loader2 size={14} className="spinner" />
-                        Activating...
+                        <span>Activating...</span>
                       </>
                     ) : (
                       <>
                         <Check size={15} />
-                        Save Connection
+                        <span>Save Connection</span>
                       </>
                     )}
                   </button>

@@ -710,7 +710,28 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lessons Learned:**
   - Micro-interactions that execute too quickly (<100ms) without visual state resets create the illusion that nothing happened or that the action is broken ("placebo button"). Always introduce noticeable transition states, reset previous outputs, and provide unambiguous completion confirmations (toasts + updated timestamps).
 
+---
 
-
-
-
+### [2026-09-18] Integration Hub: Modal Button Text Invisibility, Input Autofill Bleaching & Glassmorphism Theme Alignment
+- **Problems Observed:**
+  1. **Save Connection Button Contrast Defect (`IntegrationHub.css`)**:
+     - The primary action button ("Save Connection") in the connection modal rendered as a solid white rectangle with invisible white text (`#ffffff` text on `#ffffff` background).
+     - In `index.css`, `--primary` is defined as white (`hsl(0, 0%, 98%)`). Because `.ih-btn-primary` used `background: var(--primary)` while its typography assumed a dark background (`color: #fff`), the text matched the background completely, rendering it illegible.
+  2. **Chromium Input Autofill Bleaching**:
+     - When the browser autofilled credentials (such as API keys or access tokens), default browser user-agent styles applied a bright light blue/white background (`:-webkit-autofill`), completely breaking the dark glassmorphic UI.
+  3. **Sidebar Header Counter Collapsing**:
+     - In the left sidebar header, the title "Connectors" and the active status pill (`0 / 10 Connected`) were crammed together in a cramped flex container, clipping text and visual margins on standard sidebar widths.
+  4. **Theme Inconsistency**:
+     - The Integration Hub was utilizing legacy Tailwind navy blues (`#0f172a`, `#1e293b`, `#6366f1`) rather than Markova OS's signature ultra-modern black and white glassmorphism theme (`#000000`, frosted obsidian glass `rgba(12, 12, 16, 0.75)`, crisp monochrome borders `rgba(255, 255, 255, 0.1)`, and pure high-contrast typography).
+- **Fixes Applied:**
+  1. **Save Connection High-Contrast Button**:
+     - Enforced high-specificity CSS rules on `.ih-btn-primary`: `background: #ffffff !important`, `color: #000000 !important`, `.ih-btn-primary span { color: #000000 !important; font-weight: 700 !important; }`, and `.ih-btn-primary svg { stroke: #000000 !important; }`. Wrapped button text in `<span>` tags for explicit DOM targeting.
+  2. **Autofill Bleach Shield**:
+     - Added `-webkit-box-shadow: 0 0 0px 1000px #121318 inset !important` and `-webkit-text-fill-color: #f8fafc !important` to `.ih-input:-webkit-autofill` states so saved credentials retain dark glass styling.
+  3. **Sidebar Header Re-architecture**:
+     - Redesigned `ih-sidebar-header` into a clean flex row with a frosted obsidian icon box (`ih-brand-icon-box`), crisp white label, and a glass pill (`ih-connected-pill`) displaying `{connectedCount} / 10 Active` with a pulsing emerald status dot.
+  4. **Full Black & White Glassmorphism Overhaul**:
+     - Replaced all navy blue hues across cards, drawers, search inputs, categories, tabs, and modals with obsidian glass (`#000000` / `rgba(10, 10, 14, 0.75)` / `rgba(18, 18, 24, 0.65)`), subtle glowing top border gradients (`linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.02))`), and crisp white borders.
+- **Lessons Learned:**
+  - When a design system defines `--primary` as white for dark-mode high-contrast accents, primary buttons must explicitly specify dark text (`#000000`) and SVG stroke rules on child elements rather than inheriting `#fff`.
+  - Form inputs on dark glass themes must always include user-agent autofill overrides (`-webkit-box-shadow inset`) to avoid unsightly white-box flashes when browsers inject saved credentials.
