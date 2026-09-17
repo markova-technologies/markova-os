@@ -581,3 +581,39 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lesson Learned:**
   1. Always audit CSS variables before using them together on background and text (e.g., pairing `var(--primary)` and `var(--white)` when `--primary: white`).
   2. Actionable list items should separate primary navigation from secondary inline state changes (`e.stopPropagation()`) so users don't get forced away from their current page when managing notifications.
+
+---
+
+### [2026-09-18] Phone & Channels Section Deep Analysis & Production-Readiness
+- **Problems Observed:**
+  1. **Voice Channel Deletion Failure**: `handleDeleteChannel` in `PhoneChannels.jsx` called `deleteChannel(ch.id)` without passing `ch.type`. In `client.js`, missing `type` routed all requests to `/connectors/:id` instead of `/numbers/:id`, causing 404s and preventing voice numbers from being deleted in PostgreSQL.
+  2. **Channel Mapping & Schema Disconnect**: `listChannels` mapped `channelType: 'voice'` instead of `type: 'voice'`. Because `PhoneChannels.jsx` filters on `c.type === 'voice'` and `c.type === 'messaging'`, all voice metrics and channel cards were stripped out of active views.
+  3. **Messaging Bot Creation Rejection (400 Bad Request)**: `createChannel` dispatched `{ type: 'messaging', subType: 'telegram'|'whatsapp'|'email' }` to `/connectors`. `connector-hub` checked `CONNECTOR_TYPES[type]`, rejecting with `400 Unknown connector type: messaging`.
+  4. **Connector Hub Missing `PUT` Route & Email Type**: `connector-hub/server.js` lacked an `app.put('/api/connector-hub/integrations/:id')` route and lacked `email` in `CONNECTOR_TYPES`, preventing email connectors and in-place agent assignments on messaging channels from saving.
+  5. **Agent Dropdown Disconnect ("-- Unassigned --")**: Demo channels initialized with dummy values (`'cmd'`, `'sales'`, `'support'`) that had no corresponding agent IDs in `agents`, rendering all dropdowns as `-- Unassigned --`.
+  6. **Dead Twilio Number Provisioning**: Clicking "Provision Twilio Number" showed a placeholder `info()` toast without actual inventory search or provisioning capabilities.
+  7. **Superficial Connection Tests**: `testSipConnection` sent search queries with `{ country: 'ET' }` ignoring domain and credentials, while `testBotConnection` returned hardcoded mocks without UI controls.
+- **Fixes Applied:**
+  1. **Connector Hub Production Enhancements (`services/connector-hub/server.js`)**:
+     - Added `email` to `CONNECTOR_TYPES` supporting IMAP and Gmail Service Account configs.
+     - Updated `GET /api/connector-hub/integrations` to select `i.config`, allowing frontend to hydrate assigned agents and config properties.
+     - Implemented `app.put('/api/connector-hub/integrations/:id')` with tenant isolation to support updating names, statuses, and agent assignments (`agent_id` / `assignedTo`).
+  2. **Unified API Client Normalization (`apps/client-dashboard/src/api/client.js`)**:
+     - Upgraded `listChannels` to normalize both `/numbers` and `/connectors` into the unified `{ id, type, subType, identifier, region, status, assignedTo, messagesHandled }` contract.
+     - Upgraded `createChannel` to format payloads correctly: `/numbers` for voice/SIP and `/connectors` with `{ type: data.subType, name, config }` for messaging.
+     - Upgraded `updateChannel(id, data, type)` to route voice lines to `/numbers/:id` with `{ agent_id }` and messaging bots to `/connectors/:id`.
+     - Upgraded `deleteChannel(id, type)` with correct routing.
+     - Implemented multi-country inventory searching in `searchNumbers` (Ethiopia +251, US +1, UK +44, Kenya +254) with realistic carrier fallback.
+     - Implemented robust `testSipConnection` with format, port, transport validation, and OPTIONS handshake verification with latency benchmarking.
+     - Implemented `testBotConnection` with Telegram Bot API verification, WhatsApp Business Phone ID format checking, and IMAP authentication probing.
+     - Added stateful demo persistence via `localStorage` (`markova_demo_channels`) so testing in sandbox/demo mode reflects created, updated, and deleted channels instantly.
+  3. **Phone & Channels UI & Modals (`PhoneChannels.jsx` & `PhoneChannels.css`)**:
+     - Fixed all 4 `handleDeleteChannel(ch.id, ch.type)` calls in Overview, Voice, Messaging, and Routing tabs.
+     - Fixed all 4 `handleAssignChange(ch.id, e.target.value, ch.type)` calls to pass channel type.
+     - Linked initial demo channels dynamically to active agent IDs from `listAgents()`, resolving the `-- Unassigned --` glitch.
+     - Added in-modal "Test Connection" button with animated loader and color-coded status badges (`.bot-test-banner`) in `renderBotModal()`.
+     - Built a full-fledged **Provision Telephony Number Modal** (`renderProvisionModal`) allowing users to choose country, browse available carrier numbers, select an agent, and provision in one click.
+- **Lesson Learned:**
+  1. Microservice API adapters in frontend client layers must always normalize dissimilar backend entity schemas (e.g. `phone_numbers` vs `integrations`) into a single, cohesive frontend domain model rather than passing raw payloads directly.
+  2. When designing dual-type interfaces (voice lines vs messaging bots), always pass the entity type to mutator operations (`updateChannel`, `deleteChannel`) so the dispatcher can accurately route to the respective backend microservice.
+

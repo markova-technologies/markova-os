@@ -130,6 +130,12 @@ const CONNECTOR_TYPES = {
     category: 'messaging',
     configSchema: { phoneNumberId: 'string', accessToken: 'string', webhookVerifyToken: 'string' },
   },
+  email: {
+    name: 'Email Connector',
+    description: 'Connect IMAP or Gmail Service Account for email support triage',
+    category: 'messaging',
+    configSchema: { email: 'string?', host: 'string?' },
+  },
   webhook: {
     name: 'Custom Webhook',
     description: 'Push data from any system to Markova via webhook',
@@ -275,7 +281,7 @@ app.get('/api/connector-hub/integrations', async (req, res) => {
   try {
     const result = await tenantDb.query(
       ctx,
-      `SELECT i.id, i.type, i.name, i.status, i.created_at,
+      `SELECT i.id, i.type, i.name, i.status, i.config, i.created_at,
               cdt.row_count, cdt.columns, cdt.updated_at as last_synced
        FROM integrations i
        LEFT JOIN connector_data_tables cdt ON cdt.connector_id = i.id
@@ -329,7 +335,7 @@ app.post('/api/connector-hub/integrations', async (req, res) => {
       ctx,
       `INSERT INTO integrations (company_id, type, name, config)
        VALUES ($1, $2, $3, $4)
-       RETURNING id, type, name, status, created_at`,
+       RETURNING id, type, name, status, config, created_at`,
       [companyId, type, name, JSON.stringify(config || {})]
     );
 
@@ -344,6 +350,54 @@ app.post('/api/connector-hub/integrations', async (req, res) => {
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error('Create Integration Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
+// Update integration (name, status, config, agent assignment)
+app.put('/api/connector-hub/integrations/:id', async (req, res) => {
+  const ctx = req.securityContext;
+  const companyId = ctx.tenantId;
+  const { id } = req.params;
+  const { name, status, config, agent_id, assignedTo } = req.body || {};
+
+  try {
+    // 1. Fetch existing integration to merge config
+    const existing = await tenantDb.query(
+      ctx,
+      'SELECT id, type, name, status, config FROM integrations WHERE id = $1 AND company_id = $2',
+      [id, companyId]
+    );
+
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Integration not found' });
+    }
+
+    const cur = existing.rows[0];
+    const existingConfig = typeof cur.config === 'string' ? JSON.parse(cur.config) : (cur.config || {});
+    const incomingConfig = typeof config === 'string' ? JSON.parse(config) : (config || {});
+
+    const mergedConfig = {
+      ...existingConfig,
+      ...incomingConfig,
+      ...(agent_id !== undefined ? { agent_id } : {}),
+      ...(assignedTo !== undefined ? { assignedTo } : {}),
+    };
+
+    const result = await tenantDb.query(
+      ctx,
+      `UPDATE integrations
+       SET name = COALESCE($1, name),
+           status = COALESCE($2, status),
+           config = $3::jsonb
+       WHERE id = $4 AND company_id = $5
+       RETURNING id, type, name, status, config, created_at`,
+      [name || null, status || null, JSON.stringify(mergedConfig), id, companyId]
+    );
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Update Integration Error:', err);
     res.status(500).json({ error: 'Internal Server Error' });
   }
 });

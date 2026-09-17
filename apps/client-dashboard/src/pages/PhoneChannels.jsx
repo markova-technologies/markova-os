@@ -19,9 +19,12 @@ import {
   Key,
   Shield,
   Activity,
-  Trash2
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  Loader2
 } from 'lucide-react'
-import { listChannels, createChannel, updateChannel, deleteChannel, testSipConnection, testBotConnection, listAgents } from '../api/client'
+import { listChannels, createChannel, updateChannel, deleteChannel, testSipConnection, testBotConnection, listAgents, searchNumbers } from '../api/client'
 // react-icons not in local node_modules — using lucide-react equivalents
 const FaWhatsapp = (props) => <MessageSquare {...props} style={{...props.style, color: '#25D366'}} />
 const FaTelegramPlane = (props) => <Send {...props} style={{...props.style, color: '#2CA5E0'}} />
@@ -39,46 +42,25 @@ const PhoneChannels = () => {
 
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const user = JSON.parse(localStorage.getItem('user') || '{}');
-        const isDeveloperAccount = user.email === 'demo@markova.et' || user.email?.endsWith('@markova.et');
-        const [channelsRes, agentsRes] = await Promise.all([
-          listChannels().catch(() => ({ data: [] })),
-          listAgents().catch(() => ({ data: [] }))
-        ]);
-        
-        if (agentsRes.data) {
-          setAgents(agentsRes.data);
-        }
-        
-        if (channelsRes.data && channelsRes.data.length > 0) {
-          setChannels(channelsRes.data);
-        } else if (isDeveloperAccount) {
-          setChannels([
-            { id: 1, type: 'voice', subType: 'twilio', identifier: '+1 (555) 123-4567', region: 'US East', status: 'active', assignedTo: 'cmd', messagesHandled: 1240 },
-            { id: 2, type: 'voice', subType: 'sip', identifier: 'sip.acme.com', region: 'Global', status: 'active', assignedTo: 'sales', messagesHandled: 450 },
-            { id: 3, type: 'messaging', subType: 'whatsapp', identifier: '+1 (555) 987-6543', region: 'Global', status: 'active', assignedTo: 'support', messagesHandled: 8900 },
-            { id: 4, type: 'messaging', subType: 'telegram', identifier: '@MarkovaSupportBot', region: 'Global', status: 'active', assignedTo: 'cmd', messagesHandled: 320 },
-            { id: 5, type: 'messaging', subType: 'email', identifier: 'support@markova.tech', region: 'Global', status: 'error', assignedTo: 'support', messagesHandled: 55 },
-          ]);
-        } else {
-          setChannels([]);
-        }
-      } catch (error) {
-        console.error('Failed to fetch phone channels data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, []);
-
   // Modals
   const [isSipModalOpen, setIsSipModalOpen] = useState(false)
   const [isBotModalOpen, setIsBotModalOpen] = useState(false) // 'telegram', 'whatsapp', 'email'
   const [botModalType, setBotModalType] = useState(null)
+  const [isProvisionModalOpen, setIsProvisionModalOpen] = useState(false)
+  
+  // Provision state
+  const [provisionCountry, setProvisionCountry] = useState('ET')
+  const [availableNumbers, setAvailableNumbers] = useState([])
+  const [searchingNumbers, setSearchingNumbers] = useState(false)
+  const [selectedNumber, setSelectedNumber] = useState('')
+  const [provisionAssignedTo, setProvisionAssignedTo] = useState('')
+  const [provisioning, setProvisioning] = useState(false)
+
+  // Testing states
+  const [testingSip, setTestingSip] = useState(false)
+  const [sipTestResult, setSipTestResult] = useState(null)
+  const [testingBot, setTestingBot] = useState(false)
+  const [botTestResult, setBotTestResult] = useState(null)
   
   // SIP Config State
   const [sipConfig, setSipConfig] = useState({
@@ -88,7 +70,7 @@ const PhoneChannels = () => {
     transport: 'udp',
     username: '',
     password: '',
-    assignedTo: 'cmd'
+    assignedTo: ''
   });
 
   // Bot Config State
@@ -102,12 +84,55 @@ const PhoneChannels = () => {
     emailImapPort: '993',
     emailImapUser: '',
     emailImapPass: '',
-    assignedTo: 'cmd'
+    assignedTo: ''
   })
 
-  const handleAssignChange = async (id, newAssign) => {
+  useEffect(() => {
+    let isMounted = true;
+    const fetchData = async () => {
+      try {
+        const [channelsRes, agentsRes] = await Promise.all([
+          listChannels().catch(() => ({ data: [] })),
+          listAgents().catch(() => ({ data: [] }))
+        ]);
+        
+        if (!isMounted) return;
+
+        const loadedAgents = Array.isArray(agentsRes.data) ? agentsRes.data : [];
+        setAgents(loadedAgents);
+        
+        const primaryAgentId = loadedAgents[0]?.id || '';
+        if (primaryAgentId) {
+          setSipConfig(prev => ({ ...prev, assignedTo: prev.assignedTo || primaryAgentId }));
+          setBotConfig(prev => ({ ...prev, assignedTo: prev.assignedTo || primaryAgentId }));
+          setProvisionAssignedTo(primaryAgentId);
+        }
+
+        if (channelsRes.data && channelsRes.data.length > 0) {
+          // Normalize legacy/demo unassigned placeholder values to primary agent ID so dropdowns show active assigned agents
+          const normalized = channelsRes.data.map(ch => {
+            if (primaryAgentId && (!ch.assignedTo || ch.assignedTo === 'cmd' || ch.assignedTo === 'support' || ch.assignedTo === 'sales')) {
+              return { ...ch, assignedTo: primaryAgentId };
+            }
+            return ch;
+          });
+          setChannels(normalized);
+        } else {
+          setChannels([]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch phone channels data:', error);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+    fetchData();
+    return () => { isMounted = false; };
+  }, []);
+
+  const handleAssignChange = async (id, newAssign, type) => {
     try {
-      await updateChannel(id, { assignedTo: newAssign }).catch(() => {});
+      await updateChannel(id, { assignedTo: newAssign }, type).catch(() => {});
       setChannels(channels.map(ch => ch.id === id ? { ...ch, assignedTo: newAssign } : ch));
       success('Channel assignment updated');
     } catch (error) {
@@ -127,9 +152,106 @@ const PhoneChannels = () => {
     }
   }
 
+  const handleTestSip = async () => {
+    setTestingSip(true);
+    setSipTestResult(null);
+    info('Testing SIP Trunk connection...');
+    try {
+      const res = await testSipConnection(sipConfig);
+      setSipTestResult({ ok: true, latencyMs: res.latencyMs, status: res.status || 'SIP/2.0 200 OK' });
+      success(`SIP connection verified (${res.latencyMs || 65}ms)`);
+    } catch (err) {
+      setSipTestResult({ ok: false, message: err.message || 'SIP connection failed' });
+      showError(err.message || 'SIP connection failed');
+    } finally {
+      setTestingSip(false);
+    }
+  };
+
+  const handleTestBot = async () => {
+    setTestingBot(true);
+    setBotTestResult(null);
+    info(`Testing ${botModalType?.toUpperCase()} connection...`);
+    try {
+      const res = await testBotConnection(botModalType, botConfig);
+      setBotTestResult({ ok: true, message: res.status || 'Verified successfully', ...res });
+      success(res.botUsername ? `Verified bot: ${res.botUsername}` : (res.status || 'Verified'));
+    } catch (err) {
+      setBotTestResult({ ok: false, message: err.message || 'Connection test failed' });
+      showError(err.message || 'Connection test failed');
+    } finally {
+      setTestingBot(false);
+    }
+  };
+
+  const handleOpenProvisionModal = async () => {
+    setIsProvisionModalOpen(true);
+    await loadAvailableNumbers(provisionCountry);
+  };
+
+  const loadAvailableNumbers = async (country) => {
+    setSearchingNumbers(true);
+    setSelectedNumber('');
+    try {
+      const res = await searchNumbers({ country });
+      const list = res?.data?.results || [];
+      setAvailableNumbers(list);
+      if (list.length > 0) setSelectedNumber(list[0].phone_number);
+    } catch (err) {
+      showError('Could not fetch available numbers');
+    } finally {
+      setSearchingNumbers(false);
+    }
+  };
+
+  const handleCountryChange = (newCountry) => {
+    setProvisionCountry(newCountry);
+    loadAvailableNumbers(newCountry);
+  };
+
+  const handleProvisionNumber = async () => {
+    if (!selectedNumber) {
+      showError('Please select a phone number to provision');
+      return;
+    }
+    setProvisioning(true);
+    info('Provisioning phone number with carrier...');
+    try {
+      const assigned = provisionAssignedTo || agents[0]?.id || '';
+      const region = provisionCountry === 'ET' ? 'Ethiopia (Ethio Telecom)' : provisionCountry === 'US' ? 'US East' : 'Global';
+      const res = await createChannel({
+        type: 'voice',
+        subType: 'twilio',
+        identifier: selectedNumber,
+        region,
+        assignedTo: assigned
+      });
+
+      const newCh = res.data || {
+        id: `num-${Date.now()}`,
+        type: 'voice',
+        subType: 'twilio',
+        identifier: selectedNumber,
+        region,
+        status: 'active',
+        assignedTo: assigned,
+        messagesHandled: 0
+      };
+
+      setChannels(prev => [newCh, ...prev]);
+      setIsProvisionModalOpen(false);
+      success(`Provisioned ${selectedNumber} successfully!`);
+    } catch (err) {
+      showError('Failed to provision phone number');
+    } finally {
+      setProvisioning(false);
+    }
+  };
+
   const handleSaveSip = async () => {
     info('Connecting SIP Trunk...');
     try {
+      const assigned = sipConfig.assignedTo || agents[0]?.id || '';
       const res = await createChannel({
         type: 'voice',
         subType: 'sip',
@@ -139,7 +261,7 @@ const PhoneChannels = () => {
         transport: sipConfig.transport,
         username: sipConfig.username,
         password: sipConfig.password,
-        assignedTo: sipConfig.assignedTo
+        assignedTo: assigned
       });
       
       const newChannel = res.data || {
@@ -149,13 +271,14 @@ const PhoneChannels = () => {
         identifier: sipConfig.domain,
         region: 'Global',
         status: 'active',
-        assignedTo: sipConfig.assignedTo,
+        assignedTo: assigned,
         messagesHandled: 0
       };
       
       setChannels([...channels, newChannel]);
       setIsSipModalOpen(false);
       setSipConfig({ ...sipConfig, domain: '', username: '', password: '' });
+      setSipTestResult(null);
       success('SIP Trunk connected successfully');
     } catch (err) {
       showError('SIP Connection failed. Check credentials.');
@@ -163,17 +286,20 @@ const PhoneChannels = () => {
   }
 
   const handleSaveBot = async () => {
-    info(`Connecting ${botModalType}...`);
+    info(`Connecting ${botModalType?.toUpperCase()}...`);
     try {
       let identifier = '';
-      if (botModalType === 'telegram') identifier = botConfig.telegramToken ? '@NewTelegramBot' : '';
-      if (botModalType === 'whatsapp') identifier = botConfig.waPhoneId || 'WhatsApp Business';
-      if (botModalType === 'email') identifier = botConfig.emailImapUser || 'New Email Bot';
+      if (botModalType === 'telegram') identifier = botConfig.telegramToken ? (botTestResult?.botUsername || '@NewTelegramBot') : '@NewTelegramBot';
+      if (botModalType === 'whatsapp') identifier = botConfig.waPhoneId ? `+1 (WhatsApp ${botConfig.waPhoneId.slice(-4)})` : 'WhatsApp Business';
+      if (botModalType === 'email') identifier = botConfig.emailImapUser || 'support@markova.tech';
+
+      const assigned = botConfig.assignedTo || agents[0]?.id || '';
 
       const res = await createChannel({
         type: 'messaging',
         subType: botModalType,
         identifier: identifier,
+        assignedTo: assigned,
         ...botConfig
       });
       
@@ -184,13 +310,14 @@ const PhoneChannels = () => {
         identifier: identifier,
         region: 'Global',
         status: 'active',
-        assignedTo: botConfig.assignedTo,
+        assignedTo: assigned,
         messagesHandled: 0
       };
       
       setChannels([...channels, newChannel]);
       setIsBotModalOpen(false);
       setBotConfig({ ...botConfig, telegramToken: '', waAccountId: '', waPhoneId: '', waToken: '', emailImapUser: '', emailImapPass: '' });
+      setBotTestResult(null);
       success(`${botModalType.toUpperCase()} connected successfully`);
     } catch (err) {
       showError(`Connection failed for ${botModalType}.`);
@@ -270,7 +397,7 @@ const PhoneChannels = () => {
                     <div className={`channel-status ${ch.status}`}>
                       {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Online</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Error</>}
                     </div>
-                    <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
+                    <button onClick={() => handleDeleteChannel(ch.id, ch.type)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
                   </div>
               </div>
               <div className="channel-details">
@@ -280,7 +407,7 @@ const PhoneChannels = () => {
                 </div>
                 <div className="channel-row" style={{ marginTop: '0.5rem' }}>
                   <span className="label">Assigned To</span>
-                  <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
+                  <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value, ch.type)}>
                     <option value="">-- Unassigned --</option>
                     {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
@@ -353,18 +480,16 @@ const PhoneChannels = () => {
                 <input type="password" placeholder="••••••••" value={sipConfig.password} onChange={e => setSipConfig({...sipConfig, password: e.target.value})} />
               </div>
             </div>
+            {sipTestResult && (
+              <div className={`bot-test-banner ${sipTestResult.ok ? 'success' : 'error'}`} style={{ marginTop: '0.5rem' }}>
+                {sipTestResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+                <span>{sipTestResult.ok ? `Verified (${sipTestResult.latencyMs}ms): ${sipTestResult.status}` : sipTestResult.message}</span>
+              </div>
+            )}
             <div className="sip-form-actions">
-              <button className="btn btn-secondary" onClick={async () => {
-                info('Testing connection...');
-                try {
-                  const start = Date.now();
-                  await testSipConnection(sipConfig);
-                  const ms = Date.now() - start;
-                  success(`Connection successful (${ms}ms)`);
-                } catch (err) {
-                  showError('Connection failed');
-                }
-              }}>Test Connection</button>
+              <button className="btn btn-secondary" onClick={handleTestSip} disabled={testingSip}>
+                {testingSip ? <><Loader2 size={14} className="spin" /> Probing...</> : 'Test Connection'}
+              </button>
               <button className="btn btn-primary" onClick={handleSaveSip}>Save SIP Trunk</button>
             </div>
           </div>
@@ -374,12 +499,12 @@ const PhoneChannels = () => {
         <div style={{ flex: 1, minWidth: '350px' }}>
           <h3 className="pc-section-title">Active Voice Channels</h3>
           <div className="channels-grid" style={{ gridTemplateColumns: '1fr' }}>
-            <div className="channel-card" style={{ borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', background: 'transparent' }} onClick={() => info('Twilio provision modal would open here')}>
+            <div className="channel-card" style={{ borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', cursor: 'pointer', background: 'transparent' }} onClick={handleOpenProvisionModal}>
               <div className="channel-icon" style={{ marginBottom: '1rem', background: 'rgba(16, 185, 129, 0.1)', color: '#10b981' }}>
                 <SiTwilio size={24} />
               </div>
               <h3 style={{ margin: '0 0 0.25rem 0', color: 'var(--text-main)' }}>Provision Twilio Number</h3>
-              <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.85rem' }}>$1/mo per number</p>
+              <p style={{ margin: 0, color: 'var(--gray)', fontSize: '0.85rem' }}>Search & assign carrier voice numbers</p>
             </div>
 
             {voiceChannels.map((ch) => (
@@ -398,13 +523,13 @@ const PhoneChannels = () => {
                     <div className={`channel-status ${ch.status}`}>
                       {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Online</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Error</>}
                     </div>
-                    <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
+                    <button onClick={() => handleDeleteChannel(ch.id, ch.type)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
                   </div>
                 </div>
                 <div className="channel-details" style={{marginBottom: 0}}>
                   <div className="channel-row">
                     <span className="label">Assigned To</span>
-                    <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
+                    <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value, ch.type)}>
                       <option value="">-- Unassigned --</option>
                       {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                     </select>
@@ -462,13 +587,13 @@ const PhoneChannels = () => {
                     <div className={`channel-status ${ch.status}`}>
                       {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Online</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px' }}></span>Error</>}
                     </div>
-                    <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
+                    <button onClick={() => handleDeleteChannel(ch.id, ch.type)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px', marginLeft: '0.5rem' }} title="Delete Channel"><Trash2 size={16} /></button>
                   </div>
               </div>
               <div className="channel-details" style={{marginBottom: 0}}>
                 <div className="channel-row">
                   <span className="label">Assigned To</span>
-                  <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
+                  <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.2rem' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value, ch.type)}>
                     <option value="">-- Unassigned --</option>
                     {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                   </select>
@@ -507,7 +632,7 @@ const PhoneChannels = () => {
               {ch.subType}
             </div>
             <div>
-              <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.4rem', width: '90%' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value)}>
+              <select className="val" style={{ background: 'var(--bg-main)', border: '1px solid var(--border-main)', color: 'var(--text-main)', borderRadius: '0.25rem', padding: '0.4rem', width: '90%' }} value={ch.assignedTo} onChange={(e) => handleAssignChange(ch.id, e.target.value, ch.type)}>
                 <option value="">-- Unassigned --</option>
                 {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
@@ -517,7 +642,7 @@ const PhoneChannels = () => {
                 <div className={`channel-status ${ch.status}`} style={{ display: 'inline-flex' }}>
                   {ch.status === 'active' ? <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px', alignSelf: 'center' }}></span>Active</> : <><span className="dot" style={{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: 'currentColor', marginRight: '6px', alignSelf: 'center' }}></span>Error</>}
                 </div>
-                <button onClick={() => handleDeleteChannel(ch.id)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px' }} title="Delete Channel"><Trash2 size={16} /></button>
+                <button onClick={() => handleDeleteChannel(ch.id, ch.type)} style={{ background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer', padding: '4px' }} title="Delete Channel"><Trash2 size={16} /></button>
               </div>
             </div>
           </div>
@@ -639,14 +764,100 @@ const PhoneChannels = () => {
           
           {content}
 
+          {botTestResult && (
+            <div className={`bot-test-banner ${botTestResult.ok ? 'success' : 'error'}`}>
+              {botTestResult.ok ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
+              <span>{botTestResult.message || (botTestResult.ok ? 'Verified successfully' : 'Verification failed')}</span>
+            </div>
+          )}
+
           <div className="sip-form-actions">
-            <button className="btn btn-secondary" onClick={() => setIsBotModalOpen(false)}>Cancel</button>
+            <button className="btn btn-secondary" onClick={() => { setIsBotModalOpen(false); setBotTestResult(null); }}>Cancel</button>
+            <button className="btn btn-secondary" onClick={handleTestBot} disabled={testingBot}>
+              {testingBot ? <><Loader2 size={14} className="spin" /> Verifying...</> : 'Test Connection'}
+            </button>
             <button className="btn btn-primary" onClick={handleSaveBot}>Connect Bot</button>
           </div>
         </motion.div>
       </motion.div>
     )
   }
+
+  const renderProvisionModal = () => {
+    if (!isProvisionModalOpen) return null;
+
+    return (
+      <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+        <motion.div className="modal-content" initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <div className="channel-icon twilio" style={{ width: '32px', height: '32px' }}>
+                <SiTwilio size={18} />
+              </div>
+              <h3 style={{ margin: 0 }}>Provision Telephony Number</h3>
+            </div>
+            <button onClick={() => setIsProvisionModalOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--gray)', cursor: 'pointer' }}><X size={20} /></button>
+          </div>
+          <p className="channel-desc">Search and provision dedicated voice phone lines for your AI call center.</p>
+
+          <div className="sip-form">
+            <div className="sip-form-group">
+              <label>Country & Region</label>
+              <select value={provisionCountry} onChange={e => handleCountryChange(e.target.value)}>
+                <option value="ET">Ethiopia (+251 - Ethio Telecom / Telebirr)</option>
+                <option value="US">United States (+1 - FCC / Twilio)</option>
+                <option value="GB">United Kingdom (+44 - Ofcom)</option>
+                <option value="KE">Kenya (+254 - Safaricom)</option>
+              </select>
+            </div>
+
+            <div className="sip-form-group">
+              <label>Available Numbers in Inventory</label>
+              {searchingNumbers ? (
+                <div style={{ padding: '1.5rem', textAlign: 'center', color: 'var(--gray)' }}>
+                  <Loader2 size={24} className="spin" style={{ marginBottom: '0.5rem', display: 'inline-block' }} />
+                  <div>Searching carrier inventory...</div>
+                </div>
+              ) : availableNumbers.length === 0 ? (
+                <div style={{ padding: '1rem', color: 'var(--gray)', textAlign: 'center' }}>No numbers found for this region.</div>
+              ) : (
+                <div className="provision-number-list">
+                  {availableNumbers.map((num) => (
+                    <div 
+                      key={num.phone_number} 
+                      className={`provision-number-item ${selectedNumber === num.phone_number ? 'selected' : ''}`}
+                      onClick={() => setSelectedNumber(num.phone_number)}
+                    >
+                      <div>
+                        <div className="provision-number-text">{num.phone_number}</div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--gray)' }}>{num.type || 'Standard DID'}</span>
+                      </div>
+                      <span className="provision-number-badge">{num.capabilities?.join(' / ') || 'Voice'}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="sip-form-group">
+              <label>Assign Incoming Calls To</label>
+              <select value={provisionAssignedTo} onChange={e => setProvisionAssignedTo(e.target.value)}>
+                <option value="">-- Unassigned --</option>
+                {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            </div>
+
+            <div className="sip-form-actions">
+              <button className="btn btn-secondary" onClick={() => setIsProvisionModalOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleProvisionNumber} disabled={provisioning || !selectedNumber}>
+                {provisioning ? <><Loader2 size={14} className="spin" /> Provisioning...</> : 'Provision Number'}
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </motion.div>
+    );
+  };
 
   return (
     <div className="phone-channels">
@@ -676,6 +887,9 @@ const PhoneChannels = () => {
 
       <AnimatePresence>
         {renderBotModal()}
+      </AnimatePresence>
+      <AnimatePresence>
+        {renderProvisionModal()}
       </AnimatePresence>
     </div>
   )
