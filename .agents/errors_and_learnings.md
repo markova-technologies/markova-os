@@ -554,3 +554,30 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   1. Avoid mixing conflicting `!important` declarations across global utility classes (`.btn-primary`) and page-specific component classes.
   2. Always declare design-system primitives like `.btn-secondary` at the root stylesheet (`index.css`) rather than redefining them piecemeal inside individual page CSS files.
   3. Every API module consumed by the client dashboard must implement an `isDemoMode()` mock layer to ensure sandboxes and demo accounts provide an error-free preview experience.
+
+---
+
+### [2026-09-17] Notification Panel Unread Badge Contrast & Per-Item Mark as Read Action
+- **Problems Observed:**
+  1. **Solid White Box in Notification Header**: Clicking the notification bell in the top navbar revealed a solid white pill box next to "Notifications" without readable text.
+  2. **Missing Per-Notification "Mark as read" Action**: Users had no quick, individual way to mark a single notification as read inside the dropdown or on the notification page without opening/clicking through it.
+- **Root Causes:**
+  1. **CSS Variable Collision on `.unread-count`**:
+     - In `Header.css`, `.unread-count` used `background: var(--primary)` and `color: var(--white)`.
+     - In `index.css`, `--primary` is defined as `white` and `--white` is `#ffffff`.
+     - This produced white text on a white background, rendering as an empty white rectangle/pill.
+  2. **Omission of In-Place Action Triggers**:
+     - `Header.jsx` only supported clicking the entire notification (which navigated the user away to `notification.path`) or clicking "View All Notifications" (which navigated away). There was no in-place `handleMarkAsReadSingle` with `e.stopPropagation()`.
+- **Fixes Applied:**
+  1. **Redesigned Notification Header Badge**:
+     - Replaced `.unread-count` styling with high-contrast glassmorphic styling: `background: rgba(59, 130, 246, 0.15) !important; color: #60a5fa !important; border: 1px solid rgba(59, 130, 246, 0.3) !important; font-size: 0.7rem; font-weight: 600; border-radius: 9999px;` with an animated pulsing indicator dot (`.unread-count-dot`).
+     - Added an "All read" caught-up state (`.unread-count-caught-up`) when all notifications are read.
+     - Added an in-place "Mark all read" header button (`.mark-all-read-header-btn`) allowing one-click clearing without navigating away.
+  2. **Tactile, Non-Intrusive Per-Notification "Mark as read" Action**:
+     - Added a dedicated `.mark-as-read-btn` on each unread notification card in `Header.jsx` with a clean `<Check size={13} />` icon and a smooth hover tooltip ("Mark as read").
+     - Bound `handleMarkAsReadSingle` with `e.stopPropagation()`, updating the item and unread count in-place with zero disruption to the user's workflow.
+     - Added a subtle glowing blue dot indicator (`.notification-dot`) and blue border accent (`.notification-item.unread`) for unread items.
+     - Mirror-updated `Notifications.jsx` and `Notifications.css` on the full notifications page with `.card-mark-read-btn` for seamless UX consistency.
+- **Lesson Learned:**
+  1. Always audit CSS variables before using them together on background and text (e.g., pairing `var(--primary)` and `var(--white)` when `--primary: white`).
+  2. Actionable list items should separate primary navigation from secondary inline state changes (`e.stopPropagation()`) so users don't get forced away from their current page when managing notifications.

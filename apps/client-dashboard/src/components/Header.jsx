@@ -9,7 +9,9 @@ import {
   LogOut,
   Settings,
   CreditCard,
-  Menu
+  Menu,
+  Check,
+  CheckCheck
 } from 'lucide-react'
 import './Header.css'
 import { ROUTES } from '../config/site'
@@ -81,6 +83,18 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
     if (notification.path) {
       navigate(notification.path)
     }
+  }
+
+  const handleMarkAsReadSingle = (e, id) => {
+    e.stopPropagation()
+    setNotifications(prev =>
+      prev.map(n => (n.id === id ? { ...n, unread: false } : n))
+    )
+  }
+
+  const handleMarkAllReadInPlace = (e) => {
+    e.stopPropagation()
+    setNotifications(prev => prev.map(n => ({ ...n, unread: false })))
   }
 
   const handleMarkAllRead = () => {
@@ -234,24 +248,71 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
               }}
             >
               <div className="notifications-header">
-                <h3>Notifications</h3>
-                <span className="unread-count">{unreadCount} unread</span>
+                <div className="notifications-header-left">
+                  <h3>Notifications</h3>
+                  {unreadCount > 0 ? (
+                    <span className="unread-count">
+                      <span className="unread-count-dot" />
+                      {unreadCount} unread
+                    </span>
+                  ) : (
+                    <span className="unread-count-caught-up">All read</span>
+                  )}
+                </div>
+                {unreadCount > 0 && (
+                  <button
+                    className="mark-all-read-header-btn"
+                    onClick={handleMarkAllReadInPlace}
+                    title="Mark all notifications as read"
+                  >
+                    <CheckCheck size={13} />
+                    <span>Mark all read</span>
+                  </button>
+                )}
               </div>
 
               <div className="notifications-list">
-                {notifications.map((notification) => (
-                  <div
-                    key={notification.id}
-                    className={`notification-item ${notification.unread ? 'unread' : ''}`}
-                    onClick={() => handleNotificationClick(notification)}
-                  >
-                    <div className="notification-content">
-                      <h4>{notification.title}</h4>
-                      <p>{notification.message}</p>
-                      <span className="notification-time">{notification.time}</span>
-                    </div>
+                {notifications.length === 0 ? (
+                  <div className="notifications-empty">
+                    <p>No notifications</p>
                   </div>
-                ))}
+                ) : (
+                  notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`notification-item ${notification.unread ? 'unread' : 'read'}`}
+                      onClick={() => handleNotificationClick(notification)}
+                    >
+                      <div className="notification-status-indicator">
+                        {notification.unread ? (
+                          <span className="notification-dot" title="Unread" />
+                        ) : (
+                          <span className="notification-dot-read" />
+                        )}
+                      </div>
+
+                      <div className="notification-content">
+                        <div className="notification-header-row">
+                          <h4 className="notification-title">{notification.title}</h4>
+                          <span className="notification-time">{notification.time}</span>
+                        </div>
+                        <p className="notification-desc">{notification.message}</p>
+                      </div>
+
+                      {notification.unread && (
+                        <button
+                          className="mark-as-read-btn"
+                          onClick={(e) => handleMarkAsReadSingle(e, notification.id)}
+                          title="Mark as read"
+                          aria-label="Mark as read"
+                        >
+                          <Check size={13} />
+                          <span className="mark-as-read-tooltip">Mark as read</span>
+                        </button>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
 
               <div className="notifications-footer">

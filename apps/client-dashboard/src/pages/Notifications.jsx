@@ -9,7 +9,8 @@ import {
   Search,
   CheckCheck,
   Trash2,
-  ChevronRight
+  ChevronRight,
+  Check
 } from 'lucide-react'
 import { ROUTES } from '../config/site'
 import './Notifications.css'
@@ -234,6 +235,19 @@ const Notifications = () => {
                 </div>
 
                 <div className="card-right-action">
+                  {n.unread && (
+                    <button
+                      className="card-mark-read-btn"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        handleMarkAsRead(n.id)
+                      }}
+                      title="Mark as read"
+                    >
+                      <Check size={13} />
+                      <span>Mark as read</span>
+                    </button>
+                  )}
                   {n.unread && <span className="unread-dot" title="Unread" />}
                   <ChevronRight size={18} className="arrow-icon" />
                 </div>
