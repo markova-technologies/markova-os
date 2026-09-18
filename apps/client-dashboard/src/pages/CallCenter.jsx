@@ -353,6 +353,11 @@ const CallCenter = () => {
     const user = JSON.parse(localStorage.getItem('user') || '{}')
     const supervisorId = user.id || 'supervisor_' + Math.random().toString(36).slice(2, 7)
     const supervisorName = user.name || user.email || 'Supervisor'
+    const isMockCall = selectedCall.id.startsWith('c-') || selectedCall.id.startsWith('live-sim')
+
+    let isLocked = false
+    let lockMessage = ''
+    let lockedBy = ''
 
     try {
       const res = await api.post(`/calls/${selectedCall.id}/barge-in`, {
@@ -360,20 +365,30 @@ const CallCenter = () => {
         supervisor_id: supervisorId,
         supervisor_name: supervisorName
       }).catch(err => {
+        // Handle 409 Conflict (Another supervisor has already barged into this call)
         if (err.response?.status === 409 || err.response?.data?.detail?.locked) {
-          return { data: { locked: true, ...err.response.data.detail } }
+          isLocked = true
+          const detail = err.response?.data?.detail || {}
+          lockedBy = detail.barged_by || 'Another supervisor'
+          lockMessage = detail.message || `Supervisor ${lockedBy} has already barged into this call. Only one supervisor can take over at a time to prevent voice collision.`
+          return { data: { locked: true, message: lockMessage, barged_by: lockedBy } }
+        }
+        // In sandbox or simulated calls, gracefully proceed without blocking on network/render spin-up
+        if (isMockCall) {
+          return { data: { simulated: true, status: 'barge_active' } }
         }
         throw err
       })
 
-      // If call is already locked by another supervisor
-      if (res?.data?.locked) {
-        const lockedBy = res.data.barged_by || 'Another supervisor'
+      // If call is already locked by another supervisor, display friendly conflict notification
+      if (isLocked || res?.data?.locked) {
+        const by = lockedBy || res?.data?.barged_by || 'Another supervisor'
+        const msg = lockMessage || res?.data?.message || `Supervisor ${by} has already barged into this call. Only one supervisor can take over at a time.`
         setTakeoverConflict({
-          bargedBy: lockedBy,
-          message: res.data.message || `Supervisor ${lockedBy} has already barged into this call. Only one supervisor can take over at a time.`
+          bargedBy: by,
+          message: msg
         })
-        toast.warning(`Takeover Locked: Supervisor ${lockedBy} is already on this call.`)
+        toast.warning(`Takeover Locked: ${msg}`)
         return
       }
 
@@ -422,9 +437,13 @@ const CallCenter = () => {
 
       setIsBargingIn(true)
       setIsMicMuted(false)
-      toast.success('Barge-in active: AI Agent muted. Supervisor mic connected.')
+      toast.success(
+        res?.data?.simulated
+          ? 'Barge-in active (Sandbox): AI Agent muted. Supervisor mic connected.'
+          : 'Barge-in active: AI Agent muted. Supervisor mic connected.'
+      )
     } catch {
-      toast.error('Failed to trigger telephony barge-in.')
+      toast.error('Failed to trigger telephony barge-in. Please check connection and try again.')
     } finally {
       setBargeInProgress(false)
     }
