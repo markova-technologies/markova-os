@@ -120,14 +120,16 @@ const TeamManagement = () => {
   const [customRoleDesc, setCustomRoleDesc] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState([]);
 
-  // Filtered available roles for current user
+  // Filtered available roles for invitations (teammates cannot be invited as Owner)
   const availableRoles = useMemo(() => {
     const list = roles && roles.length > 0 ? roles : DEFAULT_SYSTEM_ROLES;
-    return list.filter(r => {
-      // Admin cannot invite or assign Owner role (User Decision 3)
-      if (!isOwner && r.name === 'owner') return false;
-      return true;
-    });
+    return list.filter(r => r.name !== 'owner');
+  }, [roles]);
+
+  // Roles available for changing an existing member's role
+  const roleChangeRoles = useMemo(() => {
+    const list = roles && roles.length > 0 ? roles : DEFAULT_SYSTEM_ROLES;
+    return list.filter(r => isOwner || r.name !== 'owner');
   }, [roles, isOwner]);
 
   // 1. Initial Data Fetch
@@ -1351,9 +1353,9 @@ const TeamManagement = () => {
                     </span>
                   </div>
 
-                  {/* Interactive Visual Cards for Top Roles */}
+                  {/* Interactive Visual Cards for All Invitable Roles */}
                   <div className="modal-role-cards-grid">
-                    {availableRoles.slice(0, 5).map(r => {
+                    {availableRoles.map(r => {
                       const isSelected = inviteRole === r.name;
                       return (
                         <div
@@ -1372,20 +1374,6 @@ const TeamManagement = () => {
                       );
                     })}
                   </div>
-
-                  {/* Fallback & Custom Roles Dropdown */}
-                  <select
-                    className="styled-role-select"
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value)}
-                    style={{ marginTop: '0.4rem' }}
-                  >
-                    {availableRoles.map(r => (
-                      <option key={r.id} value={r.name}>
-                        {r.display_name || r.name} {r.is_system ? '(System)' : '(Custom)'}
-                      </option>
-                    ))}
-                  </select>
                 </div>
 
                 {/* Department */}
@@ -1460,13 +1448,13 @@ const TeamManagement = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <label className="form-label" style={{ margin: 0 }}>Select Role</label>
                 <span style={{ fontSize: '0.78rem', color: '#60a5fa' }}>
-                  Selected: <strong>{availableRoles.find(r => r.name === targetRoleId)?.display_name || targetRoleId}</strong>
+                  Selected: <strong>{roleChangeRoles.find(r => r.name === targetRoleId)?.display_name || targetRoleId}</strong>
                 </span>
               </div>
 
               {/* Role Cards Grid */}
               <div className="modal-role-cards-grid">
-                {availableRoles.slice(0, 5).map(r => {
+                {roleChangeRoles.map(r => {
                   const isSelected = targetRoleId === r.name;
                   return (
                     <div
@@ -1485,19 +1473,6 @@ const TeamManagement = () => {
                   );
                 })}
               </div>
-
-              <select
-                className="styled-role-select"
-                value={targetRoleId}
-                onChange={(e) => setTargetRoleId(e.target.value)}
-                style={{ marginTop: '0.4rem' }}
-              >
-                {availableRoles.map(r => (
-                  <option key={r.id} value={r.name}>
-                    {r.display_name || r.name} {r.is_system ? '(System)' : '(Custom)'}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
