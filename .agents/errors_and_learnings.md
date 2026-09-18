@@ -4,6 +4,24 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Auth Service PostgreSQL SSL Handshake Rejection on Supabase & Missing Health Endpoints
+- **Error/Problem:**
+  - After deploying `markova-auth-service` to Render, the container logged:
+    `(node:18) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'`
+    followed by:
+    `⚠️ Database connection attempt 1..10 failed. Retrying in 3000ms...`
+    `❌ Database connection failed after maximum retries`.
+  - Render health checks returned HTTP 404 on `HEAD /` and `GET /`.
+- **How it Happened:**
+  - `services/auth-service/server.js` initialized `new Pool({ connectionString: process.env.DATABASE_URL })` without explicit SSL options (`ssl: { rejectUnauthorized: false }`). When connecting to Supabase cloud databases with self-signed SNI certificates over pooler port 6543 or direct connection, Node.js 18+ `pg` enforces strict CA verification (`verify-full`), failing the TLS handshake.
+  - The retry loop in `server.js` swallowed `err.message`, masking the exact failure reason from logs.
+  - `server.js` lacked root `/` and `/health` route handlers, causing Render's container health probes to receive 404 Not Found.
+- **Lesson Learned:**
+  1. All Node.js services connecting to Supabase/Neon/RDS must explicitly configure `ssl: (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes('localhost')) ? false : { rejectUnauthorized: false }` in `pg.Pool`.
+  2. Always include `err.message` in database retry loggers (`console.log('⚠️ Attempt failed: ' + err.message)`) to avoid blind debugging.
+  3. Every container service deployed on Render must define standard `/`, `/health`, and `/api/health` 200 OK handlers for platform health probes.
+  4. On Render, cloud databases must connect via the Supabase Transaction Pooler (port 6543) with IPv4 compatibility, rather than direct port 5432 which can suffer from IPv6 resolution limits.
+
 ### [2026-09-18] API Gateway Crash on Upstream Service Failure & Express 'trust proxy' Warning on Render
 - **Error/Problem:**
   - Render sent repeated alert emails: `"Server failure detected on markova-api-gateway: Exited with status 1"`.

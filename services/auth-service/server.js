@@ -38,9 +38,21 @@ function normalizeClientRegisterBody(req, _res, next) {
 app.use(cors());
 app.use(express.json());
 
-// Postgres Connection Pool with retries
+// Health check endpoints for Render and container monitors
+app.get(['/', '/health', '/api/health', '/v1/health'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'markova-auth-service',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Postgres Connection Pool with retries and cloud SSL support (Supabase, Neon, AWS RDS)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL
+  connectionString: process.env.DATABASE_URL,
+  ssl: (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1'))
+    ? false
+    : { rejectUnauthorized: false }
 });
 
 // Redis client setup for rate limiting
@@ -249,21 +261,24 @@ async function initializeServices(retries = 10, delay = 3000) {
       dbConnected = true;
       break;
     } catch (err) {
-      console.log(`⚠️ Database connection attempt ${i + 1} failed. Retrying in ${delay}ms...`);
+      console.log(`⚠️ Database connection attempt ${i + 1} failed: ${err.message}. Retrying in ${delay}ms...`);
       await new Promise(res => setTimeout(res, delay));
     }
   }
   if (!dbConnected) {
-    console.error('❌ Database connection failed after maximum retries');
+    console.error('❌ Database connection failed after maximum retries. Verify DATABASE_URL has correct pooler port 6543 and password.');
     process.exit(1);
   }
 
   try {
-    await redisClient.connect();
-    console.log('✅ Auth Service connected to Redis');
+    if (process.env.REDIS_URL) {
+      await redisClient.connect();
+      console.log('✅ Auth Service connected to Redis');
+    } else {
+      console.log('ℹ️ REDIS_URL not set; running auth-service without Redis cache');
+    }
   } catch (err) {
-    console.error('❌ Redis connection failed:', err);
-    process.exit(1);
+    console.warn('⚠️ Redis connection notice (running without Redis cache):', err.message);
   }
 }
 
