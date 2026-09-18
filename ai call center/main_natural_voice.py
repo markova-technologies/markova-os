@@ -2125,8 +2125,10 @@ async def handle_incoming_call(
         except Exception as db_err:
             logger.error(f"Failed to log call start: {db_err}")
         
+        # Compliance disclosure warning notice (Recording & QA monitoring)
+        compliance_disclosure = "ይህ ጥሪ ለጥራት ቁጥጥር ሊደመጥ እና ሊቀረጽ ይችላል። "
         welcome_text = (
-            "ሰላም፣ ማርኮቫ ሾፕ ነው። ምርት ለማዘዝ ወይም "
+            f"{compliance_disclosure}ሰላም፣ ማርኮቫ ሾፕ ነው። ምርት ለማዘዝ ወይም "
             "የትዕዛዝ ሁኔታ ለማወቅ እንዴት ልርዳዎ?"
         )
         

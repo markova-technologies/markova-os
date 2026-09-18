@@ -4,6 +4,21 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Call Center Supervisor Barge-In Race Conditions & INSA Audio Compliance
+- **Error/Problem:** 
+  - The Call Center dashboard previously lacked mutual exclusion on telephony barge-ins. If multiple supervisors logged into the same tenant account clicked "Barge In" concurrently on an active call, both would trigger `uuid_break` and attempt to inject audio, causing dual-speaker collisions, audio packet corruption, and acoustic feedback loops into the FreeSWITCH/SIP telephony trunk.
+  - Furthermore, incoming calls lacked the mandatory Ethiopian Data Protection / INSA disclosure warning, posing regulatory wiretapping and recording liability.
+- **How it Happened:** 
+  - The barge-in endpoint `/v1/calls/{call_id}/barge-in` was initially written as a simple stateless trigger without checking if another supervisor had already locked the call session.
+  - The dashboard UI lacked Web Audio DSP constraints (`echoCancellation`, `noiseSuppression`) and did not manage browser microphone tracks or display headset advisories.
+- **Lesson Learned:**
+  1. In telephony supervisor takeovers, the backend must enforce strict single-supervisor mutex locks (`acquire_takeover`) returning HTTP 409 Conflict with metadata (`barged_by`) to reject concurrent takeover races gracefully.
+  2. In multi-agent call center UIs, "Listen In" must remain multi-party and non-exclusive, while "Barge In" must render locked/disabled states with polite conflict dialogs (`"Supervisor [Name] has already barged into this call"`).
+  3. When bridging browser microphones into telephony bridges, always enforce hardware Web Audio constraints (`echoCancellation: true, noiseSuppression: true, autoGainControl: true`), display live mic level meters, and prompt users to wear headsets to prevent acoustic echo screeching.
+  4. Always prepend explicit statutory disclosure audio (`"ይህ ጥሪ ለጥራት ቁጥጥር ሊደመጥ እና ሊቀረጽ ይችላል።"`) to initial call greeting TwiML/playback before any conversation turn begins.
+
+---
+
 ### [2026-08-10] React State Updates in Global Listeners (INP Issue)
 - **Error/Fault:** An INP (Interaction to Next Paint) issue of 242.9ms was flagged on `div.notifications-header` in `Header.jsx`.
 - **How it Happened:** A global `document.addEventListener('mousedown', handleClickOutside)` was attached to handle "click outside" events. When the user clicked on the notifications header, the event handler unconditionally called `setShowUserMenu(false)` even when `showUserMenu` was already false. This redundant state setter caused React to queue a state update and partially re-evaluate the component tree (which contained heavy Framer Motion `AnimatePresence` elements), blocking the main thread.

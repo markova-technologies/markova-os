@@ -356,6 +356,65 @@
   overflow: hidden;
 }
 
+/* TAKEOVER CONFLICT NOTIFICATION BANNER */
+.cc-conflict-banner {
+  background: rgba(245, 158, 11, 0.15);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.4);
+  padding: 0.85rem 2rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.2);
+  animation: bannerFade 0.25s ease-out;
+  backdrop-filter: blur(14px);
+}
+
+.cc-conflict-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #fde68a;
+  font-size: 0.82rem;
+}
+
+.cc-conflict-lock-icon {
+  color: #fbbf24;
+  flex-shrink: 0;
+}
+
+.cc-conflict-info strong {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.cc-conflict-info p {
+  margin: 0.15rem 0 0 0;
+  font-size: 0.76rem;
+  color: #fef3c7;
+}
+
+.cc-btn-conflict-dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fde68a;
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.45rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.cc-btn-conflict-dismiss:hover {
+  background: rgba(245, 158, 11, 0.25);
+  color: #ffffff;
+}
+
 /* SUPERVISOR BARGE-IN TAKEOVER HUD */
 .cc-barge-banner {
   background: rgba(239, 68, 68, 0.12);
@@ -383,6 +442,25 @@
   font-size: 0.82rem;
 }
 
+.cc-barge-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.cc-headset-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  padding: 0.15rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.68rem;
+  color: #fecaca;
+  font-weight: 600;
+}
+
 .cc-barge-info strong {
   color: #ffffff;
   font-weight: 700;
@@ -408,6 +486,57 @@
   0% { transform: scale(0.9); opacity: 1; }
   50% { transform: scale(1.3); opacity: 0.6; }
   100% { transform: scale(0.9); opacity: 1; }
+}
+
+.cc-barge-mic-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.cc-btn-mic-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 0.45rem;
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.cc-btn-mic-toggle.active {
+  background: rgba(16, 185, 129, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #34d399;
+}
+
+.cc-btn-mic-toggle.active:hover {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+.cc-btn-mic-toggle.muted {
+  background: rgba(239, 68, 68, 0.25);
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  color: #fca5a5;
+}
+
+.cc-mic-level-meter {
+  width: 64px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.cc-mic-level-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #f59e0b);
+  border-radius: 4px;
+  transition: width 0.08s ease-out;
 }
 
 .cc-btn-release {
@@ -640,6 +769,40 @@
   border-color: #dc2626;
   color: #ffffff;
   box-shadow: 0 4px 14px rgba(239, 68, 68, 0.4);
+}
+
+.cc-btn-barge.cc-btn-barge-active {
+  background: #b91c1c;
+  border-color: #ef4444;
+  animation: pulseBarge 1.4s infinite;
+}
+
+.cc-btn-barge.cc-barge-locked {
+  background: rgba(245, 158, 11, 0.16);
+  border-color: rgba(245, 158, 11, 0.45);
+  color: #fbbf24;
+  cursor: pointer;
+}
+
+.cc-btn-barge.cc-barge-locked:hover {
+  background: rgba(245, 158, 11, 0.28);
+  border-color: rgba(245, 158, 11, 0.65);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.3);
+}
+
+.ci-barged-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(245, 158, 11, 0.18);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #fbbf24;
+  padding: 0.12rem 0.45rem;
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────

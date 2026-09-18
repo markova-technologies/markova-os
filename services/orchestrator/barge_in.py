@@ -32,10 +32,92 @@ class TelephonyBargeInController:
         self.password = password
         self._playing_calls: Dict[str, str] = {}  # uuid -> company_id
         self._vmd_armed: Set[str] = set()
+        self._active_takeovers: Dict[str, dict] = {}  # uuid -> {supervisor_id, supervisor_name, company_id, barged_at}
         self._lock = threading.Lock()
         self._client = None
         self._running = False
         self._thread: Optional[threading.Thread] = None
+
+    def acquire_takeover(
+        self, call_uuid: str, supervisor_id: str, supervisor_name: str, company_id: str = "default"
+    ) -> dict:
+        """
+        Atomically lock a call to a single supervisor.
+        Rejects concurrent takeover attempts if another supervisor is already barged in.
+        """
+        if not call_uuid:
+            return {"success": False, "locked": False, "message": "Call UUID required"}
+
+        with self._lock:
+            existing = self._active_takeovers.get(call_uuid)
+            if existing and existing.get("supervisor_id") != supervisor_id:
+                existing_name = existing.get("supervisor_name", "Another supervisor")
+                logger.warning(
+                    "barge_in_takeover_conflict",
+                    call_uuid=call_uuid[:8],
+                    requested_by=supervisor_name,
+                    locked_by=existing_name,
+                )
+                return {
+                    "success": False,
+                    "locked": True,
+                    "barged_by": existing_name,
+                    "supervisor_id": existing.get("supervisor_id"),
+                    "message": f"Supervisor {existing_name} has already barged into this call.",
+                    "barged_at": existing.get("barged_at"),
+                }
+
+            now = time.time()
+            self._active_takeovers[call_uuid] = {
+                "supervisor_id": supervisor_id,
+                "supervisor_name": supervisor_name or "Supervisor",
+                "company_id": company_id,
+                "barged_at": now,
+            }
+
+        # Interrupt channel playback on FreeSWITCH
+        self.trigger_break(call_uuid, reason=f"supervisor_takeover_{supervisor_name}")
+        logger.info(
+            "barge_in_takeover_acquired",
+            call_uuid=call_uuid[:8],
+            supervisor=supervisor_name,
+            company_id=company_id,
+        )
+        return {
+            "success": True,
+            "locked": False,
+            "call_id": call_uuid,
+            "barged_by": supervisor_name or "Supervisor",
+            "status": "barge_active",
+            "barged_at": now,
+        }
+
+    def release_takeover(self, call_uuid: str, supervisor_id: Optional[str] = None) -> dict:
+        """Release supervisor takeover and restore normal AI control."""
+        if not call_uuid:
+            return {"success": False, "message": "Call UUID required"}
+
+        with self._lock:
+            self._active_takeovers.pop(call_uuid, None)
+
+        logger.info("barge_in_takeover_released", call_uuid=call_uuid[:8])
+        return {"success": True, "call_id": call_uuid, "status": "released"}
+
+    def get_barge_status(self, call_uuid: str) -> dict:
+        """Check whether a call currently has an active supervisor takeover."""
+        if not call_uuid:
+            return {"is_barged": False, "barged_by": None, "supervisor_id": None}
+
+        with self._lock:
+            takeover = self._active_takeovers.get(call_uuid)
+            if takeover:
+                return {
+                    "is_barged": True,
+                    "barged_by": takeover.get("supervisor_name"),
+                    "supervisor_id": takeover.get("supervisor_id"),
+                    "barged_at": takeover.get("barged_at"),
+                }
+        return {"is_barged": False, "barged_by": None, "supervisor_id": None}
 
     def register_playback(self, call_uuid: str, company_id: str = "default"):
         """Mark a call UUID as currently playing audio; arms barge-in detection."""
@@ -113,6 +195,8 @@ class TelephonyBargeInController:
             uuid = getattr(event, "headers", {}).get("Unique-ID", "")
             if uuid:
                 self.unregister_playback(uuid)
+                with self._lock:
+                    self._active_takeovers.pop(uuid, None)
         except Exception:
             pass
 

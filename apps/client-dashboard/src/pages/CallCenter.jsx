@@ -26,7 +26,11 @@ import {
   RefreshCw,
   X,
   ExternalLink,
-  Clock
+  Clock,
+  Lock,
+  Mic,
+  MicOff,
+  AlertTriangle
 } from 'lucide-react'
 import api from '../api/client'
 import realTimeService from '../services/realTimeService'
@@ -117,7 +121,8 @@ const normalizeCall = (c) => {
     sentiment: c.sentiment || 'neutral',
     summary: c.summary || (isLive ? 'Call currently in progress. Live AI transcription and intent detection active.' : 'Call completed successfully.'),
     transcript: normalizedTranscript,
-    audioUrl: c.recording_url || c.audioUrl || null
+    audioUrl: c.recording_url || c.audioUrl || null,
+    bargedBy: c.barged_by || c.bargedBy || null
   }
 }
 
@@ -136,9 +141,16 @@ const CallCenter = () => {
   const [monitorVolume, setMonitorVolume] = useState(80)
   const [isBargingIn, setIsBargingIn] = useState(false)
   const [bargeInProgress, setBargeInProgress] = useState(false)
+  const [micVolumeLevel, setMicVolumeLevel] = useState(0)
+  const [isMicMuted, setIsMicMuted] = useState(false)
+  const [takeoverConflict, setTakeoverConflict] = useState(null)
   const [isMobileDetailView, setIsMobileDetailView] = useState(false)
   const [simulatingCall, setSimulatingCall] = useState(false)
   const transcriptEndRef = useRef(null)
+  const micStreamRef = useRef(null)
+  const audioContextRef = useRef(null)
+  const analyserRef = useRef(null)
+  const animFrameRef = useRef(null)
 
   const isMobile = () => window.innerWidth <= 768
 
@@ -321,28 +333,96 @@ const CallCenter = () => {
     toast.success('Call audit report & transcript exported as CSV.')
   }
 
-  // Supervisor Listen-In Audio Monitor
+  // Supervisor Listen-In Audio Monitor (Multi-User Enabled)
   const handleListenIn = () => {
     const next = !isListening
     setIsListening(next)
     if (next) {
-      toast.info(`Supervisor live monitor active for ${selectedCall?.number} (Listen-Only Mode).`)
+      toast.info(`Supervisor live monitor active for ${selectedCall?.number} (Listen-Only Mode). Multiple supervisors can listen simultaneously.`)
     } else {
       toast.info('Supervisor audio monitor disconnected.')
     }
   }
 
-  // Supervisor Barge-In (Mutes AI, Bridges Supervisor Microphone)
+  // Supervisor Barge-In (Exclusive Single-Supervisor Lock + Hardware Mic Capture)
   const handleBargeIn = async () => {
     if (!selectedCall) return
     setBargeInProgress(true)
+    setTakeoverConflict(null)
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}')
+    const supervisorId = user.id || 'supervisor_' + Math.random().toString(36).slice(2, 7)
+    const supervisorName = user.name || user.email || 'Supervisor'
+
     try {
-      await api.post(`/calls/${selectedCall.id}/barge-in`, {
-        reason: 'supervisor_manual_takeover'
-      }).catch(() => null)
+      const res = await api.post(`/calls/${selectedCall.id}/barge-in`, {
+        reason: 'supervisor_manual_takeover',
+        supervisor_id: supervisorId,
+        supervisor_name: supervisorName
+      }).catch(err => {
+        if (err.response?.status === 409 || err.response?.data?.detail?.locked) {
+          return { data: { locked: true, ...err.response.data.detail } }
+        }
+        throw err
+      })
+
+      // If call is already locked by another supervisor
+      if (res?.data?.locked) {
+        const lockedBy = res.data.barged_by || 'Another supervisor'
+        setTakeoverConflict({
+          bargedBy: lockedBy,
+          message: res.data.message || `Supervisor ${lockedBy} has already barged into this call. Only one supervisor can take over at a time.`
+        })
+        toast.warning(`Takeover Locked: Supervisor ${lockedBy} is already on this call.`)
+        return
+      }
+
+      // Request browser microphone with strict acoustic echo cancellation
+      try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            }
+          })
+          micStreamRef.current = stream
+
+          const AudioContextClass = window.AudioContext || window.webkitAudioContext
+          if (AudioContextClass) {
+            const audioCtx = new AudioContextClass()
+            audioContextRef.current = audioCtx
+            const source = audioCtx.createMediaStreamSource(stream)
+            const analyser = audioCtx.createAnalyser()
+            analyser.fftSize = 64
+            source.connect(analyser)
+            analyserRef.current = analyser
+
+            const dataArray = new Uint8Array(analyser.frequencyBinCount)
+            const updateMeter = () => {
+              if (!analyserRef.current) return
+              analyserRef.current.getByteFrequencyData(dataArray)
+              let sum = 0
+              for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i]
+              }
+              const avg = sum / dataArray.length
+              const normalized = Math.min(100, Math.round((avg / 128) * 100))
+              setMicVolumeLevel(normalized)
+              animFrameRef.current = requestAnimationFrame(updateMeter)
+            }
+            updateMeter()
+          }
+        }
+      } catch (micErr) {
+        console.warn('Microphone permission not granted or device unavailable:', micErr)
+        toast.info('Microphone access not granted in browser. AI voice muted; speak through SIP softphone.')
+      }
 
       setIsBargingIn(true)
-      toast.success('Barge-in active: AI Agent audio muted. Supervisor mic connected.')
+      setIsMicMuted(false)
+      toast.success('Barge-in active: AI Agent muted. Supervisor mic connected.')
     } catch {
       toast.error('Failed to trigger telephony barge-in.')
     } finally {
@@ -350,15 +430,53 @@ const CallCenter = () => {
     }
   }
 
-  const handleReleaseBargeIn = () => {
+  const handleReleaseBargeIn = async () => {
+    if (selectedCall) {
+      const user = JSON.parse(localStorage.getItem('user') || '{}')
+      api.post(`/calls/${selectedCall.id}/release-barge-in`, {
+        supervisor_id: user.id
+      }).catch(() => null)
+    }
+
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current)
+      animFrameRef.current = null
+    }
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach(t => t.stop())
+      micStreamRef.current = null
+    }
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close().catch(() => {})
+      audioContextRef.current = null
+    }
+
     setIsBargingIn(false)
+    setMicVolumeLevel(0)
+    setTakeoverConflict(null)
     toast.info('Barge-in released. AI Agent resumed call control.')
   }
 
+  const handleToggleMicMute = () => {
+    if (micStreamRef.current) {
+      const audioTracks = micStreamRef.current.getAudioTracks()
+      const nextMuted = !isMicMuted
+      audioTracks.forEach(track => {
+        track.enabled = !nextMuted
+      })
+      setIsMicMuted(nextMuted)
+      toast.info(nextMuted ? 'Supervisor microphone muted.' : 'Supervisor microphone active.')
+    }
+  }
+
   const handleSelectCall = (callId) => {
+    if (isBargingIn) {
+      handleReleaseBargeIn()
+    }
     setSelectedCallId(callId)
     setIsBargingIn(false)
     setIsListening(false)
+    setTakeoverConflict(null)
     if (isMobile()) {
       setIsMobileDetailView(true)
     }
@@ -504,6 +622,13 @@ const CallCenter = () => {
                     <Clock size={11} />
                     <span>{call.duration}</span>
                   </span>
+
+                  {call.bargedBy && (
+                    <span className="ci-barged-badge" title={`Supervisor takeover active by ${call.bargedBy}`}>
+                      <Lock size={10} />
+                      <span>Barged</span>
+                    </span>
+                  )}
                 </div>
               </div>
             ))
@@ -530,6 +655,23 @@ const CallCenter = () => {
               transition={{ duration: 0.18 }}
               className="cc-details-container"
             >
+              {/* TAKEOVER CONFLICT ALERT */}
+              {takeoverConflict && (
+                <div className="cc-conflict-banner">
+                  <div className="cc-conflict-info">
+                    <Lock size={18} className="cc-conflict-lock-icon" />
+                    <div>
+                      <strong>SUPERVISOR TAKEOVER IN PROGRESS</strong>
+                      <p>{takeoverConflict.message}</p>
+                    </div>
+                  </div>
+                  <button className="cc-btn-conflict-dismiss" onClick={() => setTakeoverConflict(null)}>
+                    <X size={14} />
+                    <span>Dismiss</span>
+                  </button>
+                </div>
+              )}
+
               {/* SUPERVISOR BARGE-IN TAKEOVER HUD */}
               {isBargingIn && (
                 <div className="cc-barge-banner">
@@ -537,14 +679,34 @@ const CallCenter = () => {
                     <span className="cc-barge-live-dot" />
                     <ShieldAlert size={18} />
                     <div>
-                      <strong>SUPERVISOR TAKEOVER ACTIVE</strong>
+                      <div className="cc-barge-title-row">
+                        <strong>SUPERVISOR TAKEOVER ACTIVE</strong>
+                        <span className="cc-headset-badge" title="Wear headphones to prevent acoustic echo feedback">
+                          <Headphones size={11} />
+                          <span>Headset Recommended</span>
+                        </span>
+                      </div>
                       <p>AI agent voice muted. Microphone bridged directly to {selectedCall.number}.</p>
                     </div>
                   </div>
-                  <div className="cc-barge-actions">
+                  <div className="cc-barge-mic-controls">
+                    <button 
+                      className={`cc-btn-mic-toggle ${isMicMuted ? 'muted' : 'active'}`}
+                      onClick={handleToggleMicMute}
+                      title={isMicMuted ? 'Unmute microphone' : 'Mute microphone'}
+                    >
+                      {isMicMuted ? <MicOff size={13} /> : <Mic size={13} />}
+                      <span>{isMicMuted ? 'Muted' : 'Live Mic'}</span>
+                    </button>
+                    <div className="cc-mic-level-meter" title={`Microphone Level: ${micVolumeLevel}%`}>
+                      <div 
+                        className="cc-mic-level-fill" 
+                        style={{ width: `${isMicMuted ? 0 : micVolumeLevel}%` }} 
+                      />
+                    </div>
                     <button className="cc-btn-release" onClick={handleReleaseBargeIn}>
                       <RefreshCw size={13} />
-                      <span>Release & Resume AI</span>
+                      <span>Release &amp; Resume AI</span>
                     </button>
                   </div>
                 </div>
@@ -555,7 +717,7 @@ const CallCenter = () => {
                 <div className="cc-listen-banner">
                   <div className="cc-listen-indicator">
                     <Radio size={15} className="cc-radio-pulse" />
-                    <span>Monitoring Live Stream &bull; Audio Eavesdrop Active</span>
+                    <span>Monitoring Live Stream &bull; Multi-Supervisor Eavesdrop Active</span>
                     <div className="cc-audio-bars">
                       <span className="bar b1" />
                       <span className="bar b2" />
@@ -618,22 +780,43 @@ const CallCenter = () => {
                       <button 
                         className={`cc-btn-action ${isListening ? 'active-listen' : ''}`} 
                         onClick={handleListenIn}
+                        title="Listen in to live call without interrupting (Multiple supervisors can listen simultaneously)"
                       >
                         <Headphones size={15} />
                         <span>{isListening ? 'Listening...' : 'Listen In'}</span>
                       </button>
-                      <button 
-                        className="cc-btn-action cc-btn-barge" 
-                        onClick={handleBargeIn}
-                        disabled={bargeInProgress || isBargingIn}
-                      >
-                        {bargeInProgress ? (
-                          <Loader2 size={15} className="spinner" />
-                        ) : (
-                          <PhoneCall size={15} />
-                        )}
-                        <span>{isBargingIn ? 'Barged In' : 'Barge In'}</span>
-                      </button>
+                      {selectedCall.bargedBy && !isBargingIn ? (
+                        <button 
+                          className="cc-btn-action cc-btn-barge cc-barge-locked" 
+                          onClick={() => {
+                            setTakeoverConflict({
+                              bargedBy: selectedCall.bargedBy,
+                              message: `Supervisor ${selectedCall.bargedBy} has already barged into this call. Only one supervisor can take over at a time to prevent voice collision.`
+                            })
+                            toast.warning(`Takeover Locked: Supervisor ${selectedCall.bargedBy} is already on this call.`)
+                          }}
+                          title={`Takeover locked by ${selectedCall.bargedBy}`}
+                        >
+                          <Lock size={14} />
+                          <span>Barged ({selectedCall.bargedBy})</span>
+                        </button>
+                      ) : (
+                        <button 
+                          className={`cc-btn-action cc-btn-barge ${isBargingIn ? 'cc-btn-barge-active' : ''}`} 
+                          onClick={handleBargeIn}
+                          disabled={bargeInProgress || isBargingIn}
+                          title="Take over call: Mutes AI agent voice and bridges your microphone"
+                        >
+                          {bargeInProgress ? (
+                            <Loader2 size={15} className="spinner" />
+                          ) : isBargingIn ? (
+                            <ShieldAlert size={15} />
+                          ) : (
+                            <PhoneCall size={15} />
+                          )}
+                          <span>{isBargingIn ? 'Barged In' : 'Barge In'}</span>
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

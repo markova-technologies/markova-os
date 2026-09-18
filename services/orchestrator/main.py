@@ -1986,9 +1986,9 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
     consent_enabled = settings.get("ai_disclosure_enabled", True)  # Default ON for INSA compliance
     if consent_enabled:
         consent_text = settings.get("ai_disclosure_text") or (
-            "ይህ ጥሪ በሰው ሰራሽ አስተሳሰብ ስርዓት ይስተናገዳል። ቀረጻ ሊደረግ ይችላል። "
+            "ይህ ጥሪ ለጥራት ቁጥጥር ሊደመጥ እና ሊቀረጽ ይችላል። "
             if agent_lang == "amharic" else
-            "This call is handled by an AI system and may be recorded. "
+            "This call may be monitored and recorded for quality assurance. "
         )
         welcome_text = f"{consent_text.strip()} {welcome_text}"
 
@@ -3387,6 +3387,7 @@ async def trigger_call_barge_in(call_id: str, request: Request):
     """
     Direct endpoint to trigger audio interruption (barge-in) for a call,
     stopping active TTS playback on FreeSWITCH or WebSockets.
+    Enforces single-supervisor takeover exclusivity.
     """
     from barge_in import barge_in_controller
     body = {}
@@ -3394,9 +3395,67 @@ async def trigger_call_barge_in(call_id: str, request: Request):
         body = await request.json()
     except Exception:
         pass
-    reason = body.get("reason", "manual_api_trigger")
-    interrupted = barge_in_controller.trigger_break(call_id, reason=reason)
-    return {"call_id": call_id, "interrupted": interrupted, "status": "ok"}
+
+    supervisor_id = body.get("supervisor_id") or request.headers.get("x-user-id", "supervisor_default")
+    supervisor_name = body.get("supervisor_name") or "Supervisor"
+    company_id = "default"
+    try:
+        company_id = _tenant_id(request)
+    except Exception:
+        company_id = request.headers.get("x-company-id", "default")
+
+    result = barge_in_controller.acquire_takeover(
+        call_uuid=call_id,
+        supervisor_id=supervisor_id,
+        supervisor_name=supervisor_name,
+        company_id=company_id,
+    )
+
+    if result.get("locked"):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "already_barged_in",
+                "message": result.get("message", "Another supervisor has already barged into this call."),
+                "barged_by": result.get("barged_by"),
+                "barged_at": result.get("barged_at"),
+                "locked": True,
+            },
+        )
+
+    return {
+        "call_id": call_id,
+        "interrupted": True,
+        "status": "barge_active",
+        "barged_by": result.get("barged_by"),
+        "locked": False,
+    }
+
+
+@app.post("/v1/calls/{call_id}/release-barge-in")
+async def release_call_barge_in(call_id: str, request: Request):
+    """
+    Release an active supervisor barge-in lock and resume normal AI agent control.
+    """
+    from barge_in import barge_in_controller
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    supervisor_id = body.get("supervisor_id") or request.headers.get("x-user-id")
+    result = barge_in_controller.release_takeover(call_uuid=call_id, supervisor_id=supervisor_id)
+    return {"call_id": call_id, "status": "released", "result": result}
+
+
+@app.get("/v1/calls/{call_id}/barge-status")
+async def get_call_barge_status(call_id: str, request: Request):
+    """
+    Get the current supervisor takeover status of a live call.
+    """
+    from barge_in import barge_in_controller
+    status = barge_in_controller.get_barge_status(call_id)
+    return {"call_id": call_id, **status}
 
 
 @app.post("/v1/calls/{call_id}/transfer")
