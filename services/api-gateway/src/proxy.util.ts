@@ -16,7 +16,7 @@ export function proxyTo(
   const contentType = String(req.headers['content-type'] || '');
   const isMultipart = contentType.includes('multipart/form-data');
 
-  return proxy(targetUrl, {
+  const middleware = proxy(targetUrl, {
     // Let the raw stream through for file uploads (Nest/express must not re-serialize)
     parseReqBody: !isMultipart,
     proxyReqPathResolver: (request: Request) => {
@@ -68,5 +68,27 @@ export function proxyTo(
       proxyReqOpts.headers = headers;
       return proxyReqOpts;
     },
-  })(req, res);
+    proxyErrorHandler: (err, proxyRes, _next) => {
+      if (proxyRes && !proxyRes.headersSent) {
+        proxyRes.status(502).json({
+          statusCode: 502,
+          error: 'Bad Gateway',
+          message: `Upstream service at ${targetUrl} is unreachable or unavailable.`,
+          details: err?.message || String(err),
+        });
+      }
+    },
+  });
+
+  return middleware(req, res, (err?: any) => {
+    if (err && !res.headersSent) {
+      res.status(502).json({
+        statusCode: 502,
+        error: 'Bad Gateway',
+        message: `Upstream service at ${targetUrl} is unreachable or unavailable.`,
+        details: err?.message || String(err),
+      });
+    }
+  });
 }
+

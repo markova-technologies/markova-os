@@ -13,6 +13,12 @@ async function bootstrap() {
   const helmet = require('helmet');
   app.use(helmet());
 
+  // Trust reverse proxy (Render, Cloudflare) for accurate client IP identification
+  const expressApp = app.getHttpAdapter().getInstance();
+  if (expressApp && typeof expressApp.set === 'function') {
+    expressApp.set('trust proxy', 1);
+  }
+
   // CORS configuration for dashboard, local dev, and Vercel deployments
   app.enableCors({
     origin: true,
@@ -26,7 +32,8 @@ async function bootstrap() {
   app.use(
     rateLimit({
       windowMs: 15 * 60 * 1000, // 15 minutes
-      max: 100, // limit each IP to 100 requests per windowMs
+      max: 1000, // limit each IP to 1000 requests per windowMs
+      validate: { xForwardedForHeader: false },
     })
   );
 

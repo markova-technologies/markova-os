@@ -4,6 +4,22 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] API Gateway Crash on Upstream Service Failure & Express 'trust proxy' Warning on Render
+- **Error/Problem:**
+  - Render sent repeated alert emails: `"Server failure detected on markova-api-gateway: Exited with status 1"`.
+  - When checking the Render dashboard, all services appeared green/healthy because Render automatically restarted the crashed container.
+  - Gateway logs revealed:
+    `TypeError: next is not a function at handleProxyErrors (/app/node_modules/express-http-proxy/app/steps/handleProxyErrors.js:17:27)`
+    and:
+    `ValidationError: The 'X-Forwarded-For' header is set but the Express 'trust proxy' setting is false (default)`.
+- **How it Happened:**
+  - In `services/api-gateway/src/proxy.util.ts`, `proxyTo()` called `proxy(targetUrl, options)(req, res)` without passing a 3rd `next` callback argument. When an upstream service (such as `auth-service`) was unreachable or returned a network error, `express-http-proxy` called `handleProxyErrors`, which attempted `next(err)`. Since `next` was `undefined`, it threw `TypeError: next is not a function`, terminating the Node.js process with Exit Status 1.
+  - In `services/api-gateway/src/main.ts`, the Express instance sat behind Render's reverse proxy forwarding `X-Forwarded-For` headers, but `expressApp.set('trust proxy', 1)` was never set, causing `express-rate-limit` to throw `ValidationError`.
+- **Lesson Learned:**
+  1. When invoking `express-http-proxy` as an inline middleware function in NestJS/Express, ALWAYS supply both a `proxyErrorHandler` option and a fallback callback `(err) => { if (!res.headersSent) res.status(502).json(...) }` as the 3rd argument. Never invoke proxy middleware with only `(req, res)` because internal error handlers expect `next` to be callable.
+  2. Any NestJS/Express service deployed behind a reverse proxy (Render, AWS ALB, Cloudflare, Fly.io) MUST set `trust proxy` (`expressApp.set('trust proxy', 1)`) so rate limiters and IP extraction accurately identify clients without throwing `ValidationError`.
+  3. Upstream service unavailability must fail gracefully with HTTP 502 Bad Gateway and clean JSON payloads rather than crashing the gateway process.
+
 ### [2026-09-18] Team Invitation Acceptance "Not Found" 404 & Silent Email Delivery Failure
 - **Error/Problem:**
   - When opening a generated invitation link (`/accept-invite?token=...`) and submitting "Activate Account & Sign In", the client threw a red alert banner saying `"Not Found"`.
