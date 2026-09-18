@@ -4,6 +4,22 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Call Center Supervisor Takeover Headset Badge Text Wrapping & Contrast Glitch
+- **Error/Problem:**
+  - The "🎧 Headset Recommended" badge in the Call Center Takeover HUD banner wrapped awkwardly into two separate lines (`"🎧 Headset \n Recommended"`), creating a tall, distorted box that threw off the alignment of the banner.
+  - The badge styling (`rgba(255, 255, 255, 0.14)`) appeared as a muddy dark gray oval on top of the red gradient takeover banner, clashing with the glassmorphism theme.
+  - Squeezed horizontal flex space also caused the subtitle (`"AI agent voice muted. Microphone bridged directly to +1 (415) \n 555-0198."`) to break clumsily onto two lines.
+- **How it Happened:**
+  - `.cc-headset-badge` lacked `white-space: nowrap` and `flex-shrink: 0`.
+  - The parent title row lacked `flex-wrap: nowrap`, allowing flexbox to compress the badge text at the space character when rendered in narrower detail panes (e.g. 600–750px alongside the call list and sidebar).
+  - The banner had excessive side padding (`2rem`), while the subtitle text was overly verbose without text truncation guards (`overflow: hidden; text-overflow: ellipsis`).
+- **Lesson Learned:**
+  1. Any status badge, pill, or recommendation chip inside a flex container MUST include `white-space: nowrap;` and `flex-shrink: 0;` to prevent ugly line breaks on narrower viewports.
+  2. For cohesive glassmorphism on colored banners (like red takeover HUDs), use subtle translucent glass (`background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.18); backdrop-filter: blur(8px)`) with crisp typography (`rgba(255, 255, 255, 0.9)`) and accent icons, rather than high-opacity grey pills.
+  3. Ensure call center HUD banners maintain concise single-line subtitles with `white-space: nowrap; text-overflow: ellipsis` so operational controls stay aligned with fixed vertical height.
+
+---
+
 ### [2026-09-18] Call Center Supervisor Barge-In Race Conditions & INSA Audio Compliance
 - **Error/Problem:** 
   - The Call Center dashboard previously lacked mutual exclusion on telephony barge-ins. If multiple supervisors logged into the same tenant account clicked "Barge In" concurrently on an active call, both would trigger `uuid_break` and attempt to inject audio, causing dual-speaker collisions, audio packet corruption, and acoustic feedback loops into the FreeSWITCH/SIP telephony trunk.

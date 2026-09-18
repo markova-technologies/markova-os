@@ -696,16 +696,16 @@ const CallCenter = () => {
                 <div className="cc-barge-banner">
                   <div className="cc-barge-info">
                     <span className="cc-barge-live-dot" />
-                    <ShieldAlert size={18} />
-                    <div>
+                    <ShieldAlert size={18} className="cc-barge-shield-icon" />
+                    <div className="cc-barge-text-block">
                       <div className="cc-barge-title-row">
                         <strong>SUPERVISOR TAKEOVER ACTIVE</strong>
                         <span className="cc-headset-badge" title="Wear headphones to prevent acoustic echo feedback">
-                          <Headphones size={11} />
+                          <Headphones size={12} />
                           <span>Headset Recommended</span>
                         </span>
                       </div>
-                      <p>AI agent voice muted. Microphone bridged directly to {selectedCall.number}.</p>
+                      <p>AI agent voice muted &bull; Mic bridged to {selectedCall.number}</p>
                     </div>
                   </div>
                   <div className="cc-barge-mic-controls">
