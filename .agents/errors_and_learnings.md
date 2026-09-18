@@ -4,6 +4,15 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Embedded JavaScript 'await' Inside SQL Multi-Statement Migration String
+- **Error/Problem:**
+  - On auth-service startup, database connection succeeded but logged: `⚠️ RBAC table initialization notice: syntax error at or near "await"`.
+- **How it Happened:**
+  - In `services/auth-service/server.js`, a JavaScript statement (`await pool.query('ALTER TABLE invitations ALTER COLUMN email DROP NOT NULL').catch(() => {});`) was accidentally embedded directly inside a multi-line SQL template literal executed via `client.query(...)`. PostgreSQL received the literal string `await pool.query(...)` as SQL tokens and threw `syntax error at or near "await"`, which prematurely aborted the subsequent table and permission seed operations in that migration block.
+- **Lesson Learned:**
+  1. Never mix JavaScript async statements inside raw SQL template literals. Schema alterations in SQL scripts must be pure SQL DDL (`ALTER TABLE invitations ALTER COLUMN email DROP NOT NULL;`).
+  2. Always inspect initialization warnings even when the service is marked "healthy" or "live", ensuring all migrations and seeds execute cleanly to completion.
+
 ### [2026-09-18] Auth Service PostgreSQL SSL Handshake Rejection on Supabase & Missing Health Endpoints
 - **Error/Problem:**
   - After deploying `markova-auth-service` to Render, the container logged:

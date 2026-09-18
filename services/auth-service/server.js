@@ -123,7 +123,7 @@ async function ensureRbacTables(client) {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
-      await pool.query('ALTER TABLE invitations ALTER COLUMN email DROP NOT NULL').catch(() => {});
+      ALTER TABLE invitations ALTER COLUMN email DROP NOT NULL;
 
       CREATE TABLE IF NOT EXISTS sessions (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
