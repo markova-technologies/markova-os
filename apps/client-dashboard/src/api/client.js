@@ -1013,12 +1013,10 @@ export const testBotConnection = async (type, config = {}) => {
 // ---------- Organization & Team ----------
 export const getOrgProfile = () => api.get('/auth/me');
 export const updateOrgProfile = (data) => api.put('/auth/profile', data).catch(() => ({ data }));
-// Team endpoints don't exist yet — return graceful empty list
-export const listTeamMembers = () => api.get('/team/members').catch(() => ({ data: [] }));
-export const inviteTeamMember = (data) => api.post('/team/invites', data).catch(() => ({ data }));
-export const removeTeamMember = (id) => api.delete(`/team/members/${id}`).catch(() => ({ data: {} }));
-export const updateTeamMemberRole = (id, role) =>
-  api.put(`/team/members/${id}`, { role }).catch(() => ({ data: {} }));
+// Team helpers pointing to real enterprise RBAC endpoints
+export const inviteTeamMember = (data) => api.post('/users/invite', data);
+export const removeTeamMember = (id) => api.delete(`/users/${id}`);
+export const updateTeamMemberRole = (id, role) => api.patch(`/users/${id}/role`, { role });
 
 // ---------- CRM (contacts derived from call history) ----------
 export const listCRMContacts = async () => {
@@ -1133,5 +1131,28 @@ export const getAgentVoicePreview = (id, text) =>
 export const deployAgent = (id) => api.post(`/agents/${id}/deploy`);
 
 export const startAgentTestSession = (id, config = {}) => api.post(`/agents/${id}/test-call`, { config });
+
+// ---------- Enterprise RBAC, Team & Organization ----------
+export const listTeamMembers = () => api.get('/users');
+export const inviteMember = (data) => api.post('/users/invite', data);
+export const verifyInvitation = (token) => api.get(`/invitations/verify/${token}`);
+export const acceptInvitation = (data) => api.post('/users/accept-invite', data);
+export const changeUserRole = (userId, role) => api.patch(`/users/${userId}/role`, { role });
+export const assignUserDepartment = (userId, departmentId) => api.patch(`/users/${userId}/department`, { departmentId });
+export const deactivateUser = (userId) => api.delete(`/users/${userId}`);
+export const revokeInvitation = (inviteId) => api.delete(`/invitations/${inviteId}`);
+
+export const listRoles = () => api.get('/roles');
+export const createRole = (data) => api.post('/roles', data);
+export const updateRole = (roleId, data) => api.patch(`/roles/${roleId}`, data);
+export const deleteRole = (roleId) => api.delete(`/roles/${roleId}`);
+
+export const listDepartments = () => api.get('/departments');
+export const createDepartment = (data) => api.post('/departments', data);
+export const deleteDepartment = (deptId) => api.delete(`/departments/${deptId}`);
+
+export const listSessions = () => api.get('/sessions');
+export const revokeSession = (sessionId) => api.delete(`/sessions/${sessionId}`);
+
 
 

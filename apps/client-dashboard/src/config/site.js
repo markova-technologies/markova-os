@@ -26,6 +26,8 @@ export const ROUTES = {
   governance: '/app/governance',
   organization: '/app/organization',
   notifications: '/app/notifications',
+  team: '/app/team',
+  acceptInvite: '/accept-invite',
   /** In-app invoices / plan management (after login) */
   billing: '/app/billing',
 }

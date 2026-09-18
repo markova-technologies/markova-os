@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
-import { useLocation } from 'react-router-dom'
+import { useLocation, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import axios from 'axios'
 import { 
   Building2,
   Users as UsersIcon,
   Shield,
+  ShieldCheck,
+  ArrowRight,
   Key,
   Plug,
   Activity,
@@ -347,24 +349,52 @@ const Settings = () => {
 
   const renderUsersTab = () => (
     <div className="settings-section">
-      <h3>Users & Roles</h3>
-      <p style={{ color: 'var(--gray)', marginBottom: '1.5rem' }}>Manage who has access to the MARKOVA platform and their roles.</p>
-      <table className="settings-table">
-        <thead>
-          <tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          {users.map(u => (
-            <tr key={u.id}>
-              <td>{u.name}</td>
-              <td>{u.email}</td>
-              <td><span style={{color: u.role === 'Owner' ? 'var(--live-amber)' : 'inherit', fontWeight: u.role === 'Owner' ? 600 : 400}}>{u.role}</span></td>
-              <td><span style={{color: u.status === 'Active' ? 'var(--live-amber)' : 'var(--live-amber)'}}>● {u.status}</span></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <button className="btn btn-primary" style={{marginTop:'1rem'}}><UsersIcon size={16}/> Invite Team Member</button>
+      <h3>Users & Access Control</h3>
+      <p style={{ color: 'var(--gray)', marginBottom: '1.5rem' }}>Enterprise role-based access control, team invites, and organizational departments.</p>
+
+      <div style={{
+        padding: '1.5rem',
+        borderRadius: '12px',
+        background: 'linear-gradient(135deg, rgba(232, 163, 61, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)',
+        border: '1px solid rgba(232, 163, 61, 0.25)',
+        marginBottom: '1.5rem',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.35rem' }}>
+            <ShieldCheck size={20} style={{ color: 'var(--live-amber)' }} />
+            <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-main)' }}>Enterprise RBAC & Team Console</h4>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--gray)', maxWidth: '560px' }}>
+            Manage team members, multi-channel email/magic-link invites, custom granular roles & permissions matrix, organizational departments, and active sessions in the dedicated Team Management console.
+          </p>
+        </div>
+        <Link to="/app/team" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+          <UsersIcon size={16} /> Open Team Management <ArrowRight size={16} />
+        </Link>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+        <div style={{ padding: '1.25rem', background: 'var(--bg-main)', borderRadius: '0.75rem', border: '1px solid var(--border-main)' }}>
+          <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Access Control</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.25rem' }}>Granular RBAC</div>
+          <div style={{ color: 'var(--live-amber)', fontSize: '0.8rem', marginTop: '0.25rem' }}>30+ Action Permissions</div>
+        </div>
+        <div style={{ padding: '1.25rem', background: 'var(--bg-main)', borderRadius: '0.75rem', border: '1px solid var(--border-main)' }}>
+          <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Team Structure</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.25rem' }}>Departments</div>
+          <div style={{ color: 'var(--gray)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Grouped or Flat-List View</div>
+        </div>
+        <div style={{ padding: '1.25rem', background: 'var(--bg-main)', borderRadius: '0.75rem', border: '1px solid var(--border-main)' }}>
+          <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Invite Dispatch</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-main)', marginTop: '0.25rem' }}>Multi-Channel</div>
+          <div style={{ color: 'var(--gray)', fontSize: '0.8rem', marginTop: '0.25rem' }}>Resend Email + Magic Link</div>
+        </div>
+      </div>
     </div>
   )
 
@@ -516,6 +546,16 @@ const Settings = () => {
       <div style={{ marginTop: '1.5rem', padding: '1rem', background: 'rgba(232, 163, 61, 0.1)', border: '1px solid rgba(232, 163, 61, 0.2)', borderRadius: '0.5rem' }}>
         <div style={{ color: 'var(--live-amber)', fontWeight: 600, marginBottom: '0.25rem' }}>⚠ Security Recommendation</div>
         <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>Enable 2FA for all users and set session timeouts to 30 minutes or less for compliance.</div>
+      </div>
+
+      <div style={{ marginTop: '1rem', padding: '1.25rem', background: 'var(--bg-main)', borderRadius: '0.75rem', border: '1px solid var(--border-main)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <div style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.25rem' }}>Active Device Sessions</div>
+          <div style={{ color: 'var(--gray)', fontSize: '0.85rem' }}>View, monitor, and revoke device sessions across all users in your organization.</div>
+        </div>
+        <Link to="/app/team" className="btn btn-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', textDecoration: 'none' }}>
+          <Shield size={16} /> Manage Active Sessions
+        </Link>
       </div>
     </div>
   )

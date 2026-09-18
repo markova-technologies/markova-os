@@ -4,6 +4,21 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Enterprise Multi-User RBAC: Lazy State Initializer Syntax & Duplicate Module Exports
+- **Error/Problem:**
+  - `apps/client-dashboard` build failed with esbuild transform error `ERROR: Unexpected ")"` at `AuthContext.jsx:59:51`.
+  - Vite define transform failed with `ERROR: Multiple exports with the same name "listTeamMembers"` in `src/api/client.js`.
+  - Invitation acceptance previously used `window.location.reload()`, causing unnecessary teardown of React root and potential state desynchronization.
+- **How it Happened:**
+  - In `AuthContext.jsx`, writing `useState(initialUser || () => { ... })` creates a syntax ambiguity in JavaScript/esbuild parser between the expression operand and the function parameter list.
+  - In `src/api/client.js`, an older mock stub `export const listTeamMembers = () => api.get('/team/members')` from a previous multi-agent iteration remained while the new enterprise RBAC endpoint `export const listTeamMembers = () => api.get('/users')` was added.
+- **Lesson Learned:**
+  1. When initializing React state with conditional fallback logic, always structure it as a single lazy initializer callback: `useState(() => { if (initialVal) return initialVal; try { return computeFallback(); } catch { return null; } })`. Never combine an initial value and an arrow function with a logical OR (`||`).
+  2. In monolithic API client files (`client.js`), search for function symbol collisions across the entire file before declaring new exports.
+  3. Propagate auth changes in invitation flows through the central `onLogin` handler rather than issuing a hard browser reload, preserving client-side SPA routing and providing immediate feedback via toast notifications.
+
+---
+
 ### [2026-09-18] Call Center Supervisor Takeover Headset Badge Text Wrapping & Contrast Glitch
 - **Error/Problem:**
   - The "🎧 Headset Recommended" badge in the Call Center Takeover HUD banner wrapped awkwardly into two separate lines (`"🎧 Headset \n Recommended"`), creating a tall, distorted box that threw off the alignment of the banner.

@@ -23,10 +23,12 @@ import {
   ChevronRight
 } from 'lucide-react'
 import { ROUTES } from '../config/site'
+import { useAuth } from '../contexts/AuthContext'
 import './Sidebar.css'
 
 const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
   const location = useLocation()
+  const { can } = useAuth()
 
   const [theme, setTheme] = useState('dark'); // Default to dark theme
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -45,8 +47,8 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
 
-  // Navigation menu items
-  const menuItems = [
+  // Navigation menu items with granular RBAC permission assignments
+  const rawMenuItems = [
     {
       title: 'Command Center',
       path: ROUTES.app,
@@ -58,24 +60,28 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       icon: Bot,
       color: 'text-purple-400',
       isDropdown: true,
+      requiredPermission: 'agents:read',
       subItems: [
         {
           title: 'Agent Studio',
           path: ROUTES.agentStudio,
           icon: Bot,
-          color: 'text-purple-400'
+          color: 'text-purple-400',
+          requiredPermission: 'agents:read'
         },
         {
           title: 'Knowledge Center',
           path: ROUTES.knowledge,
           icon: BookOpen,
-          color: 'text-rose-400'
+          color: 'text-rose-400',
+          requiredPermission: 'knowledge:read'
         },
         {
           title: 'Governance',
           path: ROUTES.governance,
           icon: Shield,
-          color: 'text-amber-500'
+          color: 'text-amber-500',
+          requiredPermission: 'governance:read'
         }
       ]
     },
@@ -83,45 +89,74 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       title: 'Phone & Channels',
       path: ROUTES.phoneChannels,
       icon: Phone,
-      color: 'text-indigo-400'
+      color: 'text-indigo-400',
+      requiredPermission: 'phone:read'
     },
     {
       title: 'API Keys',
       path: ROUTES.keys,
       icon: Key,
-      color: 'text-amber-400'
+      color: 'text-amber-400',
+      requiredPermission: 'keys:read'
     },
     {
       title: 'Integration Hub',
       path: ROUTES.integrations,
       icon: Plug,
-      color: 'text-cyan-400'
+      color: 'text-cyan-400',
+      requiredPermission: 'integrations:read'
     },
     {
       title: 'Call Center',
       path: ROUTES.callCenter,
       icon: Headphones,
-      color: 'text-pink-400'
+      color: 'text-pink-400',
+      requiredPermission: 'calls:read'
+    },
+    {
+      title: 'Team',
+      path: ROUTES.team,
+      icon: Users,
+      color: 'text-sky-400',
+      requiredPermission: 'users:read'
     },
     {
       title: 'Usage',
       path: ROUTES.usage,
       icon: BarChart3,
-      color: 'text-teal-400'
+      color: 'text-teal-400',
+      requiredPermission: 'billing:read'
     },
     {
       title: 'Analytics Center',
       path: ROUTES.analytics,
       icon: BarChart3,
-      color: 'text-pink-400'
+      color: 'text-pink-400',
+      requiredPermission: 'analytics:read'
     },
     {
       title: 'CRM',
       path: ROUTES.crm,
       icon: Users,
-      color: 'text-blue-400'
+      color: 'text-blue-400',
+      requiredPermission: 'crm:read'
     }
-  ]
+  ];
+
+  // Dynamically filter menu items and subitems based on user's active permissions
+  const menuItems = rawMenuItems.reduce((acc, item) => {
+    if (item.requiredPermission && !can(item.requiredPermission)) {
+      return acc;
+    }
+    if (item.isDropdown && item.subItems) {
+      const allowedSubItems = item.subItems.filter(sub => !sub.requiredPermission || can(sub.requiredPermission));
+      if (allowedSubItems.length === 0) {
+        return acc;
+      }
+      return [...acc, { ...item, subItems: allowedSubItems }];
+    }
+    return [...acc, item];
+  }, []);
 
 
   return (

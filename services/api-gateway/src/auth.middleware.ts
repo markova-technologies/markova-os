@@ -8,6 +8,55 @@ import { v4 as uuidv4 } from 'uuid';
 import { RateLimiterService } from './rate-limiter.service';
 import { generateServiceAuthHeader } from './service-auth.util';
 
+const ROUTE_PERMISSION_MAP: Array<{ pattern: RegExp; method?: string; permission: string }> = [
+  // Agents
+  { pattern: /^\/v1\/agents(\/.*)?$/, method: 'POST', permission: 'agents:create' },
+  { pattern: /^\/v1\/agents(\/.*)?$/, method: 'PUT', permission: 'agents:update' },
+  { pattern: /^\/v1\/agents(\/.*)?$/, method: 'PATCH', permission: 'agents:update' },
+  { pattern: /^\/v1\/agents(\/.*)?$/, method: 'DELETE', permission: 'agents:delete' },
+  { pattern: /^\/v1\/agents(\/.*)?$/, method: 'GET', permission: 'agents:read' },
+
+  // Knowledge
+  { pattern: /^\/v1\/knowledge(\/.*)?$/, method: 'POST', permission: 'knowledge:create' },
+  { pattern: /^\/v1\/knowledge(\/.*)?$/, method: 'PUT', permission: 'knowledge:update' },
+  { pattern: /^\/v1\/knowledge(\/.*)?$/, method: 'DELETE', permission: 'knowledge:delete' },
+  { pattern: /^\/v1\/knowledge(\/.*)?$/, method: 'GET', permission: 'knowledge:read' },
+
+  // Telephony & Live Calls
+  { pattern: /^\/v1\/calls\/[^/]+\/barge-in$/, method: 'POST', permission: 'calls:barge' },
+  { pattern: /^\/v1\/calls\/[^/]+\/recordings?$/, method: 'GET', permission: 'calls:download' },
+  { pattern: /^\/v1\/calls(\/.*)?$/, method: 'GET', permission: 'calls:read' },
+
+  // Phone Numbers
+  { pattern: /^\/v1\/phone-numbers(\/.*)?$/, method: 'POST', permission: 'phone:create' },
+  { pattern: /^\/v1\/phone-numbers(\/.*)?$/, method: 'DELETE', permission: 'phone:delete' },
+  { pattern: /^\/v1\/phone-numbers(\/.*)?$/, method: 'GET', permission: 'phone:read' },
+
+  // Integrations & API Keys
+  { pattern: /^\/v1\/integrations(\/.*)?$/, method: 'POST', permission: 'integrations:create' },
+  { pattern: /^\/v1\/integrations(\/.*)?$/, method: 'DELETE', permission: 'integrations:delete' },
+  { pattern: /^\/v1\/integrations(\/.*)?$/, method: 'GET', permission: 'integrations:read' },
+  { pattern: /^\/v1\/tenant\/keys(\/.*)?$/, method: 'POST', permission: 'keys:create' },
+  { pattern: /^\/v1\/tenant\/keys(\/.*)?$/, method: 'DELETE', permission: 'keys:delete' },
+  { pattern: /^\/v1\/tenant\/keys(\/.*)?$/, method: 'GET', permission: 'keys:read' },
+
+  // Team & Users
+  { pattern: /^\/v1\/users\/invite$/, method: 'POST', permission: 'users:invite' },
+  { pattern: /^\/v1\/users\/[^/]+\/role$/, method: 'PATCH', permission: 'users:manage_roles' },
+  { pattern: /^\/v1\/users\/[^/]+$/, method: 'DELETE', permission: 'users:deactivate' },
+  { pattern: /^\/v1\/users(\/.*)?$/, method: 'GET', permission: 'users:read' },
+
+  // Roles
+  { pattern: /^\/v1\/roles(\/.*)?$/, method: 'POST', permission: 'users:manage_roles' },
+  { pattern: /^\/v1\/roles(\/.*)?$/, method: 'PATCH', permission: 'users:manage_roles' },
+  { pattern: /^\/v1\/roles(\/.*)?$/, method: 'DELETE', permission: 'users:manage_roles' },
+
+  // Billing
+  { pattern: /^\/v1\/billing(\/.*)?$/, method: 'POST', permission: 'billing:write' },
+  { pattern: /^\/v1\/billing(\/.*)?$/, method: 'PATCH', permission: 'billing:write' },
+  { pattern: /^\/v1\/billing(\/.*)?$/, method: 'GET', permission: 'billing:read' },
+];
+
 @Injectable()
 export class AuthMiddleware implements NestMiddleware {
   private redisClient;
@@ -47,6 +96,10 @@ export class AuthMiddleware implements NestMiddleware {
       /^\/v1\/auth\/public-key$/,
       /^\/api\/clients\/register$/,
       /^\/api\/clients\/login$/,
+      /^\/v1\/invitations\/verify\/[^/]+$/,
+      /^\/api\/auth\/invitations\/verify\/[^/]+$/,
+      /^\/v1\/users\/accept-invite$/,
+      /^\/api\/auth\/users\/accept-invite$/,
       /^\/incoming-call$/,
       /^\/handle-input$/,
       /^\/stream-response$/,
@@ -227,6 +280,30 @@ export class AuthMiddleware implements NestMiddleware {
         error: 'test-call is sandbox-only. Use a mk_test_ API key.',
         requestId,
       });
+    }
+
+    // Granular RBAC Permission Guard for Non-Owner Roles
+    const userRole = (tenantContext.role || '').toLowerCase();
+    const isOwnerOrSuper = userRole === 'owner' || userRole === 'superadmin' || tenantContext.permissions?.includes('*');
+
+    if (!isOwnerOrSuper && tenantContext.role !== 'api') {
+      const match = ROUTE_PERMISSION_MAP.find(m => {
+        const matchesPath = m.pattern.test(path);
+        const matchesMethod = !m.method || m.method === req.method.toUpperCase();
+        return matchesPath && matchesMethod;
+      });
+
+      if (match) {
+        const hasPerm = tenantContext.permissions && tenantContext.permissions.includes(match.permission);
+        if (!hasPerm) {
+          return res.status(HttpStatus.FORBIDDEN).json({
+            error: `Access Denied: You do not have permission (${match.permission}) to perform this action`,
+            requiredPermission: match.permission,
+            userRole: tenantContext.role,
+            requestId
+          });
+        }
+      }
     }
 
     // Admin APIs Authorization & Zero Trust Check
