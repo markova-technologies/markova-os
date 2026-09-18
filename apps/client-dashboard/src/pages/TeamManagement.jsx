@@ -243,7 +243,11 @@ const TeamManagement = () => {
         const inv = res.data.invitation;
         setCreatedInviteResult(inv);
         if (inviteMethod === 'email') {
-          addToast(`Invitation email dispatched to ${inviteEmail}`, 'success');
+          if (inv.emailDelivery?.sent) {
+            addToast(`Invitation email dispatched to ${inviteEmail}`, 'success');
+          } else {
+            addToast(`Invite created! Email provider not configured on server — please copy magic link.`, 'warning');
+          }
         } else {
           addToast('Shareable invitation link generated successfully!', 'success');
         }
@@ -1206,15 +1210,43 @@ const TeamManagement = () => {
                   <h4 style={{ color: '#ffffff', margin: '0 0 0.5rem', fontSize: '1.25rem' }}>
                     {createdInviteResult.inviteType === 'link' || !createdInviteResult.email
                       ? 'Shareable Magic Link Generated!'
-                      : 'Invitation Email Queued!'}
+                      : createdInviteResult.emailDelivery?.sent
+                        ? 'Invitation Email Sent!'
+                        : 'Invite Link Ready (Email Not Configured)'}
                   </h4>
-                  <p style={{ color: '#94a3b8', fontSize: '0.88rem', margin: 0, lineHeight: 1.5 }}>
+                  <div style={{ color: '#94a3b8', fontSize: '0.88rem', margin: 0, lineHeight: 1.5 }}>
                     {createdInviteResult.email ? (
-                      <>An invitation was sent to <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.</>
+                      createdInviteResult.emailDelivery?.sent ? (
+                        <p style={{ margin: 0 }}>
+                          An invitation email was sent to <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.
+                        </p>
+                      ) : (
+                        <div>
+                          <p style={{ margin: '0 0 0.5rem' }}>
+                            An invitation was generated for <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.
+                          </p>
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.4rem',
+                            background: 'rgba(245, 158, 11, 0.1)',
+                            border: '1px solid rgba(245, 158, 11, 0.3)',
+                            padding: '0.35rem 0.75rem',
+                            borderRadius: '6px',
+                            color: '#fbbf24',
+                            fontSize: '0.8rem',
+                            textAlign: 'left'
+                          }}>
+                            <span>⚠️ Email service is not configured on the server. Please copy and share the magic link below directly with your colleague.</span>
+                          </div>
+                        </div>
+                      )
                     ) : (
-                      <>Anyone with this link can join <strong>{currentUser?.companyName || 'the workspace'}</strong> with the role <strong>{createdInviteResult.role_name || inviteRole}</strong>.</>
+                      <p style={{ margin: 0 }}>
+                        Anyone with this link can join <strong>{currentUser?.companyName || 'the workspace'}</strong> with the role <strong>{createdInviteResult.role_name || inviteRole}</strong>.
+                      </p>
                     )}
-                  </p>
+                  </div>
                 </div>
 
                 {/* Magic Link Copy Banner */}

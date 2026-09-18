@@ -28,6 +28,31 @@ export class AppController {
     return proxyTo(this.authServiceUrl, req, res);
   }
 
+  @All('api/users*')
+  proxyUsersLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('api/invitations*')
+  proxyInvitationsLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('api/roles*')
+  proxyRolesLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('api/departments*')
+  proxyDepartmentsLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('api/sessions*')
+  proxySessionsLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
   @All('api/tenant*')
   proxyTenant(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.tenantServiceUrl, req, res);
@@ -74,6 +99,31 @@ export class AppController {
 
   @All('v1/auth*')
   proxyAuthV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/users*')
+  proxyUsersV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/invitations*')
+  proxyInvitationsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/roles*')
+  proxyRolesV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/departments*')
+  proxyDepartmentsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/sessions*')
+  proxySessionsV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.authServiceUrl, req, res);
   }
 

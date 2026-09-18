@@ -112,7 +112,12 @@ const AcceptInvite = ({ onLogin }) => {
         setError(res.data?.error || 'Failed to accept invitation');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'An error occurred while setting up your account.');
+      const errDetail = err.response?.data?.error || err.response?.data?.detail || err.response?.data?.message;
+      if (err.response?.status === 404 || errDetail === 'Not Found') {
+        setError('Unable to reach the workspace activation service. Please check your connection or verify the link with your administrator.');
+      } else {
+        setError(errDetail || 'An error occurred while setting up your account.');
+      }
     } finally {
       setSubmitting(false);
     }

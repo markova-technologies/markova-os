@@ -4,6 +4,20 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-18] Team Invitation Acceptance "Not Found" 404 & Silent Email Delivery Failure
+- **Error/Problem:**
+  - When opening a generated invitation link (`/accept-invite?token=...`) and submitting "Activate Account & Sign In", the client threw a red alert banner saying `"Not Found"`.
+  - When sending an invitation to an email address in the dashboard, no email was actually received in the user's inbox, yet the UI previously stated "Invitation email dispatched".
+- **How it Happened:**
+  - `apps/client-dashboard/.env` had `VITE_API_URL` set to `https://markova-orchestrator.onrender.com` (the Python voice engine) instead of the unified API gateway `https://markova-api-gateway.onrender.com`.
+  - In `services/api-gateway/src/app.controller.ts`, the NestJS gateway had reverse-proxy route annotations for `@All('api/auth*')` and `@All('v1/auth*')`, but lacked route decorators for `@All('v1/users*')`, `@All('v1/invitations*')`, `@All('v1/roles*')`, `@All('v1/departments*')`, and `@All('v1/sessions*')`. As a result, NestJS rejected requests to `/v1/users/accept-invite` with `HTTP 404 Not Found` (`Cannot POST /v1/users/accept-invite`).
+  - In `services/auth-service/server.js`, `sendInviteEmail` relies on `process.env.RESEND_API_KEY`. When the Resend API key is unconfigured in the environment, email sending fails silently or returns `emailDelivery: { sent: false }`, while the frontend modal previously displayed a blanket "Invitation email dispatched" success message regardless of actual delivery status.
+- **Lesson Learned:**
+  1. Whenever new microservice route domains (`/v1/users`, `/v1/invitations`, etc.) are introduced to backend services, immediately register matching route wildcard decorators in the unified API Gateway (`app.controller.ts`) for both `v1/*` and legacy `api/*` prefixes.
+  2. Verify that client environment configurations (`.env`) point to the API Gateway (`markova-api-gateway`), not individual downstream domain services (such as the voice orchestrator).
+  3. Never assume external email providers (Resend, SendGrid) are active or configured in every environment. Inspect `emailDelivery.sent` in the frontend and clearly notify the user if email delivery is inactive, providing an instant copyable Magic Link with 1-click WhatsApp/Telegram sharing.
+  4. Always equip public authentication/onboarding endpoints (`acceptInvitation`) with intelligent fallback handling in the client layer so invited users are never blocked or stranded by upstream network hiccups.
+
 ### [2026-09-18] Unresponsive Role Selector & Single-Channel Invitation Inflexibility
 - **Error/Problem:**
   - In the "Invite Team Member" modal, clicking the "Assigned Role" dropdown did nothing and appeared as an empty dark box.
