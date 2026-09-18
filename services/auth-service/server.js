@@ -99,7 +99,7 @@ async function ensureRbacTables(client) {
       CREATE TABLE IF NOT EXISTS invitations (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-        email VARCHAR(255) NOT NULL,
+        email VARCHAR(255),
         role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
         role_name VARCHAR(50) NOT NULL,
         department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
@@ -110,6 +110,8 @@ async function ensureRbacTables(client) {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+
+      await pool.query('ALTER TABLE invitations ALTER COLUMN email DROP NOT NULL').catch(() => {});
 
       CREATE TABLE IF NOT EXISTS sessions (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1080,20 +1082,23 @@ app.get(['/api/auth/users', '/v1/users'], authenticateUser, requirePermission('u
 // 2. Invite Member Endpoint (Resend.com Email + Copyable Magic Link)
 // ----------------------------------------------------------------------------
 app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requirePermission('users:invite'), async (req, res) => {
-  const { email, role, departmentId } = req.body;
+  const { email, role, departmentId, inviteType = 'email' } = req.body;
   const companyId = req.user.companyId;
 
-  if (!email || !role) {
-    return res.status(400).json({ error: 'Email and role are required' });
+  if (!role) {
+    return res.status(400).json({ error: 'Role is required' });
   }
 
-  const normalizedEmail = email.trim().toLowerCase();
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(normalizedEmail)) {
-    return res.status(400).json({ error: 'Invalid email address format' });
-  }
+  const isLinkInvite = inviteType === 'link' || !email || !email.trim();
+  let normalizedEmail = null;
 
-  try {
+  if (!isLinkInvite) {
+    normalizedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(normalizedEmail)) {
+      return res.status(400).json({ error: 'Invalid email address format' });
+    }
+
     // Check if user already exists in this company
     const existingUser = await pool.query(
       'SELECT id, status FROM users WHERE email = $1 AND company_id = $2',
@@ -1102,7 +1107,9 @@ app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requi
     if (existingUser.rows.length > 0) {
       return res.status(409).json({ error: 'A user with this email is already a member of this organization' });
     }
+  }
 
+  try {
     // Role Hierarchy & Permission Check (User Rule Option A: Admin can only grant permissions they possess)
     const userRole = (req.user.role || '').toLowerCase();
     if (userRole !== 'owner' && userRole !== 'superadmin') {
@@ -1143,10 +1150,12 @@ app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requi
     const companyName = compRes.rows[0] ? compRes.rows[0].name : 'Markova OS';
 
     // Invalidate any existing pending invites for this email
-    await pool.query(
-      "UPDATE invitations SET status = 'revoked' WHERE email = $1 AND company_id = $2 AND status = 'pending'",
-      [normalizedEmail, companyId]
-    );
+    if (normalizedEmail) {
+      await pool.query(
+        "UPDATE invitations SET status = 'revoked' WHERE email = $1 AND company_id = $2 AND status = 'pending'",
+        [normalizedEmail, companyId]
+      );
+    }
 
     // Generate token & expiration (7 days)
     const token = crypto.randomBytes(32).toString('hex');
@@ -1165,20 +1174,22 @@ app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requi
     const baseUrl = process.env.CLIENT_DASHBOARD_URL || req.headers.origin || 'http://localhost:5173';
     const inviteUrl = `${baseUrl}/accept-invite?token=${token}`;
 
-    // Send email via Resend (Option A)
-    const emailResult = await sendInviteEmail({
-      to: normalizedEmail,
-      inviteUrl,
-      inviterName: req.user.name,
-      companyName,
-      roleName: roleDisplayName
-    });
+    let emailResult = { skipped: true, reason: isLinkInvite ? 'Shareable link invitation' : 'No email provided' };
+    if (!isLinkInvite && normalizedEmail) {
+      emailResult = await sendInviteEmail({
+        to: normalizedEmail,
+        inviteUrl,
+        inviterName: req.user.name,
+        companyName,
+        roleName: roleDisplayName
+      });
+    }
 
     // Create Audit Log
     await pool.query(
       `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, new_value)
        VALUES ($1, $2, 'USER_INVITED', 'invitation', $3, $4)`,
-      [companyId, req.user.userId, invitation.id, JSON.stringify({ email: normalizedEmail, role, inviteUrl })]
+      [companyId, req.user.userId, invitation.id, JSON.stringify({ email: normalizedEmail, role, inviteType: isLinkInvite ? 'link' : 'email', inviteUrl })]
     );
 
     res.status(201).json({
@@ -1186,6 +1197,7 @@ app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requi
       invitation: {
         ...invitation,
         inviteUrl,
+        inviteType: isLinkInvite ? 'link' : 'email',
         emailDelivery: emailResult
       }
     });
@@ -1253,7 +1265,7 @@ app.get(['/api/auth/invitations/verify/:token', '/v1/invitations/verify/:token']
 // 4. Accept Invitation (PUBLIC: Supports Email+Password AND SSO/OAuth - Option C)
 // ----------------------------------------------------------------------------
 app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (req, res) => {
-  const { token, name, password, ssoProvider, ssoUserId } = req.body;
+  const { token, name, password, email: providedEmail, ssoProvider, ssoUserId } = req.body;
 
   if (!token) {
     return res.status(400).json({ error: 'Invitation token is required' });
@@ -1302,6 +1314,12 @@ app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (re
       return res.status(410).json({ error: 'Invitation has expired' });
     }
 
+    const userEmail = (invitation.email || providedEmail || '').trim().toLowerCase();
+    if (!userEmail) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Email address is required to activate account' });
+    }
+
     // 2. Hash password if provided
     let passwordHash = null;
     if (password) {
@@ -1309,7 +1327,7 @@ app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (re
     }
 
     // 3. Create or Update user record
-    const existingUser = await client.query('SELECT id, role, company_id FROM users WHERE email = $1', [invitation.email]);
+    const existingUser = await client.query('SELECT id, role, company_id FROM users WHERE email = $1', [userEmail]);
     let user;
 
     if (existingUser.rows.length > 0) {
@@ -1329,8 +1347,13 @@ app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (re
         INSERT INTO users (company_id, name, email, password_hash, role, department_id, status)
         VALUES ($1, $2, $3, $4, $5, $6, 'active')
         RETURNING id, company_id, name, email, role, status
-      `, [invitation.company_id, name || invitation.email.split('@')[0], invitation.email, passwordHash, invitation.role_name, invitation.department_id]);
+      `, [invitation.company_id, name || userEmail.split('@')[0], userEmail, passwordHash, invitation.role_name, invitation.department_id]);
       user = userCreateRes.rows[0];
+    }
+
+    // Update invitation email if link invite
+    if (!invitation.email) {
+      await client.query('UPDATE invitations SET email = $1 WHERE id = $2', [userEmail, invitation.id]);
     }
 
     // 4. Assign role in user_roles

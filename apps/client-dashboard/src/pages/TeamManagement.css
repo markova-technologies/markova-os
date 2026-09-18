@@ -620,3 +620,195 @@
   border-color: rgba(245, 158, 11, 0.35);
   color: #fbbf24;
 }
+
+/* Multi-Channel Invitation Tabs */
+.invite-type-tabs {
+  display: flex;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 1.5rem;
+  gap: 4px;
+}
+
+.invite-type-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 9px;
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.invite-type-btn:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.invite-type-btn.active {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #ffffff;
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+}
+
+.shareable-link-info-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: rgba(59, 130, 246, 0.08);
+  border: 1px solid rgba(59, 130, 246, 0.25);
+  border-radius: 10px;
+  color: #cbd5e1;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 0.5rem;
+}
+
+/* Modal Interactive Role Cards Grid */
+.modal-role-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.modal-role-card {
+  padding: 0.75rem 0.85rem;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.modal-role-card:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  background: rgba(15, 23, 42, 0.85);
+  transform: translateY(-1px);
+}
+
+.modal-role-card.selected {
+  border-color: #3b82f6;
+  background: rgba(37, 99, 235, 0.14);
+  box-shadow: 0 0 16px rgba(37, 99, 235, 0.25);
+}
+
+.modal-role-card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.modal-role-card-name {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.modal-role-card-check {
+  color: #60a5fa;
+  flex-shrink: 0;
+}
+
+.modal-role-card-desc {
+  font-size: 0.74rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.35;
+}
+
+/* Styled Role Select */
+.styled-role-select {
+  width: 100%;
+  padding: 0.75rem 2.25rem 0.75rem 1rem;
+  background: #0f172a !important;
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  border-radius: 10px;
+  color: #ffffff !important;
+  font-size: 0.92rem;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  transition: border-color 0.2s ease;
+}
+
+.styled-role-select:focus {
+  border-color: #3b82f6 !important;
+}
+
+.styled-role-select option {
+  background-color: #0f172a !important;
+  color: #ffffff !important;
+  padding: 8px 12px;
+}
+
+/* Social Share Row */
+.social-share-row {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.social-share-btn {
+  flex: 1;
+  min-width: 130px;
+  padding: 0.65rem 0.85rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(15, 23, 42, 0.7);
+  color: #ffffff;
+  font-size: 0.82rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.social-share-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.social-share-btn.whatsapp:hover {
+  background: rgba(37, 211, 102, 0.15);
+  border-color: #25d366;
+  color: #25d366;
+}
+
+.social-share-btn.telegram:hover {
+  background: rgba(0, 136, 204, 0.15);
+  border-color: #0088cc;
+  color: #38bdf8;
+}
+
+.role-badge.clickable {
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.role-badge.clickable:hover {
+  filter: brightness(1.25);
+  transform: scale(1.04);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+}
+

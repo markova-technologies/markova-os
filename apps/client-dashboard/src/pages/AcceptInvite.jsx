@@ -25,6 +25,7 @@ const AcceptInvite = ({ onLogin }) => {
 
   // Form fields
   const [name, setName] = useState('');
+  const [emailInput, setEmailInput] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
@@ -41,8 +42,12 @@ const AcceptInvite = ({ onLogin }) => {
       .then((res) => {
         if (!isMounted) return;
         if (res.data?.success && res.data.invitation) {
-          setInviteData(res.data.invitation);
-          setName(res.data.invitation.email.split('@')[0] || '');
+          const inv = res.data.invitation;
+          setInviteData(inv);
+          if (inv.email) {
+            setName(inv.email.split('@')[0] || '');
+            setEmailInput(inv.email);
+          }
         } else {
           setError(res.data?.error || 'Invalid or expired invitation link.');
         }
@@ -63,6 +68,12 @@ const AcceptInvite = ({ onLogin }) => {
   // 2. Handle Password Submission
   const handlePasswordSubmit = async (e) => {
     e.preventDefault();
+    const userEmail = (inviteData?.email || emailInput).trim();
+    if (!userEmail) {
+      setError('Please provide your work email address to accept the invitation.');
+      return;
+    }
+
     if (!password) {
       setError('Please enter a password');
       return;
@@ -84,6 +95,7 @@ const AcceptInvite = ({ onLogin }) => {
     try {
       const res = await acceptInvitation({
         token,
+        email: userEmail,
         name: name.trim(),
         password
       });
@@ -202,8 +214,8 @@ const AcceptInvite = ({ onLogin }) => {
         {/* Invite Metadata Box */}
         <div className="invite-details-box">
           <div className="invite-detail-row">
-            <span className="invite-detail-label">Invited Email</span>
-            <span className="invite-detail-value">{inviteData?.email}</span>
+            <span className="invite-detail-label">Invitation For</span>
+            <span className="invite-detail-value">{inviteData?.email || 'Shareable Workspace Link'}</span>
           </div>
           <div className="invite-detail-row">
             <span className="invite-detail-label">Assigned Role</span>
@@ -261,8 +273,11 @@ const AcceptInvite = ({ onLogin }) => {
               <input
                 type="email"
                 className="form-input"
-                value={inviteData?.email || ''}
-                disabled
+                placeholder="you@company.com"
+                value={inviteData?.email || emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                disabled={Boolean(inviteData?.email)}
+                required
               />
             </div>
 

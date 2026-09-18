@@ -40,9 +40,30 @@ import {
   Layers,
   ListFilter,
   CheckCircle2,
-  X
+  X,
+  Mail,
+  Link2,
+  Share2,
+  Send,
+  MessageSquare,
+  ExternalLink
 } from 'lucide-react';
 import './TeamManagement.css';
+
+const DEFAULT_SYSTEM_ROLES = [
+  { id: 'role-admin', name: 'admin', display_name: 'Administrator', is_system: true, description: 'Manage agents, team members & operational settings' },
+  { id: 'role-supervisor', name: 'supervisor', display_name: 'Supervisor', is_system: true, description: 'Live call monitoring, QA compliance & team analytics' },
+  { id: 'role-agent', name: 'agent', display_name: 'Call Agent', is_system: true, description: 'Handle inbound & outbound calls with AI voice copilot' },
+  { id: 'role-analyst', name: 'analyst', display_name: 'Analyst', is_system: true, description: 'Read-only access to call logs, metrics & audit trail' },
+  { id: 'role-viewer', name: 'viewer', display_name: 'Viewer', is_system: true, description: 'Read-only observer dashboard access' },
+  { id: 'role-owner', name: 'owner', display_name: 'Owner', is_system: true, description: 'Full organization ownership, billing & root controls' }
+];
+
+const DEFAULT_DEPARTMENTS = [
+  { id: 'dept-support', name: 'Customer Support', description: 'Handles tier-1 and tier-2 customer support inquiries' },
+  { id: 'dept-sales', name: 'Inbound & Outbound Sales', description: 'Lead qualification and customer deal closers' },
+  { id: 'dept-ops', name: 'Operations & QA', description: 'Call supervision, compliance, and quality management' }
+];
 
 const TeamManagement = () => {
   const { user: currentUser, role: currentRole, can, isOwner, isAdmin } = useAuth();
@@ -55,12 +76,12 @@ const TeamManagement = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Data states
+  // Data states - Pre-populated with defaults so UI is never blank/unresponsive
   const [users, setUsers] = useState([]);
   const [invitations, setInvitations] = useState([]);
-  const [roles, setRoles] = useState([]);
+  const [roles, setRoles] = useState(DEFAULT_SYSTEM_ROLES);
   const [allPermissions, setAllPermissions] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [departments, setDepartments] = useState(DEFAULT_DEPARTMENTS);
   const [sessions, setSessions] = useState([]);
 
   // Search & Filtering
@@ -79,9 +100,10 @@ const TeamManagement = () => {
   // Modal form states
   const [selectedUserForRole, setSelectedUserForRole] = useState(null);
   const [selectedUserForDept, setSelectedUserForDept] = useState(null);
-  const [targetRoleId, setTargetRoleId] = useState('');
+  const [targetRoleId, setTargetRoleId] = useState('agent');
 
   // Invite Form
+  const [inviteMethod, setInviteMethod] = useState('link'); // 'link' (WhatsApp/Slack/Telegram) | 'email'
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('agent');
   const [inviteDept, setInviteDept] = useState('');
@@ -98,22 +120,36 @@ const TeamManagement = () => {
   const [customRoleDesc, setCustomRoleDesc] = useState('');
   const [selectedPermissions, setSelectedPermissions] = useState([]);
 
+  // Filtered available roles for current user
+  const availableRoles = useMemo(() => {
+    const list = roles && roles.length > 0 ? roles : DEFAULT_SYSTEM_ROLES;
+    return list.filter(r => {
+      // Admin cannot invite or assign Owner role (User Decision 3)
+      if (!isOwner && r.name === 'owner') return false;
+      return true;
+    });
+  }, [roles, isOwner]);
+
   // 1. Initial Data Fetch
   const fetchData = async () => {
     setLoading(true);
     try {
       const [teamRes, rolesRes, deptsRes, sessionsRes] = await Promise.all([
         listTeamMembers().catch(() => ({ data: { users: [], invitations: [] } })),
-        listRoles().catch(() => ({ data: { roles: [], allPermissions: [] } })),
-        listDepartments().catch(() => ({ data: { departments: [] } })),
+        listRoles().catch(() => ({ data: { roles: DEFAULT_SYSTEM_ROLES, allPermissions: [] } })),
+        listDepartments().catch(() => ({ data: { departments: DEFAULT_DEPARTMENTS } })),
         listSessions().catch(() => ({ data: { sessions: [] } }))
       ]);
 
       if (teamRes.data?.users) setUsers(teamRes.data.users);
       if (teamRes.data?.invitations) setInvitations(teamRes.data.invitations);
-      if (rolesRes.data?.roles) setRoles(rolesRes.data.roles);
+      if (rolesRes.data?.roles && rolesRes.data.roles.length > 0) {
+        setRoles(rolesRes.data.roles);
+      }
       if (rolesRes.data?.allPermissions) setAllPermissions(rolesRes.data.allPermissions);
-      if (deptsRes.data?.departments) setDepartments(deptsRes.data.departments);
+      if (deptsRes.data?.departments && deptsRes.data.departments.length > 0) {
+        setDepartments(deptsRes.data.departments);
+      }
       if (sessionsRes.data?.sessions) setSessions(sessionsRes.data.sessions);
     } catch (err) {
       console.error('Error loading team data:', err);
@@ -178,6 +214,7 @@ const TeamManagement = () => {
 
   // 3. Handlers
   const handleCopyLink = (url, id) => {
+    if (!url) return;
     navigator.clipboard.writeText(url);
     setCopiedInviteId(id);
     addToast('Invite magic link copied to clipboard!', 'success');
@@ -185,25 +222,34 @@ const TeamManagement = () => {
   };
 
   const handleSendInvite = async (e) => {
-    e.preventDefault();
-    if (!inviteEmail) return;
+    if (e) e.preventDefault();
+    if (inviteMethod === 'email' && !inviteEmail.trim()) {
+      addToast('Please enter an email address for direct invitation.', 'error');
+      return;
+    }
 
     setActionLoading(true);
     try {
       const res = await inviteMember({
-        email: inviteEmail.trim(),
+        email: inviteMethod === 'email' ? inviteEmail.trim() : undefined,
+        inviteType: inviteMethod,
         role: inviteRole,
         departmentId: inviteDept || undefined
       });
 
       if (res.data?.success) {
-        addToast(`Invitation created for ${inviteEmail}`, 'success');
-        setCreatedInviteResult(res.data.invitation);
+        const inv = res.data.invitation;
+        setCreatedInviteResult(inv);
+        if (inviteMethod === 'email') {
+          addToast(`Invitation email dispatched to ${inviteEmail}`, 'success');
+        } else {
+          addToast('Shareable invitation link generated successfully!', 'success');
+        }
         setInviteEmail('');
         fetchData();
       }
     } catch (err) {
-      addToast(err.response?.data?.error || 'Failed to send invitation', 'error');
+      addToast(err.response?.data?.error || 'Failed to create invitation', 'error');
     } finally {
       setActionLoading(false);
     }
@@ -596,7 +642,17 @@ const TeamManagement = () => {
                                     </div>
                                   </td>
                                   <td>
-                                    <span className={`role-badge ${member.role?.toLowerCase() || 'viewer'}`}>
+                                    <span
+                                      className={`role-badge clickable ${member.role?.toLowerCase() || 'viewer'}`}
+                                      title={can('users:manage_roles') ? 'Click to change assigned role' : undefined}
+                                      onClick={() => {
+                                        if (can('users:manage_roles')) {
+                                          setSelectedUserForRole(member);
+                                          setTargetRoleId(member.role?.toLowerCase() || 'agent');
+                                          setShowRoleModal(true);
+                                        }
+                                      }}
+                                    >
                                       {member.role_display_name || member.role}
                                     </span>
                                   </td>
@@ -696,7 +752,17 @@ const TeamManagement = () => {
                           </span>
                         </td>
                         <td>
-                          <span className={`role-badge ${member.role?.toLowerCase() || 'viewer'}`}>
+                          <span
+                            className={`role-badge clickable ${member.role?.toLowerCase() || 'viewer'}`}
+                            title={can('users:manage_roles') ? 'Click to change assigned role' : undefined}
+                            onClick={() => {
+                              if (can('users:manage_roles')) {
+                                setSelectedUserForRole(member);
+                                setTargetRoleId(member.role?.toLowerCase() || 'agent');
+                                setShowRoleModal(true);
+                              }
+                            }}
+                          >
                             {member.role_display_name || member.role}
                           </span>
                         </td>
@@ -800,7 +866,14 @@ const TeamManagement = () => {
                   invitations.map(inv => (
                     <tr key={inv.id}>
                       <td>
-                        <span style={{ fontWeight: 600, color: '#ffffff' }}>{inv.email}</span>
+                        {inv.email ? (
+                          <span style={{ fontWeight: 600, color: '#ffffff' }}>{inv.email}</span>
+                        ) : (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', color: '#60a5fa', fontWeight: 600, fontSize: '0.85rem' }}>
+                            <Link2 size={14} />
+                            Shareable Link Invite
+                          </span>
+                        )}
                       </td>
                       <td>
                         <span className={`role-badge ${inv.role_name?.toLowerCase() || 'viewer'}`}>
@@ -1095,13 +1168,17 @@ const TeamManagement = () => {
       )}
 
       {/* =================================================================== */}
-      {/* MODAL 1: INVITE MEMBER (With Magic Link Copyable Feature)           */}
+      {/* MODAL 1: INVITE MEMBER (Shareable Link or Email Invitation)         */}
       {/* =================================================================== */}
       {showInviteModal && (
         <div className="modal-overlay" onClick={() => setShowInviteModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3 className="modal-title">Invite Team Member</h3>
+              <h3 className="modal-title">
+                {createdInviteResult
+                  ? (createdInviteResult.inviteType === 'link' || !createdInviteResult.email ? 'Shareable Link Ready' : 'Invitation Dispatched')
+                  : 'Invite Team Member'}
+              </h3>
               <button className="modal-close-btn" onClick={() => setShowInviteModal(false)}>
                 <X size={20} />
               </button>
@@ -1111,8 +1188,8 @@ const TeamManagement = () => {
               <div>
                 <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
                   <div style={{
-                    width: '50px',
-                    height: '50px',
+                    width: '52px',
+                    height: '52px',
                     borderRadius: '50%',
                     background: 'rgba(16, 185, 129, 0.15)',
                     border: '1px solid rgba(16, 185, 129, 0.3)',
@@ -1122,26 +1199,37 @@ const TeamManagement = () => {
                     justifyContent: 'center',
                     margin: '0 auto 1rem'
                   }}>
-                    <CheckCircle2 size={28} />
+                    <CheckCircle2 size={30} />
                   </div>
-                  <h4 style={{ color: '#ffffff', margin: '0 0 0.5rem', fontSize: '1.2rem' }}>Invitation Dispatched!</h4>
-                  <p style={{ color: '#94a3b8', fontSize: '0.88rem', margin: 0 }}>
-                    An invite email was queued for <strong>{createdInviteResult.email}</strong>.
+                  <h4 style={{ color: '#ffffff', margin: '0 0 0.5rem', fontSize: '1.25rem' }}>
+                    {createdInviteResult.inviteType === 'link' || !createdInviteResult.email
+                      ? 'Shareable Magic Link Generated!'
+                      : 'Invitation Email Queued!'}
+                  </h4>
+                  <p style={{ color: '#94a3b8', fontSize: '0.88rem', margin: 0, lineHeight: 1.5 }}>
+                    {createdInviteResult.email ? (
+                      <>An invitation was sent to <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.</>
+                    ) : (
+                      <>Anyone with this link can join <strong>{currentUser?.companyName || 'the workspace'}</strong> with the role <strong>{createdInviteResult.role_name || inviteRole}</strong>.</>
+                    )}
                   </p>
                 </div>
 
-                {/* Prominent Magic Link Copy Box (User Decision 1) */}
+                {/* Magic Link Copy Banner */}
                 <div className="magic-link-banner" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                    Copyable Invitation Link:
-                  </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#60a5fa', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                      Invitation Magic Link:
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Expires in 7 days</span>
+                  </div>
                   <div style={{
                     background: 'rgba(15, 23, 42, 0.8)',
-                    padding: '0.75rem',
+                    padding: '0.75rem 1rem',
                     borderRadius: '8px',
                     border: '1px solid rgba(59, 130, 246, 0.3)',
                     wordBreak: 'break-all',
-                    fontSize: '0.82rem',
+                    fontSize: '0.84rem',
                     color: '#e2e8f0',
                     fontFamily: 'monospace'
                   }}>
@@ -1154,84 +1242,161 @@ const TeamManagement = () => {
                     style={{ marginTop: '0.5rem', justifyContent: 'center' }}
                   >
                     {copiedInviteId === 'modal-copy' ? <Check size={16} /> : <Copy size={16} />}
-                    <span>{copiedInviteId === 'modal-copy' ? 'Copied to Clipboard!' : 'Copy Magic Link to Share (WhatsApp / Slack)'}</span>
+                    <span>{copiedInviteId === 'modal-copy' ? 'Copied to Clipboard!' : 'Copy Magic Link'}</span>
                   </button>
                 </div>
 
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{ width: '100%', justifyContent: 'center', marginTop: '1rem' }}
-                  onClick={() => setShowInviteModal(false)}
-                >
-                  Done
-                </button>
+                {/* Social Share Buttons */}
+                <div style={{ marginTop: '1.25rem' }}>
+                  <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: '0.5rem' }}>
+                    Share directly via:
+                  </span>
+                  <div className="social-share-row">
+                    <a
+                      href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`Join our team on Markova OS as ${createdInviteResult.role_name || inviteRole}: ${createdInviteResult.inviteUrl}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="social-share-btn whatsapp"
+                    >
+                      <MessageSquare size={16} />
+                      <span>WhatsApp</span>
+                    </a>
+                    <a
+                      href={`https://t.me/share/url?url=${encodeURIComponent(createdInviteResult.inviteUrl)}&text=${encodeURIComponent(`Join our team on Markova OS as ${createdInviteResult.role_name || inviteRole}`)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="social-share-btn telegram"
+                    >
+                      <Send size={16} />
+                      <span>Telegram</span>
+                    </a>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
+                  <button
+                    type="button"
+                    className="btn-secondary"
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => setCreatedInviteResult(null)}
+                  >
+                    Invite Another
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ flex: 1, justifyContent: 'center' }}
+                    onClick={() => setShowInviteModal(false)}
+                  >
+                    Done
+                  </button>
+                </div>
               </div>
             ) : (
               <form onSubmit={handleSendInvite} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                <div>
-                  <label className="form-label" style={{ display: 'block', marginBottom: '0.4rem' }}>
-                    Email Address
-                  </label>
-                  <input
-                    type="email"
-                    className="search-input"
-                    placeholder="colleague@company.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    required
-                  />
+                {/* Invite Type Switcher Tabs */}
+                <div className="invite-type-tabs">
+                  <button
+                    type="button"
+                    className={`invite-type-btn ${inviteMethod === 'link' ? 'active' : ''}`}
+                    onClick={() => setInviteMethod('link')}
+                  >
+                    <Link2 size={16} />
+                    <span>Shareable Link</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`invite-type-btn ${inviteMethod === 'email' ? 'active' : ''}`}
+                    onClick={() => setInviteMethod('email')}
+                  >
+                    <Mail size={16} />
+                    <span>Email Invite</span>
+                  </button>
                 </div>
 
+                {inviteMethod === 'link' ? (
+                  <div className="shareable-link-info-box">
+                    <Link2 size={18} style={{ color: '#60a5fa', flexShrink: 0, marginTop: '2px' }} />
+                    <div>
+                      <strong style={{ color: '#ffffff', display: 'block', marginBottom: '0.2rem' }}>
+                        No email address required
+                      </strong>
+                      Generate a secure invite magic link to send via WhatsApp, Telegram, Slack, or SMS. When clicked, your teammate can choose their name and password to join.
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="form-label" style={{ display: 'block', marginBottom: '0.4rem' }}>
+                      Email Address
+                    </label>
+                    <input
+                      type="email"
+                      className="search-input"
+                      placeholder="colleague@company.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      required={inviteMethod === 'email'}
+                    />
+                  </div>
+                )}
+
+                {/* Assigned Role Section with Interactive Cards & Dropdown */}
                 <div>
-                  <label className="form-label" style={{ display: 'block', marginBottom: '0.4rem' }}>
-                    Assigned Role
-                  </label>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <label className="form-label" style={{ margin: 0 }}>
+                      Assigned Role
+                    </label>
+                    <span style={{ fontSize: '0.78rem', color: '#60a5fa' }}>
+                      Selected: <strong>{availableRoles.find(r => r.name === inviteRole)?.display_name || inviteRole}</strong>
+                    </span>
+                  </div>
+
+                  {/* Interactive Visual Cards for Top Roles */}
+                  <div className="modal-role-cards-grid">
+                    {availableRoles.slice(0, 5).map(r => {
+                      const isSelected = inviteRole === r.name;
+                      return (
+                        <div
+                          key={r.id}
+                          className={`modal-role-card ${isSelected ? 'selected' : ''}`}
+                          onClick={() => setInviteRole(r.name)}
+                          role="button"
+                          tabIndex={0}
+                        >
+                          <div className="modal-role-card-top">
+                            <span className="modal-role-card-name">{r.display_name || r.name}</span>
+                            {isSelected && <CheckCircle2 size={15} className="modal-role-card-check" />}
+                          </div>
+                          <p className="modal-role-card-desc">{r.description || 'Access level role'}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Fallback & Custom Roles Dropdown */}
                   <select
+                    className="styled-role-select"
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem 1rem',
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '10px',
-                      color: '#ffffff',
-                      fontSize: '0.92rem',
-                      outline: 'none'
-                    }}
+                    style={{ marginTop: '0.4rem' }}
                   >
-                    {roles
-                      .filter(r => {
-                        // User Decision 3 & Option A: Admin cannot invite Owner or roles with excess perms
-                        if (!isOwner && r.name === 'owner') return false;
-                        return true;
-                      })
-                      .map(r => (
-                        <option key={r.id} value={r.name}>
-                          {r.display_name || r.name} {r.is_system ? '(Built-in)' : '(Custom)'}
-                        </option>
-                      ))}
+                    {availableRoles.map(r => (
+                      <option key={r.id} value={r.name}>
+                        {r.display_name || r.name} {r.is_system ? '(System)' : '(Custom)'}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
+                {/* Department */}
                 <div>
                   <label className="form-label" style={{ display: 'block', marginBottom: '0.4rem' }}>
                     Department (Optional)
                   </label>
                   <select
+                    className="styled-role-select"
                     value={inviteDept}
                     onChange={(e) => setInviteDept(e.target.value)}
-                    style={{
-                      width: '100%',
-                      padding: '0.75rem 1rem',
-                      background: 'rgba(15, 23, 42, 0.6)',
-                      border: '1px solid rgba(255, 255, 255, 0.12)',
-                      borderRadius: '10px',
-                      color: '#ffffff',
-                      fontSize: '0.92rem',
-                      outline: 'none'
-                    }}
                   >
                     <option value="">No department (Unassigned)</option>
                     {departments.map(d => (
@@ -1253,7 +1418,19 @@ const TeamManagement = () => {
                     className="btn-primary"
                     disabled={actionLoading}
                   >
-                    {actionLoading ? 'Creating invite...' : 'Send Invitation'}
+                    {actionLoading ? (
+                      'Generating...'
+                    ) : inviteMethod === 'link' ? (
+                      <>
+                        <Link2 size={16} />
+                        <span>Generate Shareable Link</span>
+                      </>
+                    ) : (
+                      <>
+                        <Mail size={16} />
+                        <span>Send Invitation Email</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </form>
@@ -1275,33 +1452,51 @@ const TeamManagement = () => {
               </button>
             </div>
 
-            <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
+            <p style={{ color: '#94a3b8', fontSize: '0.9rem', marginBottom: '1.25rem' }}>
               Assign a new role to <strong>{selectedUserForRole.name}</strong> ({selectedUserForRole.email}).
             </p>
 
             <div style={{ marginBottom: '1.5rem' }}>
-              <label className="form-label" style={{ display: 'block', marginBottom: '0.5rem' }}>Select Role</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                <label className="form-label" style={{ margin: 0 }}>Select Role</label>
+                <span style={{ fontSize: '0.78rem', color: '#60a5fa' }}>
+                  Selected: <strong>{availableRoles.find(r => r.name === targetRoleId)?.display_name || targetRoleId}</strong>
+                </span>
+              </div>
+
+              {/* Role Cards Grid */}
+              <div className="modal-role-cards-grid">
+                {availableRoles.slice(0, 5).map(r => {
+                  const isSelected = targetRoleId === r.name;
+                  return (
+                    <div
+                      key={r.id}
+                      className={`modal-role-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => setTargetRoleId(r.name)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="modal-role-card-top">
+                        <span className="modal-role-card-name">{r.display_name || r.name}</span>
+                        {isSelected && <CheckCircle2 size={15} className="modal-role-card-check" />}
+                      </div>
+                      <p className="modal-role-card-desc">{r.description || 'Access level'}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
               <select
+                className="styled-role-select"
                 value={targetRoleId}
                 onChange={(e) => setTargetRoleId(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  background: 'rgba(15, 23, 42, 0.6)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderRadius: '10px',
-                  color: '#ffffff',
-                  fontSize: '0.92rem',
-                  outline: 'none'
-                }}
+                style={{ marginTop: '0.4rem' }}
               >
-                {roles
-                  .filter(r => isOwner || r.name !== 'owner')
-                  .map(r => (
-                    <option key={r.id} value={r.name}>
-                      {r.display_name || r.name} {r.is_system ? '(System)' : '(Custom)'}
-                    </option>
-                  ))}
+                {availableRoles.map(r => (
+                  <option key={r.id} value={r.name}>
+                    {r.display_name || r.name} {r.is_system ? '(System)' : '(Custom)'}
+                  </option>
+                ))}
               </select>
             </div>
 

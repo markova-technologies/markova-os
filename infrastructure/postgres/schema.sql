@@ -430,7 +430,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
 CREATE TABLE IF NOT EXISTS invitations (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     company_id UUID REFERENCES companies(id) ON DELETE CASCADE,
-    email VARCHAR(255) NOT NULL,
+    email VARCHAR(255),
     role_id UUID REFERENCES roles(id) ON DELETE SET NULL,
     role_name VARCHAR(50) NOT NULL,
     department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
