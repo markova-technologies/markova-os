@@ -100,9 +100,9 @@ await markova.testCall(agent.id, { to_number: '+251911000000' });`,
         <h3>Webhooks</h3>
         <p>Let an agent act on your systems mid-call, and verify what reaches you.</p>
       </DocsLink>
-      <DocsLink className="docs-card" to="/pricing">
-        <h3>Pricing</h3>
-        <p>Per-minute rates in birr, straight from the pricing endpoint. No sales call.</p>
+      <DocsLink className="docs-card" to="/sdks">
+        <h3>SDKs & Libraries</h3>
+        <p>Official client libraries and integration code for Node.js, Python, and Go.</p>
       </DocsLink>
     </div>
   </>

@@ -34,7 +34,6 @@ const NAV = [
   {
     title: 'Product',
     items: [
-      { to: '/pricing', label: 'Pricing' },
       { to: '/changelog', label: 'Changelog' },
     ],
   },
@@ -77,7 +76,6 @@ const DocsLayout = ({ children, wide = false }) => {
         <nav className="docs-topbar-links">
           <DocsNavLink to="/quickstart">Quickstart</DocsNavLink>
           <DocsNavLink to="/api">API</DocsNavLink>
-          <DocsNavLink to="/pricing">Pricing</DocsNavLink>
           <a className="docs-cta" href={dashboardHref}>
             {base ? 'Back to Markova' : 'Open dashboard'} <ExternalLink size={13} />
           </a>

@@ -465,7 +465,11 @@
 
 /* ── API reference ─────────────────────────────────────────────────────── */
 
-.redoc-host { min-height: 100vh; background: var(--bg-main); }
+.redoc-host {
+  min-height: 100vh;
+  background: #ffffff;
+  color: #0f172a;
+}
 
 .redoc-topbar {
   display: flex;
@@ -473,21 +477,22 @@
   justify-content: space-between;
   height: 52px;
   padding: 0 1.5rem;
-  background: rgba(10, 10, 10, 0.95);
-  border-bottom: 1px solid var(--border-main);
+  background: #09090b;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 100;
 }
 
 .redoc-topbar a {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  color: var(--text-muted);
+  color: #a1a1aa;
   text-decoration: none;
   font-size: 0.82rem;
   font-weight: 500;
+  transition: color 0.15s ease;
 }
 
 .redoc-topbar a:hover { color: #ffffff; }
@@ -495,7 +500,8 @@
 .redoc-fallback {
   padding: 3rem 2.5rem;
   max-width: 720px;
-  background: var(--bg-main);
+  background: #09090b;
+  color: #f4f4f5;
   min-height: calc(100vh - 52px);
 }
 

@@ -4,6 +4,21 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-19] Production-Grade Redoc API Reference Contrast & Sticky Header Offset
+- **Error/Problem:**
+  - In the documentation portal, clicking "API" to view the OpenAPI reference previously rendered low-contrast dark text over a black background (`var(--bg-main)`), making endpoints and schema models unreadable.
+  - Sticky code snippets and Redoc active navigation headers collided with the top sticky navigation bar (`52px`).
+  - The documentation navigation included a redundant "Pricing" link, duplicating the pricing section already featured on the landing page.
+- **How it Happened:**
+  - In `apps/docs/src/styles/docs.css`, `.redoc-host` had inherited dark theme background (`#0a0a0a`) while Redoc's typography tokens defaulted to deep slate (`#12172b`), causing dark-on-dark invisible text in the middle parameters column.
+  - `window.Redoc.init` was missing `scrollYOffset: 52` to account for the fixed header height.
+  - The public `openapi.yaml` in `apps/client-dashboard` had drifted from the root canonical specification.
+- **Lesson Learned:**
+  1. For 3-column API references (Redoc/Stripe model), wrap `.redoc-host` with an explicit `#ffffff` canvas with high-contrast text (`#0f172a` primary, `#475569` secondary) and dark code blocks (`#18181b`) on the right.
+  2. Always configure `scrollYOffset: 52` (or matching topbar height) in `Redoc.init` so active section detection and sticky code samples do not clip beneath fixed headers.
+  3. Keep the documentation topbar and sidebar streamlined by directing users to core guides, SDKs, and the interactive API reference, removing redundant marketing links like Pricing when already accessible on the root domain.
+
+
 ### [2026-09-19] Documentation Page: Embedding Native DocsApp with Waveform UI
 - **Error/Problem:**
   - Clicking "Documentation" in the landing page or public navigation bar previously either triggered a reload loop or failed to display the original Markova documentation experience shown in production designs.

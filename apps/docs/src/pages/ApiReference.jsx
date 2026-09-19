@@ -17,26 +17,49 @@ const ApiReference = () => {
 
     const render = () => {
       if (cancelled || !hostRef.current || !window.Redoc) return
-      window.Redoc.init(
-        '/openapi.yaml',
-        {
-          theme: {
-            colors: {
-              primary: { main: '#e8a33d' },
-              text: { primary: '#12172b' },
+      try {
+        window.Redoc.init(
+          '/openapi.yaml',
+          {
+            scrollYOffset: 52,
+            hideDownloadButton: false,
+            expandResponses: '200,201',
+            requiredPropsFirst: true,
+            sortPropsAlphabetically: true,
+            nativeScrollbars: true,
+            theme: {
+              colors: {
+                primary: { main: '#e8a33d' },
+                text: { primary: '#0f172a', secondary: '#475569' },
+                http: {
+                  get: '#16a34a',
+                  post: '#2563eb',
+                  put: '#d97706',
+                  delete: '#dc2626',
+                },
+              },
+              typography: {
+                fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+                headings: { fontFamily: "'Space Grotesk', 'Inter', sans-serif", fontWeight: '700' },
+                code: { fontFamily: "'JetBrains Mono', ui-monospace, monospace" },
+              },
+              sidebar: {
+                backgroundColor: '#f8fafc',
+                textColor: '#334155',
+                activeTextColor: '#0f172a',
+              },
+              rightPanel: {
+                backgroundColor: '#18181b',
+                textColor: '#ffffff',
+              },
             },
-            typography: {
-              fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-              headings: { fontFamily: "'Space Grotesk', 'Inter', sans-serif" },
-              code: { fontFamily: "'JetBrains Mono', ui-monospace, monospace" },
-            },
-            sidebar: { backgroundColor: '#f5f6f3' },
           },
-          hideDownloadButton: false,
-          expandResponses: '200,201',
-        },
-        hostRef.current,
-      )
+          hostRef.current,
+        )
+      } catch (err) {
+        console.error('Failed to init Redoc:', err)
+        if (!cancelled) setFailed(true)
+      }
     }
 
     if (window.Redoc) {
@@ -47,16 +70,20 @@ const ApiReference = () => {
     }
 
     const existing = document.querySelector(`script[src="${REDOC_SRC}"]`)
-    const script = existing || document.createElement('script')
-    script.src = REDOC_SRC
-    script.async = true
-    script.addEventListener('load', render)
-    script.addEventListener('error', () => !cancelled && setFailed(true))
-    if (!existing) document.body.appendChild(script)
+    if (existing) {
+      existing.addEventListener('load', render)
+      existing.addEventListener('error', () => !cancelled && setFailed(true))
+    } else {
+      const script = document.createElement('script')
+      script.src = REDOC_SRC
+      script.async = true
+      script.addEventListener('load', render)
+      script.addEventListener('error', () => !cancelled && setFailed(true))
+      document.body.appendChild(script)
+    }
 
     return () => {
       cancelled = true
-      script.removeEventListener('load', render)
     }
   }, [])
 

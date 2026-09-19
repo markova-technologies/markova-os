@@ -98,7 +98,7 @@ const Environments = () => (
 
     <NextLinks
       links={[
-        { to: '/pricing', label: 'What live calls cost' },
+        { to: '/api', label: 'API Reference' },
         { to: '/concepts/numbers', label: 'Numbers' },
       ]}
     />
