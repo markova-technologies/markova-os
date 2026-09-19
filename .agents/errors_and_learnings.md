@@ -4,6 +4,17 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-19] Documentation Page Infinite Reload Loop & Placeholder Stub Resolution
+- **Error/Problem:**
+  - Clicking "Documentation" in the landing page or public navigation bar failed to load documentation, resulting in a browser reload loop or freeze on "Redirecting to API Documentation...".
+- **How it Happened:**
+  - `DocsSite.jsx` was implemented as a minimal 12-line placeholder that executed `useEffect(() => { window.location.href = '/docs' }, [])`.
+  - Because `ROUTES.docs` in `site.js` is `/docs`, navigating to `/docs` triggered `DocsSite` to tell the browser to reload `/docs`, trapping the user in an infinite self-referential reload loop. Furthermore, on Vercel (`markova-os.vercel.app`), the frontend is a standalone React SPA, so `/docs` does not host an Express/NestJS Swagger UI.
+- **Lesson Learned:**
+  1. Never write `window.location.href = '/path'` inside a component that is mounted on `/path`. It causes an immediate infinite self-referential refresh loop.
+  2. Public SaaS documentation links must provide an interactive, comprehensive in-app Developer & API Documentation Portal with code recipes, architecture diagrams, and REST endpoints directly inside the web application, with clear external links pointing to the live Swagger/OpenAPI explorer.
+
+
 ### [2026-09-19] API Gateway RS256 Token Verification Mismatch Causing Instant Logout for Invited Users
 - **Error/Problem:**
   - After invited employees activated their account via an invitation link, set their password, and were redirected to `/app`, they were instantly logged out and kicked back to `/login`.
