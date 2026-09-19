@@ -4,6 +4,18 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-19] Redoc Search Bar Detached Icon & Dynamic 80px Scroll Clearance
+- **Error/Problem:**
+  - The search bar in the API reference rendered with its magnifying glass icon detached and floating loosely on its own line above the search input.
+  - Clicking operations in the sidebar (such as `PUT /v1/agents/{id}`) left the endpoint header and request body partially obscured beneath the sticky topbar.
+- **How it Happened:**
+  - Setting `position: static !important` on `.search-icon` broke it out of its inline overlay positioning, turning it into a normal block element above `input.search-input`. Because Redoc's search wrapper div lacks `position: relative` by default, the icon could not anchor properly.
+  - Passing `scrollYOffset: '.redoc-topbar'` caused Redoc to query the element's bounding rect at script execution time before final render, which could evaluate to 0 or insufficient offset on dynamic route transitions.
+- **Lesson Learned:**
+  1. For third-party search inputs with absolute icons, explicitly set `position: relative !important` on the input wrapper (`div:has(> .search-input)`) and nest the icon with `position: absolute !important; left: 10px; top: 50%; transform: translateY(-50%)`, while providing `padding-left: 32px` on the input. This ensures a crisp, integrated search pill.
+  2. Always pass a dynamic function for `scrollYOffset: () => (topbar ? topbar.offsetHeight : 52) + 28` alongside CSS `scroll-margin-top: 80px !important`, ensuring that both Redoc's programmatic scrolling and browser-native anchor navigation maintain generous clearance below sticky topbars.
+
+
 ### [2026-09-19] Global CSS Selector Leakage on Redoc Search Icon & OpenAPI Schema Structure Fix
 - **Error/Problem:**
   - In the API reference portal, a magnifying glass icon was erroneously rendered floating at 50% height of the sidebar, directly overlapping the "Knowledge" menu item.

@@ -21,7 +21,10 @@ const ApiReference = () => {
         window.Redoc.init(
           '/openapi.yaml',
           {
-            scrollYOffset: '.redoc-topbar',
+            scrollYOffset: () => {
+              const topbar = document.querySelector('.redoc-topbar');
+              return (topbar ? topbar.offsetHeight : 52) + 28;
+            },
             hideDownloadButton: true,
             expandResponses: '200,201',
             requiredPropsFirst: true,
