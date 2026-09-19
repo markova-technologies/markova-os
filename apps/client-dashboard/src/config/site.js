@@ -28,6 +28,8 @@ export const ROUTES = {
   notifications: '/app/notifications',
   team: '/app/team',
   acceptInvite: '/accept-invite',
+  workspace: '/workspace/:slug',
+  workspaceInvite: '/workspace/:slug/accept-invite',
   /** In-app invoices / plan management (after login) */
   billing: '/app/billing',
 }

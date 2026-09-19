@@ -247,6 +247,50 @@ async function ensureRbacTables(client) {
   }
 }
 
+function slugify(text) {
+  if (!text) return 'workspace';
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .substring(0, 60) || 'workspace';
+}
+
+async function ensureWorkspaceSchema(client) {
+  try {
+    await client.query(`
+      ALTER TABLE companies 
+        ADD COLUMN IF NOT EXISTS slug VARCHAR(63),
+        ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_companies_slug ON companies(slug);
+    `);
+
+    // Backfill null or empty slugs for existing companies
+    const unslugged = await client.query("SELECT id, name FROM companies WHERE slug IS NULL OR slug = ''");
+    for (const row of unslugged.rows) {
+      const baseSlug = slugify(row.name);
+      let candidateSlug = baseSlug;
+      let counter = 2;
+      while (true) {
+        const check = await client.query(
+          "SELECT id FROM companies WHERE slug = $1 AND id <> $2",
+          [candidateSlug, row.id]
+        );
+        if (check.rows.length === 0) break;
+        candidateSlug = `${baseSlug}-${counter}`;
+        counter++;
+      }
+      await client.query("UPDATE companies SET slug = $1 WHERE id = $2", [candidateSlug, row.id]);
+    }
+    console.log('✅ Company workspace slug schema verified and backfilled');
+  } catch (err) {
+    console.warn('⚠️ Workspace schema initialization notice:', err.message);
+  }
+}
+
 async function initializeServices(retries = 10, delay = 3000) {
   let dbConnected = false;
   for (let i = 0; i < retries; i++) {
@@ -254,6 +298,7 @@ async function initializeServices(retries = 10, delay = 3000) {
       const client = await pool.connect();
       try {
         await ensureRbacTables(client);
+        await ensureWorkspaceSchema(client);
       } finally {
         client.release();
       }
@@ -315,10 +360,20 @@ app.post(
       return res.status(409).json({ error: 'Email is already registered' });
     }
 
-    // 1. Create Company
+    // 1. Create Company with unique workspace slug
+    let baseSlug = slugify(companyName);
+    let finalSlug = baseSlug;
+    let counter = 2;
+    while (true) {
+      const slugCheck = await client.query('SELECT id FROM companies WHERE slug = $1', [finalSlug]);
+      if (slugCheck.rows.length === 0) break;
+      finalSlug = `${baseSlug}-${counter}`;
+      counter++;
+    }
+
     const companyRes = await client.query(
-      'INSERT INTO companies (name) VALUES ($1) RETURNING id',
-      [companyName]
+      'INSERT INTO companies (name, slug) VALUES ($1, $2) RETURNING id, name, slug, logo_url',
+      [companyName, finalSlug]
     );
     const companyId = companyRes.rows[0].id;
 
@@ -381,7 +436,16 @@ app.post(
     );
 
     await client.query('COMMIT');
-    res.status(201).json({ success: true, user: { ...user, company_id: companyId } });
+    res.status(201).json({ 
+      success: true, 
+      user: { 
+        ...user, 
+        company_id: companyId,
+        company_name: companyName,
+        company_slug: finalSlug,
+        company_logo: null
+      } 
+    });
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('Registration Error:', error);
@@ -436,8 +500,9 @@ app.post(
     // Successful login - clear failed attempts
     await redisClient.del(rateLimitKey);
 
-    const companyRes = await pool.query('SELECT plan FROM companies WHERE id = $1', [user.company_id]);
-    const plan = companyRes.rows[0] ? companyRes.rows[0].plan : 'starter';
+    const companyRes = await pool.query('SELECT id, name, slug, logo_url, plan FROM companies WHERE id = $1', [user.company_id]);
+    const company = companyRes.rows[0] || {};
+    const plan = company.plan || 'starter';
 
     // Fetch permissions
     const permRes = await pool.query(`
@@ -506,6 +571,9 @@ app.post(
     const userPayload = {
       id: user.id,
       company_id: user.company_id,
+      company_name: company.name || 'Markova OS',
+      company_slug: company.slug,
+      company_logo: company.logo_url,
       name: user.name,
       email: user.email,
       role: user.role
@@ -815,7 +883,8 @@ app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
     }
 
     const userRes = await pool.query(
-      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.status, c.name AS company_name, c.plan
+      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.status, 
+              c.name AS company_name, c.slug AS company_slug, c.logo_url AS company_logo, c.plan
        FROM users u
        JOIN companies c ON c.id = u.company_id
        WHERE u.id = $1`,
@@ -831,6 +900,8 @@ app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
       id: row.id,
       company_id: row.company_id,
       company_name: row.company_name,
+      company_slug: row.company_slug,
+      company_logo: row.company_logo,
       name: row.name,
       email: row.email,
       role: row.role,
@@ -1075,11 +1146,17 @@ app.get(['/api/auth/users', '/v1/users'], authenticateUser, requirePermission('u
       ORDER BY i.created_at DESC
     `, [companyId]);
 
-    // Construct client URL for invites
+    // Fetch company slug
+    const compSlugRes = await pool.query('SELECT slug FROM companies WHERE id = $1', [companyId]);
+    const companySlug = compSlugRes.rows[0]?.slug;
+
+    // Construct client URL for invites (workspace-scoped)
     const baseUrl = process.env.CLIENT_DASHBOARD_URL || req.headers.origin || 'http://localhost:5173';
     const invitations = invitesRes.rows.map(inv => ({
       ...inv,
-      invite_url: `${baseUrl}/accept-invite?token=${inv.token}`
+      invite_url: companySlug 
+        ? `${baseUrl}/workspace/${companySlug}/accept-invite?token=${inv.token}`
+        : `${baseUrl}/accept-invite?token=${inv.token}`
     }));
 
     res.json({
@@ -1160,9 +1237,10 @@ app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requi
     const roleId = roleRes.rows[0] ? roleRes.rows[0].id : null;
     const roleDisplayName = roleRes.rows[0] ? (roleRes.rows[0].display_name || roleRes.rows[0].name) : role;
 
-    // Fetch company name
-    const compRes = await pool.query('SELECT name FROM companies WHERE id = $1', [companyId]);
+    // Fetch company name & workspace slug
+    const compRes = await pool.query('SELECT name, slug FROM companies WHERE id = $1', [companyId]);
     const companyName = compRes.rows[0] ? compRes.rows[0].name : 'Markova OS';
+    const companySlug = compRes.rows[0] ? compRes.rows[0].slug : null;
 
     // Invalidate any existing pending invites for this email
     if (normalizedEmail) {
@@ -1185,9 +1263,11 @@ app.post(['/api/auth/users/invite', '/v1/users/invite'], authenticateUser, requi
 
     const invitation = invRes.rows[0];
 
-    // Build invite magic link
+    // Build invite magic link (scoped to workspace if slug exists)
     const baseUrl = process.env.CLIENT_DASHBOARD_URL || req.headers.origin || 'http://localhost:5173';
-    const inviteUrl = `${baseUrl}/accept-invite?token=${token}`;
+    const inviteUrl = companySlug
+      ? `${baseUrl}/workspace/${companySlug}/accept-invite?token=${token}`
+      : `${baseUrl}/accept-invite?token=${token}`;
 
     let emailResult = { skipped: true, reason: isLinkInvite ? 'Shareable link invitation' : 'No email provided' };
     if (!isLinkInvite && normalizedEmail) {
@@ -1236,6 +1316,8 @@ app.get(['/api/auth/invitations/verify/:token', '/v1/invitations/verify/:token']
       SELECT 
         i.id, i.email, i.role_name, i.company_id, i.expires_at, i.status,
         c.name AS company_name,
+        c.slug AS company_slug,
+        c.logo_url AS company_logo,
         d.name AS department_name,
         r.display_name AS role_display_name
       FROM invitations i
@@ -1264,6 +1346,8 @@ app.get(['/api/auth/invitations/verify/:token', '/v1/invitations/verify/:token']
       invitation: {
         email: invitation.email,
         companyName: invitation.company_name,
+        companySlug: invitation.company_slug,
+        companyLogo: invitation.company_logo,
         role: invitation.role_name,
         roleDisplayName: invitation.role_display_name || invitation.role_name,
         departmentName: invitation.department_name,
@@ -1306,7 +1390,7 @@ app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (re
 
     // 1. Find and lock the invitation
     const invRes = await client.query(`
-      SELECT i.*, c.plan, c.name as company_name
+      SELECT i.*, c.plan, c.name as company_name, c.slug as company_slug, c.logo_url as company_logo
       FROM invitations i
       JOIN companies c ON i.company_id = c.id
       WHERE i.token = $1 FOR UPDATE
@@ -1453,6 +1537,9 @@ app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (re
       user: {
         id: user.id,
         company_id: user.company_id,
+        company_name: invitation.company_name,
+        company_slug: invitation.company_slug,
+        company_logo: invitation.company_logo,
         name: user.name,
         email: user.email,
         role: user.role
@@ -1997,6 +2084,294 @@ app.delete(['/api/auth/sessions/:id', '/v1/sessions/:id'], authenticateUser, asy
   }
 });
 
+// ============================================================================
+// WORKSPACE SCOPED DOMAIN & LOGIN SYSTEM
+// ============================================================================
+
+// 1. Resolve Workspace Metadata by Slug (Public)
+app.get(['/api/workspace/:slug', '/v1/workspace/:slug'], async (req, res) => {
+  const { slug } = req.params;
+  if (!slug) {
+    return res.status(400).json({ error: 'Workspace slug is required' });
+  }
+
+  try {
+    const cleanSlug = slug.trim().toLowerCase();
+    const result = await pool.query(
+      'SELECT id, name, slug, logo_url, status FROM companies WHERE LOWER(slug) = LOWER($1) LIMIT 1',
+      [cleanSlug]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Workspace not found' });
+    }
+
+    const company = result.rows[0];
+    if (company.status && company.status !== 'active') {
+      return res.status(403).json({ error: 'This organization workspace is suspended or inactive' });
+    }
+
+    res.json({
+      success: true,
+      workspace: {
+        id: company.id,
+        name: company.name,
+        slug: company.slug,
+        logo_url: company.logo_url
+      }
+    });
+  } catch (err) {
+    console.error('Error resolving workspace by slug:', err);
+    res.status(500).json({ error: 'Failed to resolve workspace' });
+  }
+});
+
+// 2. Company-Scoped Workspace Login (Public)
+app.post(['/api/auth/workspace-login', '/v1/auth/workspace-login'], async (req, res) => {
+  const { slug, email, password } = req.body;
+
+  if (!slug || !email || !password) {
+    return res.status(400).json({ error: 'Workspace slug, email, and password are required' });
+  }
+
+  const cleanSlug = slug.trim().toLowerCase();
+  const cleanEmail = email.trim().toLowerCase();
+
+  try {
+    // 1. Resolve company by slug
+    const companyRes = await pool.query(
+      'SELECT id, name, slug, logo_url, plan, status FROM companies WHERE LOWER(slug) = LOWER($1) LIMIT 1',
+      [cleanSlug]
+    );
+
+    if (companyRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Workspace not found. Please verify your workspace link.' });
+    }
+
+    const company = companyRes.rows[0];
+    if (company.status && company.status !== 'active') {
+      return res.status(403).json({ error: 'This workspace is currently suspended.' });
+    }
+
+    // Rate limiting
+    const rateLimitKey = `login_attempts:${cleanEmail}`;
+    try {
+      const attempts = await redisClient.get(rateLimitKey);
+      if (attempts && parseInt(attempts, 10) >= 5) {
+        return res.status(429).json({ error: 'Too many failed login attempts. Please try again in 15 minutes.' });
+      }
+    } catch (e) {}
+
+    // 2. Find user by email
+    const userRes = await pool.query(
+      'SELECT id, company_id, name, email, password_hash, role, status FROM users WHERE LOWER(email) = LOWER($1)',
+      [cleanEmail]
+    );
+
+    if (userRes.rows.length === 0) {
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    const user = userRes.rows[0];
+
+    // 3. CROSS-ORG ISOLATION CHECK: Verify user belongs to this specific company!
+    if (user.company_id !== company.id) {
+      return res.status(403).json({
+        error: `Your account is not linked to the ${company.name} workspace. Check your workspace link or contact your administrator.`,
+        code: 'CROSS_ORG_ACCESS_DENIED'
+      });
+    }
+
+    if (user.status !== 'active') {
+      return res.status(403).json({ error: 'Your account is deactivated. Please contact your organization administrator.' });
+    }
+
+    // 4. Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password_hash);
+    if (!isValidPassword) {
+      try {
+        await redisClient.incr(rateLimitKey);
+        await redisClient.expire(rateLimitKey, 15 * 60);
+      } catch (e) {}
+      return res.status(401).json({ error: 'Invalid email or password' });
+    }
+
+    // Clear failed attempts
+    try {
+      await redisClient.del(rateLimitKey);
+    } catch (e) {}
+
+    // 5. Fetch permissions
+    const permRes = await pool.query(`
+      SELECT p.action 
+      FROM permissions p
+      JOIN role_permissions rp ON p.id = rp.permission_id
+      JOIN user_roles ur ON rp.role_id = ur.role_id
+      WHERE ur.user_id = $1
+    `, [user.id]);
+    let permissions = permRes.rows.map(r => r.action);
+
+    if (permissions.length === 0 && user.role) {
+      const fallbackPermRes = await pool.query(`
+        SELECT p.action
+        FROM permissions p
+        JOIN role_permissions rp ON p.id = rp.permission_id
+        JOIN roles r ON rp.role_id = r.id
+        WHERE LOWER(r.name) = LOWER($1) AND (r.company_id = $2 OR r.company_id IS NULL)
+      `, [user.role, company.id]);
+      permissions = fallbackPermRes.rows.map(r => r.action);
+    }
+
+    if ((user.role || '').toLowerCase() === 'owner' || (user.role || '').toLowerCase() === 'superadmin') {
+      if (!permissions.includes('*')) permissions.unshift('*');
+    }
+
+    // 6. Create Session
+    const sessionId = uuidv4();
+    const deviceInfo = { userAgent: req.headers['user-agent'] };
+    const ipAddress = req.ip || req.headers['x-forwarded-for'] || '127.0.0.1';
+    const refreshToken = crypto.randomBytes(40).toString('hex');
+    const refreshExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+    await pool.query(
+      `INSERT INTO sessions (id, user_id, company_id, device_info, ip_address, expires_at, refresh_token)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [sessionId, user.id, user.company_id, deviceInfo, ipAddress, refreshExpiresAt.toISOString(), refreshToken]
+    );
+
+    // 7. Sign RS256 JWT
+    const token = jwt.sign(
+      {
+        userId: user.id,
+        companyId: user.company_id,
+        companySlug: company.slug,
+        name: user.name,
+        role: user.role,
+        sessionId,
+        permissions,
+        subscriptionPlan: company.plan || 'starter'
+      },
+      PRIVATE_KEY,
+      { algorithm: 'RS256', expiresIn: '1h' }
+    );
+
+    // 8. Audit Log
+    await pool.query(
+      `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [user.company_id, user.id, 'WORKSPACE_LOGIN', 'user', user.id]
+    );
+
+    res.json({
+      success: true,
+      token,
+      refreshToken,
+      user: {
+        id: user.id,
+        company_id: user.company_id,
+        company_name: company.name,
+        company_slug: company.slug,
+        company_logo: company.logo_url,
+        name: user.name,
+        email: user.email,
+        role: user.role
+      },
+      permissions
+    });
+  } catch (error) {
+    console.error('Workspace Login Error:', error);
+    res.status(500).json({ error: 'Internal Server Error during workspace login' });
+  }
+});
+
+// 3. Update Workspace Slug (Authenticated, Owner/Admin only)
+app.patch(['/api/auth/workspace/slug', '/v1/workspace/slug'], authenticateUser, async (req, res) => {
+  const currentRole = (req.user.role || '').toLowerCase();
+  if (currentRole !== 'owner' && currentRole !== 'admin' && currentRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Only organization owners or administrators can change the workspace URL' });
+  }
+
+  const { slug } = req.body;
+  if (!slug || typeof slug !== 'string') {
+    return res.status(400).json({ error: 'Valid workspace slug is required' });
+  }
+
+  const cleanSlug = slugify(slug);
+  const slugRegex = /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/;
+  if (!slugRegex.test(cleanSlug)) {
+    return res.status(400).json({
+      error: 'Workspace slug must be between 3 and 63 characters and contain only lowercase letters, numbers, and hyphens (cannot start or end with a hyphen)'
+    });
+  }
+
+  try {
+    // Check if another company uses this slug
+    const conflictRes = await pool.query(
+      'SELECT id FROM companies WHERE LOWER(slug) = LOWER($1) AND id <> $2',
+      [cleanSlug, req.user.companyId]
+    );
+    if (conflictRes.rows.length > 0) {
+      return res.status(409).json({ error: 'This workspace URL slug is already taken. Please choose another.' });
+    }
+
+    const updateRes = await pool.query(
+      'UPDATE companies SET slug = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, slug, logo_url',
+      [cleanSlug, req.user.companyId]
+    );
+
+    // Audit log
+    await pool.query(
+      `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, new_value)
+       VALUES ($1, $2, 'WORKSPACE_SLUG_UPDATED', 'company', $3, $4)`,
+      [req.user.companyId, req.user.userId, req.user.companyId, JSON.stringify({ slug: cleanSlug })]
+    );
+
+    res.json({
+      success: true,
+      message: 'Workspace URL updated successfully',
+      workspace: updateRes.rows[0]
+    });
+  } catch (err) {
+    console.error('Error updating workspace slug:', err);
+    res.status(500).json({ error: 'Failed to update workspace slug' });
+  }
+});
+
+// 4. Update Workspace Logo (Authenticated, Owner/Admin only)
+app.patch(['/api/auth/workspace/logo', '/v1/workspace/logo'], authenticateUser, async (req, res) => {
+  const currentRole = (req.user.role || '').toLowerCase();
+  if (currentRole !== 'owner' && currentRole !== 'admin' && currentRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Only organization owners or administrators can change the company logo' });
+  }
+
+  const { logoUrl } = req.body;
+  if (logoUrl !== null && typeof logoUrl !== 'string') {
+    return res.status(400).json({ error: 'logoUrl must be a valid URL string or null' });
+  }
+
+  try {
+    const updateRes = await pool.query(
+      'UPDATE companies SET logo_url = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id, name, slug, logo_url',
+      [logoUrl ? logoUrl.trim() : null, req.user.companyId]
+    );
+
+    await pool.query(
+      `INSERT INTO audit_logs (company_id, user_id, action, entity_type, entity_id, new_value)
+       VALUES ($1, $2, 'WORKSPACE_LOGO_UPDATED', 'company', $3, $4)`,
+      [req.user.companyId, req.user.userId, req.user.companyId, JSON.stringify({ logoUrl })]
+    );
+
+    res.json({
+      success: true,
+      message: 'Workspace logo updated successfully',
+      workspace: updateRes.rows[0]
+    });
+  } catch (err) {
+    console.error('Error updating workspace logo:', err);
+    res.status(500).json({ error: 'Failed to update workspace logo' });
+  }
+});
+
 // Check Server Health
 app.get('/health', (req, res) => {
   res.json({ status: 'OK', service: 'auth-service' });
@@ -2005,3 +2380,4 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`🚀 Auth Service listening on port ${PORT}`);
 });
+

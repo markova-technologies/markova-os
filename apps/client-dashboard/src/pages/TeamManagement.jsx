@@ -246,7 +246,7 @@ const TeamManagement = () => {
           if (inv.emailDelivery?.sent) {
             addToast(`Invitation email dispatched to ${inviteEmail}`, 'success');
           } else {
-            addToast(`Invite created! Email provider not configured on server — please copy magic link.`, 'warning');
+            addToast(`Invitation link generated! Copy the magic link below to share directly.`, 'success');
           }
         } else {
           addToast('Shareable invitation link generated successfully!', 'success');
@@ -1229,15 +1229,15 @@ const TeamManagement = () => {
                             display: 'inline-flex',
                             alignItems: 'center',
                             gap: '0.4rem',
-                            background: 'rgba(245, 158, 11, 0.1)',
-                            border: '1px solid rgba(245, 158, 11, 0.3)',
-                            padding: '0.35rem 0.75rem',
-                            borderRadius: '6px',
-                            color: '#fbbf24',
-                            fontSize: '0.8rem',
+                            background: 'rgba(59, 130, 246, 0.1)',
+                            border: '1px solid rgba(59, 130, 246, 0.25)',
+                            padding: '0.4rem 0.8rem',
+                            borderRadius: '8px',
+                            color: '#93c5fd',
+                            fontSize: '0.82rem',
                             textAlign: 'left'
                           }}>
-                            <span>⚠️ Email service is not configured on the server. Please copy and share the magic link below directly with your colleague.</span>
+                            <span>✨ Invitation link ready. You can copy the magic link below directly to share with your colleague via chat or message.</span>
                           </div>
                         </div>
                       )

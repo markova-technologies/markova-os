@@ -18,11 +18,17 @@ import {
   UserCircle,
   Loader2,
   Eye,
-  EyeOff
+  EyeOff,
+  Globe,
+  Copy,
+  Check,
+  ExternalLink,
+  Edit3
 } from 'lucide-react'
 import { useToast } from '../contexts/ToastContext'
+import { useAuth } from '../contexts/AuthContext'
 import './Settings.css'
-import api from '../api/client'
+import api, { updateWorkspaceSlug, updateWorkspaceLogo } from '../api/client'
 
 const Settings = () => {
   const location = useLocation()
@@ -96,6 +102,74 @@ const Settings = () => {
 
   const [isLoadingProviders, setIsLoadingProviders] = useState(false)
   const [showKeys, setShowKeys] = useState({})
+
+  // Workspace slug and logo state
+  const { user, isOwner, isAdmin } = useAuth()
+  const [workspaceSlug, setWorkspaceSlug] = useState('')
+  const [editingSlug, setEditingSlug] = useState(false)
+  const [slugInput, setSlugInput] = useState('')
+  const [savingSlug, setSavingSlug] = useState(false)
+  const [copiedWorkspaceUrl, setCopiedWorkspaceUrl] = useState(false)
+  const [logoUrl, setLogoUrl] = useState('')
+  const [savingLogo, setSavingLogo] = useState(false)
+
+  useEffect(() => {
+    try {
+      const rawUser = JSON.parse(localStorage.getItem('user') || '{}')
+      const slug = user?.company_slug || user?.companySlug || rawUser.company_slug || rawUser.companySlug || ''
+      const logo = user?.company_logo || user?.companyLogo || rawUser.company_logo || rawUser.companyLogo || ''
+      if (slug) {
+        setWorkspaceSlug(slug)
+        setSlugInput(slug)
+      }
+      if (logo) {
+        setLogoUrl(logo)
+      }
+    } catch (e) {}
+  }, [user])
+
+  const handleSaveSlug = async () => {
+    if (!slugInput.trim()) return
+    setSavingSlug(true)
+    try {
+      const res = await updateWorkspaceSlug(slugInput.trim())
+      if (res.data?.workspace?.slug) {
+        setWorkspaceSlug(res.data.workspace.slug)
+        setEditingSlug(false)
+        const rawUser = JSON.parse(localStorage.getItem('user') || '{}')
+        rawUser.company_slug = res.data.workspace.slug
+        localStorage.setItem('user', JSON.stringify(rawUser))
+        success('Workspace URL updated successfully!', 'Saved')
+      }
+    } catch (err) {
+      showError(err.response?.data?.error || 'Failed to update workspace URL slug')
+    } finally {
+      setSavingSlug(false)
+    }
+  }
+
+  const handleSaveLogo = async () => {
+    setSavingLogo(true)
+    try {
+      await updateWorkspaceLogo(logoUrl.trim() || null)
+      const rawUser = JSON.parse(localStorage.getItem('user') || '{}')
+      rawUser.company_logo = logoUrl.trim() || null
+      localStorage.setItem('user', JSON.stringify(rawUser))
+      success('Company logo updated successfully!', 'Saved')
+    } catch (err) {
+      showError(err.response?.data?.error || 'Failed to update company logo')
+    } finally {
+      setSavingLogo(false)
+    }
+  }
+
+  const handleCopyWorkspaceUrl = () => {
+    const fullUrl = `${window.location.origin}/workspace/${workspaceSlug || 'workspace'}`
+    navigator.clipboard.writeText(fullUrl)
+    setCopiedWorkspaceUrl(true)
+    setTimeout(() => setCopiedWorkspaceUrl(false), 2000)
+    success('Workspace URL copied to clipboard')
+  }
 
   // Load saved profile from API or localStorage
   useEffect(() => {
@@ -300,6 +374,186 @@ const Settings = () => {
             <option value="French">French</option>
             <option value="Arabic">Arabic</option>
           </select>
+        </div>
+      </div>
+
+      {/* Organization Workspace URL & Branding */}
+      <div style={{ marginTop: '2.5rem', paddingTop: '1.5rem', borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+          <div>
+            <h4 style={{ fontSize: '1.05rem', color: '#f1f5f9', margin: '0 0 0.25rem' }}>Organization Workspace URL & Scoped Access</h4>
+            <p style={{ color: 'var(--gray)', fontSize: '0.85rem', margin: 0 }}>
+              Your employees and team members access their company-branded portal through this unique entry link.
+            </p>
+          </div>
+          <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '0.2rem 0.5rem', borderRadius: '4px', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+            Markova OS Scoped
+          </span>
+        </div>
+
+        {/* Live Workspace URL Banner */}
+        <div style={{
+          background: 'rgba(15, 23, 42, 0.65)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          marginTop: '1rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <Globe size={18} style={{ color: '#60a5fa' }} />
+              <span style={{ fontFamily: 'monospace', fontSize: '0.92rem', color: '#f8fafc', wordBreak: 'break-all' }}>
+                {window.location.origin}/workspace/<strong style={{ color: '#38bdf8' }}>{workspaceSlug || 'workspace'}</strong>
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                onClick={handleCopyWorkspaceUrl}
+              >
+                {copiedWorkspaceUrl ? <Check size={14} style={{ color: '#10b981' }} /> : <Copy size={14} />}
+                <span>{copiedWorkspaceUrl ? 'Copied' : 'Copy URL'}</span>
+              </button>
+              <a
+                href={`/workspace/${workspaceSlug || 'workspace'}`}
+                target="_blank"
+                rel="noreferrer"
+                className="btn-secondary"
+                style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', textDecoration: 'none', color: '#e2e8f0' }}
+              >
+                <ExternalLink size={14} />
+                <span>Visit Page</span>
+              </a>
+              {isOwner && (
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ padding: '0.45rem 0.85rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}
+                  onClick={() => setEditingSlug(!editingSlug)}
+                >
+                  <Edit3 size={14} />
+                  <span>{editingSlug ? 'Cancel' : 'Edit Slug'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {editingSlug && (
+            <div style={{
+              paddingTop: '1rem',
+              borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.75rem'
+            }}>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <div style={{ position: 'relative', flex: 1 }}>
+                  <input
+                    type="text"
+                    value={slugInput}
+                    onChange={(e) => setSlugInput(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    placeholder="e.g. acme-corp"
+                    style={{
+                      width: '100%',
+                      padding: '0.65rem 0.85rem',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                      border: '1px solid rgba(59, 130, 246, 0.4)',
+                      borderRadius: '8px',
+                      color: '#ffffff',
+                      fontSize: '0.88rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ padding: '0.65rem 1.25rem', fontSize: '0.85rem' }}
+                  onClick={handleSaveSlug}
+                  disabled={savingSlug || !slugInput.trim() || slugInput === workspaceSlug}
+                >
+                  {savingSlug ? 'Saving...' : 'Save Slug'}
+                </button>
+              </div>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                Only lowercase alphanumeric characters and hyphens. Changing this will update your organization's login portal URL.
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Company Logo Customization */}
+        <div style={{ marginTop: '1.75rem' }}>
+          <h4 style={{ fontSize: '1rem', color: '#f1f5f9', margin: '0 0 0.25rem' }}>Company Workspace Logo</h4>
+          <p style={{ color: 'var(--gray)', fontSize: '0.82rem', margin: '0 0 1rem' }}>
+            Positioned prominently below the Markova OS header on your organization's login and invitation pages.
+          </p>
+
+          <div style={{ display: 'flex', gap: '1.25rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{
+              width: '60px',
+              height: '60px',
+              borderRadius: '14px',
+              background: 'rgba(15, 23, 42, 0.8)',
+              border: '1px solid rgba(255, 255, 255, 0.15)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              flexShrink: 0
+            }}>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Logo preview"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  onError={(e) => { e.target.style.display = 'none' }}
+                />
+              ) : (
+                <Building2 size={24} style={{ color: '#38bdf8', opacity: 0.8 }} />
+              )}
+            </div>
+
+            <div style={{ flex: 1, minWidth: '260px', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input
+                  type="url"
+                  value={logoUrl}
+                  onChange={(e) => setLogoUrl(e.target.value)}
+                  placeholder="https://example.com/logo.png"
+                  disabled={!isOwner && !isAdmin}
+                  style={{
+                    flex: 1,
+                    padding: '0.65rem 0.85rem',
+                    background: 'rgba(15, 23, 42, 0.6)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    color: '#ffffff',
+                    fontSize: '0.88rem'
+                  }}
+                />
+                {(isOwner || isAdmin) && (
+                  <button
+                    type="button"
+                    className="btn-primary"
+                    style={{ padding: '0.65rem 1.25rem', fontSize: '0.85rem' }}
+                    onClick={handleSaveLogo}
+                    disabled={savingLogo}
+                  >
+                    {savingLogo ? 'Saving...' : 'Save Logo'}
+                  </button>
+                )}
+              </div>
+              <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                Square PNG, SVG, or WebP image URL with clean background recommended.
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

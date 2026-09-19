@@ -1242,5 +1242,48 @@ export const deleteDepartment = (deptId) => api.delete(`/departments/${deptId}`)
 export const listSessions = () => api.get('/sessions').catch(() => ({ data: { sessions: [] } }));
 export const revokeSession = (sessionId) => api.delete(`/sessions/${sessionId}`);
 
+// ---------- Workspace Scoped Endpoints ----------
+export const getWorkspaceBySlug = async (slug) => {
+  if (isDemoMode()) {
+    return {
+      data: {
+        success: true,
+        workspace: {
+          id: 'demo-workspace-id',
+          name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          slug: slug,
+          logo_url: null
+        }
+      }
+    };
+  }
+  return api.get(`/workspace/${slug}`);
+};
 
+export const workspaceLogin = async ({ slug, email, password }) => {
+  if (isDemoMode()) {
+    const demoUser = {
+      id: 'demo-emp-' + Math.random().toString(36).substring(2, 7),
+      name: email.split('@')[0],
+      email,
+      role: 'agent',
+      company_id: 'demo-workspace-id',
+      company_name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+      company_slug: slug,
+      company_logo: null
+    };
+    return {
+      data: {
+        success: true,
+        token: 'demo-token-' + Date.now(),
+        refreshToken: 'demo-refresh-' + Date.now(),
+        user: demoUser,
+        permissions: ['calls:read', 'calls:listen', 'crm:read', 'crm:write']
+      }
+    };
+  }
+  return api.post('/auth/workspace-login', { slug, email, password });
+};
 
+export const updateWorkspaceSlug = (slug) => api.patch('/workspace/slug', { slug });
+export const updateWorkspaceLogo = (logoUrl) => api.patch('/workspace/logo', { logoUrl });

@@ -53,6 +53,11 @@ export class AppController {
     return proxyTo(this.authServiceUrl, req, res);
   }
 
+  @All('api/workspace*')
+  proxyWorkspaceLegacy(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
   @All('api/tenant*')
   proxyTenant(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.tenantServiceUrl, req, res);
@@ -124,6 +129,11 @@ export class AppController {
 
   @All('v1/sessions*')
   proxySessionsV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.authServiceUrl, req, res);
+  }
+
+  @All('v1/workspace*')
+  proxyWorkspaceV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.authServiceUrl, req, res);
   }
 

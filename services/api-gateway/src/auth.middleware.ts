@@ -61,6 +61,8 @@ const ROUTE_PERMISSION_MAP: Array<{ pattern: RegExp; method?: string; permission
 export class AuthMiddleware implements NestMiddleware {
   private redisClient;
   private TENANT_SERVICE_URL = process.env.TENANT_SERVICE_URL || 'http://tenant-service:5002';
+  private authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://auth-service:5001';
+  private authPublicKey: string | null = null;
   private pool: Pool;
 
   constructor(private readonly rateLimiter: RateLimiterService) {
@@ -71,8 +73,35 @@ export class AuthMiddleware implements NestMiddleware {
     this.redisClient.on('error', (err) => console.error('Redis Gateway Error', err));
     this.redisClient.connect().catch((err) => console.error('Failed to connect to Redis from Gateway:', err));
     this.pool = new Pool({
-      connectionString: process.env.DATABASE_URL
+      connectionString: process.env.DATABASE_URL,
+      ssl: (!process.env.DATABASE_URL || process.env.DATABASE_URL.includes('localhost') || process.env.DATABASE_URL.includes('127.0.0.1'))
+        ? false
+        : { rejectUnauthorized: false }
     });
+  }
+
+  private async getAuthPublicKey(): Promise<string> {
+    if (this.authPublicKey) return this.authPublicKey;
+    if (process.env.AUTH_PUBLIC_KEY) {
+      this.authPublicKey = process.env.AUTH_PUBLIC_KEY;
+      return this.authPublicKey;
+    }
+    try {
+      const resp = await axios.get(`${this.authServiceUrl}/v1/auth/public-key`, { timeout: 3500 });
+      if (resp.data?.publicKey) {
+        this.authPublicKey = resp.data.publicKey;
+        return this.authPublicKey;
+      }
+    } catch (e) {
+      try {
+        const resp = await axios.get(`${this.authServiceUrl}/api/auth/public-key`, { timeout: 3500 });
+        if (resp.data?.publicKey) {
+          this.authPublicKey = resp.data.publicKey;
+          return this.authPublicKey;
+        }
+      } catch (e2) {}
+    }
+    throw new Error('Unable to retrieve auth public key');
   }
 
   async use(req: Request, res: Response, next: NextFunction) {
@@ -100,6 +129,10 @@ export class AuthMiddleware implements NestMiddleware {
       /^\/api\/auth\/invitations\/verify\/[^/]+$/,
       /^\/v1\/users\/accept-invite$/,
       /^\/api\/auth\/users\/accept-invite$/,
+      /^\/v1\/workspace\/[^/]+$/,
+      /^\/api\/workspace\/[^/]+$/,
+      /^\/v1\/auth\/workspace-login$/,
+      /^\/api\/auth\/workspace-login$/,
       /^\/incoming-call$/,
       /^\/handle-input$/,
       /^\/stream-response$/,
@@ -185,12 +218,10 @@ export class AuthMiddleware implements NestMiddleware {
         };
       } else {
         try {
-          const secret = process.env.SUPABASE_JWT_SECRET;
-          if (!secret) throw new Error("SUPABASE_JWT_SECRET is missing");
-        
-          // Decode without verification first to check audience for routing
-          const unverifiedDecoded = jwt.decode(bearerToken) as any;
-          const aud = unverifiedDecoded?.aud;
+          // Decode without verification first to check algorithm and audience for routing
+          const unverifiedDecoded = jwt.decode(bearerToken, { complete: true }) as any;
+          const payload = unverifiedDecoded?.payload || {};
+          const aud = payload?.aud;
           const isAdminRoute = path.startsWith('/v1/admin') || path.startsWith('/api/admin');
           const isClientRoute = path.startsWith('/v1/client') || path.startsWith('/api/client') || path.startsWith('/api/tenant');
 
@@ -201,35 +232,50 @@ export class AuthMiddleware implements NestMiddleware {
             return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Cannot use admin token for client routes' });
           }
 
-          // Now verify with the appropriate audience (if Supabase allows custom aud, otherwise we just check the claim)
-          const decoded = jwt.verify(bearerToken, secret, { algorithms: ['HS256'] }) as any;
+          let decoded: any;
+          let userId: string;
+
+          if (unverifiedDecoded?.header?.alg === 'RS256') {
+            const pubKey = await this.getAuthPublicKey();
+            decoded = jwt.verify(bearerToken, pubKey, { algorithms: ['RS256'] }) as any;
+            userId = decoded.userId || decoded.sub;
+          } else {
+            const secret = process.env.SUPABASE_JWT_SECRET;
+            if (!secret) throw new Error("SUPABASE_JWT_SECRET is missing");
+            decoded = jwt.verify(bearerToken, secret, { algorithms: ['HS256'] }) as any;
+            userId = decoded.sub || decoded.userId;
+          }
           
-          const userId = decoded.sub;
           let dbUser = null;
           
-          const cachedUser = await this.redisClient.get(`user_cache:${userId}`);
-          if (cachedUser) {
-            dbUser = JSON.parse(cachedUser);
-          } else {
-            const result = await this.pool.query('SELECT company_id, role FROM public.users WHERE id = $1', [userId]);
-            dbUser = result.rows[0];
-            if (dbUser) {
-              await this.redisClient.setEx(`user_cache:${userId}`, 3600, JSON.stringify(dbUser));
+          if (userId) {
+            const cachedUser = await this.redisClient.get(`user_cache:${userId}`);
+            if (cachedUser) {
+              dbUser = JSON.parse(cachedUser);
+            } else {
+              try {
+                const result = await this.pool.query('SELECT company_id, role FROM public.users WHERE id = $1', [userId]);
+                dbUser = result.rows[0];
+                if (dbUser) {
+                  await this.redisClient.setEx(`user_cache:${userId}`, 3600, JSON.stringify(dbUser));
+                }
+              } catch (dbErr) {
+                console.warn('Gateway DB user lookup notice:', dbErr.message);
+              }
             }
           }
           
-          // For admin tokens, dbUser might not exist in public.users if they are managed separately, 
-          // but assuming they do for now or we rely on decoded claims.
-          if (!dbUser && aud !== 'admin') {
-            return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'User record not found in database' });
+          const resolvedCompanyId = dbUser?.company_id || decoded.companyId || decoded.company_id;
+          if (!resolvedCompanyId && aud !== 'admin') {
+            return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'User record or tenant not found in database' });
           }
 
           tenantContext = {
-            tenantId: dbUser?.company_id || decoded.company_id,
+            tenantId: resolvedCompanyId,
             userId: userId,
-            role: dbUser?.role || decoded.role,
+            role: dbUser?.role || decoded.role || 'viewer',
             permissions: decoded.permissions || [],
-            subscriptionPlan: 'starter',
+            subscriptionPlan: decoded.subscriptionPlan || 'starter',
             environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
             aud: aud,
           };

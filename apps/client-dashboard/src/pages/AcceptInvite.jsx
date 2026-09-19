@@ -103,6 +103,7 @@ const AcceptInvite = ({ onLogin }) => {
       if (res.data?.success && res.data.token) {
         tokenStore.set(res.data.token, res.data.refreshToken);
         localStorage.setItem('user', JSON.stringify(res.data.user));
+        localStorage.setItem('onboardingComplete', 'true');
         if (onLogin && res.data.user) {
           onLogin(res.data.user);
         }

@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS companies (
         "update_contact": 0.75
       }
     }'::jsonb,
+    slug VARCHAR(63) UNIQUE,
+    logo_url TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

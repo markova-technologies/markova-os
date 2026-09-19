@@ -30,6 +30,8 @@ const Notifications = lazy(() => import('./pages/Notifications'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const TeamManagement = lazy(() => import('./pages/TeamManagement'))
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
+const WorkspaceLogin = lazy(() => import('./pages/WorkspaceLogin'))
+const WorkspaceAcceptInvite = lazy(() => import('./pages/WorkspaceAcceptInvite'))
 
 import { getMe, login as loginRequest, logout as logoutRequest, tokenStore, isDemoMode } from './api/client'
 import { supabase } from './config/supabase'
@@ -263,6 +265,14 @@ function App() {
             <Route
               path={ROUTES.acceptInvite}
               element={<AcceptInvite onLogin={handleLogin} />}
+            />
+            <Route
+              path={ROUTES.workspace}
+              element={<WorkspaceLogin onLogin={handleLogin} />}
+            />
+            <Route
+              path={ROUTES.workspaceInvite}
+              element={<WorkspaceAcceptInvite onLogin={handleLogin} />}
             />
 
             {/* Authenticated product shell — all console UI under /app/* */}

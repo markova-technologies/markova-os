@@ -4,6 +4,30 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-19] API Gateway RS256 Token Verification Mismatch Causing Instant Logout for Invited Users
+- **Error/Problem:**
+  - After invited employees activated their account via an invitation link, set their password, and were redirected to `/app`, they were instantly logged out and kicked back to `/login`.
+  - In addition, users without pre-existing `localStorage.onboardingComplete` flags were being bounced to company setup `/app/onboarding`.
+- **How it Happened:**
+  - `services/auth-service/server.js` issues JWT tokens signed with an RSA key pair using algorithm `RS256`. However, `services/api-gateway/src/auth.middleware.ts` was hardcoded to `jwt.verify(bearerToken, secret, { algorithms: ['HS256'] })` with `process.env.SUPABASE_JWT_SECRET`.
+  - When the browser made subsequent API requests to the API Gateway with the RS256 token, the gateway rejected the token with `401 Unauthorized` (`JsonWebTokenError: invalid algorithm`). The dashboard's Axios response interceptor caught the 401, cleared authentication storage (`tokenStore.clear()`), and executed an immediate redirect to `/login`.
+  - Invited users also lacked `onboardingComplete` in `localStorage`, so `App.jsx` attempted to redirect them to `/app/onboarding` instead of rendering the main application.
+- **Lesson Learned:**
+  1. In multi-tenant platforms supporting both third-party auth (e.g. Supabase Auth HS256) and native microservice auth (e.g. Auth Service RS256), API Gateways must dynamically inspect the token header algorithm (`jwt.decode(token, { complete: true })?.header?.alg`). If `RS256`, verify against the auth service public key; if `HS256`, verify against the symmetric secret.
+  2. Whitelist all public workspace endpoints (`/v1/workspace/:slug`, `/api/workspace/:slug`, `/v1/auth/workspace-login`, etc.) in the gateway's `publicPaths` to avoid premature 401 rejections.
+  3. Ensure invitation activation flows explicitly mark onboarding as complete (`localStorage.setItem('onboardingComplete', 'true')`) so invited members are directed straight to their assigned workspace and role.
+
+### [2026-09-19] Professional Framing of Collaboration Links vs Exposing Server Email Configuration
+- **Error/Problem:**
+  - When a team administrator invited a member in environments where `RESEND_API_KEY` was unconfigured, the UI displayed: `⚠️ Email service is not configured on the server. Please copy and share the magic link below directly with your colleague.`.
+  - Exposing internal server configuration issues eroded user confidence and felt unpolished.
+- **How it Happened:**
+  - The UI directly surfaced infrastructure diagnostics to client users rather than treating link sharing as a first-class, intentional collaboration feature.
+- **Lesson Learned:**
+  1. Never expose raw infrastructure state, missing API keys, or backend diagnostics to end-users in warning/alert tones.
+  2. Frame manual and magic link generation as a high-speed, multi-channel distribution feature (e.g., `✨ Invitation link ready — Copy and share directly via Slack, WhatsApp, or email`).
+
+
 ### [2026-09-18] Embedded JavaScript 'await' Inside SQL Multi-Statement Migration String
 - **Error/Problem:**
   - On auth-service startup, database connection succeeded but logged: `⚠️ RBAC table initialization notice: syntax error at or near "await"`.
