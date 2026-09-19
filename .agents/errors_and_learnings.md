@@ -4,15 +4,16 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
-### [2026-09-19] Documentation Page Infinite Reload Loop & Placeholder Stub Resolution
+### [2026-09-19] Documentation Page: Embedding Native DocsApp with Waveform UI
 - **Error/Problem:**
-  - Clicking "Documentation" in the landing page or public navigation bar failed to load documentation, resulting in a browser reload loop or freeze on "Redirecting to API Documentation...".
+  - Clicking "Documentation" in the landing page or public navigation bar previously either triggered a reload loop or failed to display the original Markova documentation experience shown in production designs.
 - **How it Happened:**
-  - `DocsSite.jsx` was implemented as a minimal 12-line placeholder that executed `useEffect(() => { window.location.href = '/docs' }, [])`.
-  - Because `ROUTES.docs` in `site.js` is `/docs`, navigating to `/docs` triggered `DocsSite` to tell the browser to reload `/docs`, trapping the user in an infinite self-referential reload loop. Furthermore, on Vercel (`markova-os.vercel.app`), the frontend is a standalone React SPA, so `/docs` does not host an Express/NestJS Swagger UI.
+  - The repository contains a dedicated, beautifully crafted documentation application in `apps/docs` featuring the signature Markova audio waveform (`Waveform.jsx`), "An AI that answers your phone, in Amharic" lead, and comprehensive core concepts.
+  - In `apps/client-dashboard/src/pages/DocsSite.jsx`, an earlier commit had replaced the import of `apps/docs/src/DocsApp` with a 10-line placeholder `useEffect(() => { window.location.href = '/docs' }, [])`, breaking the route.
 - **Lesson Learned:**
-  1. Never write `window.location.href = '/path'` inside a component that is mounted on `/path`. It causes an immediate infinite self-referential refresh loop.
-  2. Public SaaS documentation links must provide an interactive, comprehensive in-app Developer & API Documentation Portal with code recipes, architecture diagrams, and REST endpoints directly inside the web application, with clear external links pointing to the live Swagger/OpenAPI explorer.
+  1. The monorepo's `apps/client-dashboard/vite.config.js` is already pre-configured to alias and allow imports from `apps/docs` (with `allow: ['..', '../..']`).
+  2. Embed the native `DocsApp` directly with `<DocsApp base="/docs" />` so the full original Markova docs site (hero waveform, sidebar categories, quickstarts, concepts, API reference) renders seamlessly on Vercel under `/docs/*`.
+
 
 
 ### [2026-09-19] API Gateway RS256 Token Verification Mismatch Causing Instant Logout for Invited Users
