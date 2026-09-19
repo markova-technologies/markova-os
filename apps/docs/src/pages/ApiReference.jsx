@@ -21,8 +21,8 @@ const ApiReference = () => {
         window.Redoc.init(
           '/openapi.yaml',
           {
-            scrollYOffset: 52,
-            hideDownloadButton: false,
+            scrollYOffset: '.redoc-topbar',
+            hideDownloadButton: true,
             expandResponses: '200,201',
             requiredPropsFirst: true,
             sortPropsAlphabetically: true,
@@ -93,7 +93,7 @@ const ApiReference = () => {
         <DocsLink to="/">
           <ArrowLeft size={14} /> Back to docs
         </DocsLink>
-        <a href="/openapi.yaml" download>
+        <a href="/openapi.yaml" download="openapi.yaml">
           Download openapi.yaml
         </a>
       </div>

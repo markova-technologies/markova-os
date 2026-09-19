@@ -877,6 +877,124 @@ paths:
       responses:
         '200':
           description: Success
+  /v1/webhooks:
+    get:
+      tags:
+      - Webhooks
+      summary: List configured developer webhooks
+      responses:
+        '200':
+          description: OK
+    post:
+      tags:
+      - Webhooks
+      summary: Configure a developer webhook for the current environment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - webhook_url
+              properties:
+                webhook_url:
+                  type: string
+                  format: uri
+      responses:
+        '201':
+          description: Webhook configured
+  /v1/webhooks/{environment}:
+    delete:
+      tags:
+      - Webhooks
+      summary: Delete a developer webhook
+      parameters:
+      - in: path
+        name: environment
+        required: true
+        schema:
+          type: string
+          enum:
+          - test
+          - live
+      responses:
+        '200':
+          description: Webhook deleted
+  /v1/campaigns:
+    post:
+      tags:
+      - Campaigns
+      summary: Create a new outbound campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - agent_id
+              - phone_number_id
+              properties:
+                name:
+                  type: string
+                agent_id:
+                  type: string
+                  format: uuid
+                phone_number_id:
+                  type: string
+                  format: uuid
+                prompt_template:
+                  type: string
+      responses:
+        '200':
+          description: Campaign created
+  /v1/campaigns/{campaign_id}/contacts:
+    post:
+      tags:
+      - Campaigns
+      summary: Add contacts to a campaign
+      parameters:
+      - in: path
+        name: campaign_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: object
+                required:
+                - phone_number
+                properties:
+                  phone_number:
+                    type: string
+                  metadata:
+                    type: object
+      responses:
+        '200':
+          description: Contacts added
+  /v1/campaigns/{campaign_id}/launch:
+    post:
+      tags:
+      - Campaigns
+      summary: Launch a campaign
+      parameters:
+      - in: path
+        name: campaign_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Campaign launched
 components:
   securitySchemes:
     bearerAuth:
@@ -1064,121 +1182,3 @@ components:
           type: number
         llm_tokens:
           type: number
-  /v1/webhooks:
-    get:
-      tags:
-      - Webhooks
-      summary: List configured developer webhooks
-      responses:
-        '200':
-          description: OK
-    post:
-      tags:
-      - Webhooks
-      summary: Configure a developer webhook for the current environment
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - webhook_url
-              properties:
-                webhook_url:
-                  type: string
-                  format: uri
-      responses:
-        '201':
-          description: Webhook configured
-  /v1/webhooks/{environment}:
-    delete:
-      tags:
-      - Webhooks
-      summary: Delete a developer webhook
-      parameters:
-      - in: path
-        name: environment
-        required: true
-        schema:
-          type: string
-          enum:
-          - test
-          - live
-      responses:
-        '200':
-          description: Webhook deleted
-  /v1/campaigns:
-    post:
-      tags:
-      - Campaigns
-      summary: Create a new outbound campaign
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required:
-              - name
-              - agent_id
-              - phone_number_id
-              properties:
-                name:
-                  type: string
-                agent_id:
-                  type: string
-                  format: uuid
-                phone_number_id:
-                  type: string
-                  format: uuid
-                prompt_template:
-                  type: string
-      responses:
-        '200':
-          description: Campaign created
-  /v1/campaigns/{campaign_id}/contacts:
-    post:
-      tags:
-      - Campaigns
-      summary: Add contacts to a campaign
-      parameters:
-      - in: path
-        name: campaign_id
-        required: true
-        schema:
-          type: string
-          format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: array
-              items:
-                type: object
-                required:
-                - phone_number
-                properties:
-                  phone_number:
-                    type: string
-                  metadata:
-                    type: object
-      responses:
-        '200':
-          description: Contacts added
-  /v1/campaigns/{campaign_id}/launch:
-    post:
-      tags:
-      - Campaigns
-      summary: Launch a campaign
-      parameters:
-      - in: path
-        name: campaign_id
-        required: true
-        schema:
-          type: string
-          format: uuid
-      responses:
-        '200':
-          description: Campaign launched

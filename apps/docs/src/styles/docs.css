@@ -471,6 +471,39 @@
   color: #0f172a;
 }
 
+/* Isolate Redoc internal search icon from any global dashboard styles */
+.redoc-host svg.search-icon,
+.redoc-host .search-icon {
+  position: static !important;
+  transform: none !important;
+  left: auto !important;
+  top: auto !important;
+  margin: 0 !important;
+  color: #64748b !important;
+}
+
+.redoc-host input.search-input,
+.redoc-host .search-input {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Prevent endpoint headers and operations from being scrolled underneath sticky topbar (52px) */
+.redoc-host [data-section-id],
+.redoc-host [id],
+.redoc-host section,
+.redoc-host h1,
+.redoc-host h2,
+.redoc-host h3 {
+  scroll-margin-top: 72px !important;
+}
+
+/* Ensure Redoc's menu content has sticky top offset matching the header */
+.redoc-host .menu-content {
+  top: 52px !important;
+  height: calc(100vh - 52px) !important;
+}
+
 .redoc-topbar {
   display: flex;
   align-items: center;

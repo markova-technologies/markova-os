@@ -4,6 +4,22 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-19] Global CSS Selector Leakage on Redoc Search Icon & OpenAPI Schema Structure Fix
+- **Error/Problem:**
+  - In the API reference portal, a magnifying glass icon was erroneously rendered floating at 50% height of the sidebar, directly overlapping the "Knowledge" menu item.
+  - When clicking endpoints in the sidebar (such as `Current authenticated user` or `Register company and admin user`), the endpoint title and HTTP method badge were partially scrolled under the 52px sticky topbar.
+  - The API reference was missing endpoints for Webhooks (`/v1/webhooks`) and Campaigns (`/v1/campaigns`).
+  - An awkward, redundant `[Download]` button with an orange border appeared below the API title despite the topbar already having a download link.
+- **How it Happened:**
+  - In `apps/client-dashboard/src/components/Header.css`, `.search-icon` and `.search-input` were declared as top-level global classes with `position: absolute; top: 50%; transform: translateY(-50%)` instead of being scoped under `.search-container`. Redoc's sidebar search box generates an SVG with class `search-icon`, which inherited `top: 50%` from the entire sidebar container, centering it directly on "Knowledge".
+  - Native browser hash jumping scrolls elements to `top: 0` before or alongside Redoc's scroll listener, causing the 52px sticky header to obscure the top of the endpoint section.
+  - In `openapi.yaml`, `/v1/webhooks` and `/v1/campaigns` were accidentally appended inside the `components:` block instead of the `paths:` block, causing OpenAPI parsers to classify them as components and hide them from the endpoint reference.
+- **Lesson Learned:**
+  1. Never declare generic class names like `.search-icon` or `.search-input` at the top level of CSS files in a monorepo. Always scope them under specific parent containers (`.search-container .search-icon`) to prevent visual regressions in embedded third-party libraries (Redoc, Monaco, Swagger).
+  2. For embedded API documentation with fixed or sticky navigation, always apply `scroll-margin-top: 72px !important;` to all operation headers and sections in CSS, and set `scrollYOffset: '.redoc-topbar'` in Redoc options so both native anchor navigation and programmatic scrolling maintain clean spacing below the header.
+  3. Validate OpenAPI specifications with strict AST parsers to ensure all paths are declared under `paths:` rather than leaking into `components:`.
+
+
 ### [2026-09-19] Production-Grade Redoc API Reference Contrast & Sticky Header Offset
 - **Error/Problem:**
   - In the documentation portal, clicking "API" to view the OpenAPI reference previously rendered low-contrast dark text over a black background (`var(--bg-main)`), making endpoints and schema models unreadable.
