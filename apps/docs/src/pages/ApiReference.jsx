@@ -58,6 +58,23 @@ const ApiReference = () => {
             },
           },
           hostRef.current,
+          () => {
+            try {
+              const searchContainer = hostRef.current?.querySelector('[role="search"]')
+              if (searchContainer) {
+                searchContainer.style.position = 'relative'
+                const searchIcon = searchContainer.querySelector('.search-icon')
+                if (searchIcon) {
+                  searchIcon.style.position = 'absolute'
+                  searchIcon.style.left = '12px'
+                  searchIcon.style.top = '18px'
+                  searchIcon.style.transform = 'translateY(-50%)'
+                }
+              }
+            } catch {
+              // Non-blocking cosmetic safety net
+            }
+          },
         )
       } catch (err) {
         console.error('Failed to init Redoc:', err)

@@ -4,6 +4,19 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-22] Redoc Search Icon 'Hanging Loose' Fixed via [role="search"] Selector & onLoaded Hook
+- **Error/Problem:**
+  - In the API reference portal (`/docs/api`), the search bar's magnifying glass icon was "hanging on loose", sitting detached on its own line in the top-left corner of the sidebar above the `Search...` input box.
+- **How it Happened:**
+  - Redoc renders its search component as `<div role="search">` containing `<svg class="search-icon">` and `<input class="search-input">`.
+  - An earlier CSS fix attempted to provide `position: relative` using CSS `:has(> .search-input)` and child index selectors (`.menu-content > div:first-child`). Because of selector specificity or browser pseudo-class timing with Redoc's dynamic styled-components, the wrapper remained `position: static`.
+  - As a result, the `position: absolute` on the search icon resolved against the outer sidebar container rather than the search bar itself, leaving the icon detached at `(x:0, y:0)` above the input.
+- **Lesson Learned:**
+  1. Always target the semantic ARIA attribute `[role="search"]` and `div[role="search"]` directly when styling Redoc's search bar, rather than fragile child-index or `:has()` selectors.
+  2. Set `position: relative !important` on `[role="search"]`, nest `svg.search-icon` with `position: absolute !important; left: 11px !important; top: 50% !important; transform: translateY(-50%) !important; pointer-events: none;`, and give `input.search-input` an inset `padding-left: 32px !important`.
+  3. Wire Redoc's 4th parameter `onLoaded` callback (`window.Redoc.init(spec, options, el, onLoaded)`) as an inline DOM safety net to enforce `position: relative` on the container and `position: absolute` on the icon upon render.
+
+
 ### [2026-09-19] Redoc Search Bar Detached Icon & Dynamic 80px Scroll Clearance
 - **Error/Problem:**
   - The search bar in the API reference rendered with its magnifying glass icon detached and floating loosely on its own line above the search input.
@@ -971,3 +984,22 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   - Telephony cockpits must defensively normalize backend records to support both active FreeSWITCH/Twilio SIP sessions and completed database calls with uniform property access.
   - Authentic "glassmorphism" requires true translucency (`rgba(18, 20, 27, 0.45)` to `rgba(24, 26, 35, 0.55)`), heavy blur (`backdrop-filter: blur(28px) saturate(190%)`), and specular light reflections (`inset 0 1px 0 rgba(255, 255, 255, 0.12)`). Avoid setting solid opaque darks (`#000000` or `rgba(..., 0.9)`) on container roots, as this obliterates the underlying window depth and prevents background ambiance from showing through.
 
+---
+
+### [2026-09-22] Redoc Documentation API Reference: Search Bar Icon Detachment & Dropdown Displacement
+- **Problems Observed:**
+  1. **Hanging/Detached Search Icon**: On `/docs/api`, the magnifying glass search icon was visually detached from the search bar, floating on its own line above or to the left of the input field.
+  2. **Icon & Clear Button Vertical Displacement on Active Search**: When users typed a query (e.g. `"agents"`), the search icon and the `'×'` clear button jumped down hundreds of pixels into the middle of the search results dropdown, overlapping endpoint badges like `POST /v1/agents`.
+- **Root Causes:**
+  1. **Styled-Components Selector Mismatch**: Redoc wraps its search bar in a dynamically generated styled-component container `<div role="search" class="search-box">`. Relying on `:has(> .search-input)` or positional child selectors failed across different Redoc rendering cycles, leaving the container with `position: static` where absolute child icons escaped the boundary.
+  2. **Container Height Expansion on Dynamic Results**: Redoc mounts the search results dropdown `<div class="search-results">` directly inside `<div role="search">` rather than as a sibling portal. When results appear, `<div role="search">`'s height expands dynamically from 36px to 460px+. Using `top: 50%` on `svg.search-icon` and `i.search-clean-icon` calculated 50% of the entire 460px container (~230px down), violently displacing both icons down into the search results list.
+- **Fixes Applied:**
+  1. **Direct Role Targeting & Coordinate Anchoring (`docs.css`)**:
+     - Applied `position: relative !important` and `min-height: 36px !important` directly on `.redoc-host [role="search"]`, `.redoc-host div[role="search"]`, and `.redoc-host .search-box`.
+     - Explicitly locked both `svg.search-icon` and `i.search-clean-icon` to `top: 18px !important; transform: translateY(-50%) !important;`, with `left: 12px` and `right: 11px` respectively. Because the input field has a fixed height of 36px starting at `top: 0`, 18px is guaranteed to be the exact vertical center of the input box regardless of how tall the search results dropdown becomes.
+     - Positioned the dropdown `.search-results` with `position: absolute !important; top: 42px !important; left: 0 !important; right: 0 !important; z-index: 100 !important;` with frosted glass styling and subtle elevation shadow so results float cleanly over the sidebar menu.
+  2. **Component Initialization Safety Net (`ApiReference.jsx`)**:
+     - Configured Redoc's `onLoaded` callback in `window.Redoc.init` to programmatically anchor the search container and icon upon initial script load.
+- **Lessons Learned:**
+  1. When styling third-party component libraries that mount dropdowns or popovers inside the same container as the trigger input, NEVER use `top: 50%` on icons. Always anchor input icons to the fixed vertical midpoint of the input itself (`top: 18px` for 36px inputs, `top: 20px` for 40px inputs) so changes in parent container height do not displace them.
+  2. Floating dropdowns embedded inside input wrappers should be assigned `position: absolute` with `top: <input_height + gap>` to prevent unwanted container height inflation.
