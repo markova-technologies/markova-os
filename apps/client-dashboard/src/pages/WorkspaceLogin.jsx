@@ -72,6 +72,7 @@ export default function WorkspaceLogin({ onLogin }) {
 
       if (res.data?.success && res.data.token) {
         tokenStore.set(res.data.token, res.data.refreshToken)
+        localStorage.removeItem('markova_demo_mode')
         localStorage.setItem('user', JSON.stringify(res.data.user))
         localStorage.setItem('onboardingComplete', 'true')
 

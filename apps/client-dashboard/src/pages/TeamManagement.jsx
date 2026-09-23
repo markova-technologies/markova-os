@@ -46,7 +46,10 @@ import {
   Share2,
   Send,
   MessageSquare,
-  ExternalLink
+  ExternalLink,
+  AlertCircle,
+  AlertTriangle,
+  Sparkles
 } from 'lucide-react';
 import './TeamManagement.css';
 
@@ -247,6 +250,10 @@ const TeamManagement = () => {
             addToast(`Invitation email dispatched to ${inviteEmail}`, 'success');
           } else if (inv.emailDelivery?.reason === 'RESEND_API_ERROR') {
             addToast(`Invite link generated. Note: Email delivery returned (${inv.emailDelivery.message || 'Check email domain verification'}).`, 'warning');
+          } else if (inv.emailDelivery?.reason === 'BACKEND_OFFLINE') {
+            addToast(`Backend API server offline/suspended on Render. Invitation magic link created for manual sharing.`, 'warning');
+          } else if (inv.emailDelivery?.reason === 'SANDBOX_MODE') {
+            addToast(`Sandbox Mode: Live email dispatch disabled in demo mode. Test magic link generated.`, 'info');
           } else {
             addToast(`Invitation link generated! Copy the magic link below to share directly.`, 'success');
           }
@@ -1184,7 +1191,15 @@ const TeamManagement = () => {
             <div className="modal-header">
               <h3 className="modal-title">
                 {createdInviteResult
-                  ? (createdInviteResult.inviteType === 'link' || !createdInviteResult.email ? 'Shareable Link Ready' : 'Invitation Dispatched')
+                  ? (createdInviteResult.inviteType === 'link' || !createdInviteResult.email
+                      ? 'Shareable Link Ready'
+                      : createdInviteResult.emailDelivery?.sent
+                        ? 'Invitation Dispatched'
+                        : createdInviteResult.emailDelivery?.reason === 'BACKEND_OFFLINE'
+                          ? 'Server Offline (Link Ready)'
+                          : createdInviteResult.emailDelivery?.reason === 'SANDBOX_MODE'
+                            ? 'Sandbox Mode (Link Ready)'
+                            : 'Invite Link Ready')
                   : 'Invite Team Member'}
               </h3>
               <button className="modal-close-btn" onClick={() => setShowInviteModal(false)}>
@@ -1199,30 +1214,62 @@ const TeamManagement = () => {
                     width: '52px',
                     height: '52px',
                     borderRadius: '50%',
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    border: '1px solid rgba(16, 185, 129, 0.3)',
-                    color: '#10b981',
+                    background: createdInviteResult.emailDelivery?.sent
+                      ? 'rgba(16, 185, 129, 0.15)'
+                      : createdInviteResult.emailDelivery?.reason === 'BACKEND_OFFLINE'
+                        ? 'rgba(245, 158, 11, 0.15)'
+                        : createdInviteResult.emailDelivery?.reason === 'SANDBOX_MODE'
+                          ? 'rgba(6, 182, 212, 0.15)'
+                          : 'rgba(239, 68, 68, 0.15)',
+                    border: `1px solid ${
+                      createdInviteResult.emailDelivery?.sent
+                        ? 'rgba(16, 185, 129, 0.3)'
+                        : createdInviteResult.emailDelivery?.reason === 'BACKEND_OFFLINE'
+                          ? 'rgba(245, 158, 11, 0.3)'
+                          : createdInviteResult.emailDelivery?.reason === 'SANDBOX_MODE'
+                            ? 'rgba(6, 182, 212, 0.3)'
+                            : 'rgba(239, 68, 68, 0.3)'
+                    }`,
+                    color: createdInviteResult.emailDelivery?.sent
+                      ? '#10b981'
+                      : createdInviteResult.emailDelivery?.reason === 'BACKEND_OFFLINE'
+                        ? '#fbbf24'
+                        : createdInviteResult.emailDelivery?.reason === 'SANDBOX_MODE'
+                          ? '#22d3ee'
+                          : '#f87171',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     margin: '0 auto 1rem'
                   }}>
-                    <CheckCircle2 size={30} />
+                    {createdInviteResult.emailDelivery?.sent ? (
+                      <CheckCircle2 size={30} />
+                    ) : createdInviteResult.emailDelivery?.reason === 'BACKEND_OFFLINE' ? (
+                      <AlertTriangle size={28} />
+                    ) : createdInviteResult.emailDelivery?.reason === 'SANDBOX_MODE' ? (
+                      <Sparkles size={28} />
+                    ) : (
+                      <AlertCircle size={28} />
+                    )}
                   </div>
                   <h4 style={{ color: '#ffffff', margin: '0 0 0.5rem', fontSize: '1.25rem' }}>
                     {createdInviteResult.inviteType === 'link' || !createdInviteResult.email
                       ? 'Shareable Magic Link Generated!'
                       : createdInviteResult.emailDelivery?.sent
                         ? 'Invitation Email Sent!'
-                        : createdInviteResult.emailDelivery?.reason === 'RESEND_API_ERROR'
-                          ? 'Invite Link Ready (Email Dispatch Error)'
-                          : 'Invite Link Ready'}
+                        : createdInviteResult.emailDelivery?.reason === 'BACKEND_OFFLINE'
+                          ? 'API Gateway Offline (Invite Link Ready)'
+                          : createdInviteResult.emailDelivery?.reason === 'SANDBOX_MODE'
+                            ? 'Sandbox Mode: Simulated Link Ready'
+                            : createdInviteResult.emailDelivery?.reason === 'RESEND_API_ERROR'
+                              ? 'Invite Link Ready (Resend Dispatch Error)'
+                              : 'Invite Link Ready'}
                   </h4>
                   <div style={{ color: '#94a3b8', fontSize: '0.88rem', margin: 0, lineHeight: 1.5 }}>
                     {createdInviteResult.email ? (
                       createdInviteResult.emailDelivery?.sent ? (
                         <p style={{ margin: 0 }}>
-                          An invitation email was sent to <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.
+                          An invitation email was successfully sent to <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.
                         </p>
                       ) : (
                         <div>
@@ -1231,16 +1278,24 @@ const TeamManagement = () => {
                           </p>
                           {createdInviteResult.emailDelivery?.message && (
                             <div style={{
-                              background: 'rgba(239, 68, 68, 0.1)',
-                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              background: createdInviteResult.emailDelivery.reason === 'SANDBOX_MODE'
+                                ? 'rgba(6, 182, 212, 0.1)'
+                                : 'rgba(239, 68, 68, 0.1)',
+                              border: `1px solid ${
+                                createdInviteResult.emailDelivery.reason === 'SANDBOX_MODE'
+                                  ? 'rgba(6, 182, 212, 0.3)'
+                                  : 'rgba(239, 68, 68, 0.3)'
+                              }`,
                               borderRadius: '8px',
-                              padding: '0.5rem 0.8rem',
-                              color: '#fca5a5',
+                              padding: '0.6rem 0.85rem',
+                              color: createdInviteResult.emailDelivery.reason === 'SANDBOX_MODE'
+                                ? '#a5f3fc'
+                                : '#fca5a5',
                               fontSize: '0.82rem',
                               marginBottom: '0.6rem',
                               textAlign: 'left'
                             }}>
-                              <strong>Email Service Note:</strong> {createdInviteResult.emailDelivery.message}
+                              <strong>{createdInviteResult.emailDelivery.reason === 'SANDBOX_MODE' ? 'Notice:' : 'Email Delivery Notice:'}</strong> {createdInviteResult.emailDelivery.message}
                             </div>
                           )}
                           <div style={{
@@ -1255,7 +1310,7 @@ const TeamManagement = () => {
                             fontSize: '0.82rem',
                             textAlign: 'left'
                           }}>
-                            <span>✨ Invitation link ready. You can copy the magic link below directly to share with your colleague via chat or message.</span>
+                            <span>✨ You can copy and share the magic link below directly via chat or messaging app to activate access immediately.</span>
                           </div>
                         </div>
                       )

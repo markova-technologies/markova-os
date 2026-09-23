@@ -28,7 +28,13 @@ export const DEMO_USER = {
   plan: 'plus',
 }
 
-export const isDemoMode = () => localStorage.getItem(DEMO_MODE_KEY) === '1'
+export const isDemoMode = () => {
+  const token = localStorage.getItem('token');
+  if (token && !token.startsWith('demo-token') && token !== 'demo-token') {
+    return false;
+  }
+  return localStorage.getItem(DEMO_MODE_KEY) === '1';
+};
 
 export const enterDemoMode = () => {
   localStorage.setItem(DEMO_MODE_KEY, '1')
@@ -43,6 +49,9 @@ export const tokenStore = {
   set: (token, refreshToken) => {
     if (token) localStorage.setItem('token', token);
     if (refreshToken) localStorage.setItem('refreshToken', refreshToken);
+    if (token && !token.startsWith('demo-token') && token !== 'demo-token') {
+      localStorage.removeItem(DEMO_MODE_KEY);
+    }
   },
   clear: () => {
     localStorage.removeItem('token');
@@ -1155,7 +1164,10 @@ export const inviteMember = async (data) => {
   try {
     return await api.post('/users/invite', data);
   } catch (err) {
-    if (isDemoMode() || !err.response) {
+    const isOffline = !err.response || err.response?.status === 503 || err.response?.status === 502;
+    const isDemo = isDemoMode();
+
+    if (isDemo || isOffline) {
       const demoToken = 'demo-inv-' + Math.random().toString(36).substring(2, 10);
       const inviteUrl = `${window.location.origin}/accept-invite?token=${demoToken}`;
       return {
@@ -1169,7 +1181,14 @@ export const inviteMember = async (data) => {
             token: demoToken,
             inviteUrl,
             inviteType: data.inviteType || (data.email ? 'email' : 'link'),
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            emailDelivery: {
+              sent: false,
+              reason: isDemo ? 'SANDBOX_MODE' : 'BACKEND_OFFLINE',
+              message: isDemo
+                ? 'You are operating in Sandbox / Demo mode. Live emails via Resend are disabled in demo mode to protect external inboxes. Use the magic link below to test.'
+                : `The backend API server (${API_BASE || 'API Gateway'}) is unreachable or suspended on Render. No email could be dispatched.`
+            }
           }
         }
       };
@@ -1244,45 +1263,53 @@ export const revokeSession = (sessionId) => api.delete(`/sessions/${sessionId}`)
 
 // ---------- Workspace Scoped Endpoints ----------
 export const getWorkspaceBySlug = async (slug) => {
-  if (isDemoMode()) {
-    return {
-      data: {
-        success: true,
-        workspace: {
-          id: 'demo-workspace-id',
-          name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-          slug: slug,
-          logo_url: null
+  try {
+    return await api.get(`/workspace/${slug}`);
+  } catch (err) {
+    if (isDemoMode() || !err.response || slug === 'demo' || slug === 'markova-demo') {
+      return {
+        data: {
+          success: true,
+          workspace: {
+            id: 'demo-workspace-id',
+            name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            slug: slug,
+            logo_url: null
+          }
         }
-      }
-    };
+      };
+    }
+    throw err;
   }
-  return api.get(`/workspace/${slug}`);
 };
 
 export const workspaceLogin = async ({ slug, email, password }) => {
-  if (isDemoMode()) {
-    const demoUser = {
-      id: 'demo-emp-' + Math.random().toString(36).substring(2, 7),
-      name: email.split('@')[0],
-      email,
-      role: 'agent',
-      company_id: 'demo-workspace-id',
-      company_name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
-      company_slug: slug,
-      company_logo: null
-    };
-    return {
-      data: {
-        success: true,
-        token: 'demo-token-' + Date.now(),
-        refreshToken: 'demo-refresh-' + Date.now(),
-        user: demoUser,
-        permissions: ['calls:read', 'calls:listen', 'crm:read', 'crm:write']
-      }
-    };
+  try {
+    return await api.post('/auth/workspace-login', { slug, email, password });
+  } catch (err) {
+    if (isDemoMode() || !err.response || email === 'demo@markova.et') {
+      const demoUser = {
+        id: 'demo-emp-' + Math.random().toString(36).substring(2, 7),
+        name: email.split('@')[0],
+        email,
+        role: 'agent',
+        company_id: 'demo-workspace-id',
+        company_name: slug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+        company_slug: slug,
+        company_logo: null
+      };
+      return {
+        data: {
+          success: true,
+          token: 'demo-token-' + Date.now(),
+          refreshToken: 'demo-refresh-' + Date.now(),
+          user: demoUser,
+          permissions: ['calls:read', 'calls:listen', 'crm:read', 'crm:write']
+        }
+      };
+    }
+    throw err;
   }
-  return api.post('/auth/workspace-login', { slug, email, password });
 };
 
 export const updateWorkspaceSlug = (slug) => api.patch('/workspace/slug', { slug });

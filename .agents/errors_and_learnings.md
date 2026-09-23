@@ -1030,3 +1030,27 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lessons Learned:**
   1. When styling third-party component libraries that mount dropdowns or popovers inside the same container as the trigger input, NEVER use `top: 50%` on icons. Always anchor input icons to the fixed vertical midpoint of the input itself (`top: 18px` for 36px inputs, `top: 20px` for 40px inputs) so changes in parent container height do not displace them.
   2. Floating dropdowns embedded inside input wrappers should be assigned `position: absolute` with `top: <input_height + gap>` to prevent unwanted container height inflation.
+
+---
+
+### [2026-09-23] Team Invitation Email Failure: Suspended Render Gateway & Silent Demo Mode Masking
+- **Problems Observed:**
+  1. User attempted to invite a teammate via email (`zelalemazmera1221@gmail.com`) on `https://app.markova.tech/app/team`.
+  2. The UI displayed a modal titled "Invitation Dispatched" with "Invite Link Ready", giving the false impression that an email had been sent, but the recipient received no email.
+  3. The magic link generated in the UI was `https://app.markova.tech/accept-invite?token=demo-inv-h4fsx5z8`.
+- **Root Causes:**
+  1. **Suspended Backend API Gateway on Render**: The API Gateway (`https://markova-api-gateway.onrender.com`) was suspended on Render (returning `HTTP 503 Service Suspended`). Because the gateway was suspended without CORS headers, all browser fetch/axios calls threw network errors where `!err.response` was `true`.
+  2. **Silent Client Fallback Masking**: In `apps/client-dashboard/src/api/client.js`, `inviteMember` caught `if (isDemoMode() || !err.response)` and silently fabricated a local mock invitation with `demo-inv-...` without logging an error or alerting the user that the backend server was unreachable.
+  3. **Sticky Demo Mode in LocalStorage**: `markova_demo_mode` was not automatically removed upon real workspace sign-in in `WorkspaceLogin.jsx` or `AcceptInvite.jsx`, and `workspaceLogin` in `client.js` was short-circuiting to mock local users whenever demo mode was flagged, trapping authenticated users in demo mode.
+- **Fixes Applied:**
+  1. **Transparent Diagnostic Feedback (`client.js` & `TeamManagement.jsx`)**:
+     - `inviteMember` now explicitly sets `emailDelivery: { sent: false, reason: 'BACKEND_OFFLINE' | 'SANDBOX_MODE', message: '...' }` when falling back.
+     - The invitation modal in `TeamManagement.jsx` detects when an email was NOT sent and switches from the green success checkmark to an amber warning icon with a clear banner: `"API Gateway Offline: The backend API server is unreachable or suspended on Render. No email could be dispatched."` or `"Sandbox Mode: Live email dispatch is disabled in demo mode."`.
+  2. **Self-Healing Token Storage (`client.js`)**:
+     - `isDemoMode()` now checks `localStorage.getItem('token')`. If a legitimate token is present (not starting with `demo-token`), it returns `false`.
+     - `tokenStore.set` automatically purges `markova_demo_mode` whenever real credentials are saved.
+     - `WorkspaceLogin.jsx` and `AcceptInvite.jsx` explicitly remove `markova_demo_mode` upon authentication.
+     - `workspaceLogin` now tries the real backend endpoint first instead of prematurely assuming mock demo mode.
+- **Lessons Learned:**
+  1. NEVER silently fake API success on network failures (`!err.response`). If a backend service is offline, suspended, or unreachable, the UI must explicitly communicate the failure to the user rather than masquerading as a successful dispatch.
+  2. In multi-tenant apps with a "Demo / Sandbox Mode", ensuring clean state transitions is paramount. Authenticating with real workspace credentials must always purge sandbox flags from storage immediately to prevent phantom mock sessions.
