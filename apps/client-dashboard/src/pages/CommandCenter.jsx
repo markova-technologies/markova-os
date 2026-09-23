@@ -25,7 +25,8 @@ import {
   Shield,
   Users,
   Headphones,
-  User
+  User,
+  BarChart3
 } from 'lucide-react'
 import { listAgents, listCalls, getUsage } from '../api/client'
 import { useEnvironment } from '../contexts/EnvironmentContext'

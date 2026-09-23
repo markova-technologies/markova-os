@@ -4,6 +4,17 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-23] CommandCenter BarChart3 ReferenceError & Markova OS Favicon/Tab Title Fix
+- **Error/Problem:**
+  - After logging in, the dashboard crashed with: `"This page hit a snag. Something didn't load right. BarChart3 is not defined"`.
+  - The browser tab displayed a broken generic globe icon instead of the Markova OS logo, and the tab title read `"Markova"` instead of `"Markova OS"`.
+- **How it Happened:**
+  - In `apps/client-dashboard/src/pages/CommandCenter.jsx`, during role-based hero action tailoring, `<BarChart3 size={16} />` was added to the Supervisor and Analyst action buttons (`Quality & Analytics`, `Analytics Center`), but `BarChart3` was omitted from the top `lucide-react` import statement.
+  - In `apps/client-dashboard/index.html`, `<link rel="icon" ... href="/vite.svg" />` referenced a non-existent file, resulting in an HTTP 404 and fallback to Chrome's generic globe icon.
+- **Lesson Learned:**
+  1. Whenever introducing icons or helper components into conditional render blocks, cross-check and ensure every referenced identifier is explicitly imported in the module header.
+  2. Always provide a branded SVG favicon matching the product's visual identity (here, the white squircle containing the Markova OS robot icon) in `public/favicon.svg` and sync `index.html` title to the canonical platform brand (`Markova OS`).
+
 ### [2026-09-22] Team Invitation Email Delivery Diagnostic & RBAC Profile Architecture
 - **Error/Problem:**
   - Team invitation emails displayed `"Invite Link Ready (Email Not Configured)"` in the frontend modal, even after the developer configured `RESEND_API_KEY` on Render.
