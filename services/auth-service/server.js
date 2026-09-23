@@ -47,6 +47,22 @@ app.get(['/', '/health', '/api/health', '/v1/health'], (req, res) => {
   });
 });
 
+// Safe email configuration diagnostic
+app.get(['/api/auth/health/email', '/v1/auth/health/email', '/v1/health/email'], (req, res) => {
+  const rawKey = (process.env.RESEND_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
+  const isConfigured = Boolean(rawKey && rawKey.length > 5);
+  const fromEmail = (process.env.RESEND_FROM_EMAIL || '').trim().replace(/^['"]|['"]$/g, '') || 'Markova AI <onboarding@resend.dev>';
+  const maskedKey = isConfigured ? `${rawKey.substring(0, 6)}...${rawKey.slice(-4)}` : null;
+
+  res.json({
+    status: 'ok',
+    configured: isConfigured,
+    masked_key: maskedKey,
+    from_email: fromEmail,
+    client_dashboard_url: process.env.CLIENT_DASHBOARD_URL || 'not set (using request origin)'
+  });
+});
+
 // Postgres Connection Pool with retries and cloud SSL support (Supabase, Neon, AWS RDS)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -74,6 +90,13 @@ async function ensureRbacTables(client) {
       );
 
       ALTER TABLE users ADD COLUMN IF NOT EXISTS department_id UUID REFERENCES departments(id);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS notification_prefs JSONB DEFAULT '{}'::jsonb;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_email VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token VARCHAR(255);
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMP;
 
       CREATE TABLE IF NOT EXISTS roles (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -857,38 +880,19 @@ app.post(['/api/auth/logout', '/v1/auth/logout'], async (req, res) => {
   }
 });
 
-// Current authenticated user (Phase 1 — was missing)
-app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Bearer token required' });
-  }
-
-  const token = authHeader.split(' ')[1];
+// Current authenticated user (Self-service profile endpoint)
+app.get(['/api/auth/me', '/v1/auth/me', '/v1/users/me'], authenticateUser, async (req, res) => {
   try {
-    const decoded = jwt.verify(token, PUBLIC_KEY, { algorithms: ['RS256'] });
-
-    if (decoded.sessionId) {
-      const isRevoked = await redisClient.get(`session_revoked:${decoded.sessionId}`);
-      if (isRevoked) {
-        return res.status(401).json({ error: 'Session has been revoked' });
-      }
-      const sessionRes = await pool.query(
-        'SELECT revoked_at FROM sessions WHERE id = $1',
-        [decoded.sessionId]
-      );
-      if (sessionRes.rows.length === 0 || sessionRes.rows[0].revoked_at) {
-        return res.status(401).json({ error: 'Session has been revoked' });
-      }
-    }
-
     const userRes = await pool.query(
-      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.status, 
-              c.name AS company_name, c.slug AS company_slug, c.logo_url AS company_logo, c.plan
+      `SELECT u.id, u.company_id, u.name, u.email, u.role, u.status,
+              u.avatar_url, u.phone, u.bio, u.notification_prefs, u.department_id, u.created_at,
+              c.name AS company_name, c.slug AS company_slug, c.logo_url AS company_logo, c.plan,
+              d.name AS department_name
        FROM users u
-       JOIN companies c ON c.id = u.company_id
+       LEFT JOIN companies c ON c.id = u.company_id
+       LEFT JOIN departments d ON d.id = u.department_id
        WHERE u.id = $1`,
-      [decoded.userId]
+      [req.user.userId]
     );
 
     if (userRes.rows.length === 0) {
@@ -896,6 +900,23 @@ app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
     }
 
     const row = userRes.rows[0];
+
+    // Compute effective permissions
+    let permissions = req.user.permissions || [];
+    if (!permissions || permissions.length === 0) {
+      const permsRes = await pool.query(`
+        SELECT DISTINCT p.action
+        FROM permissions p
+        JOIN role_permissions rp ON p.id = rp.permission_id
+        JOIN roles r ON rp.role_id = r.id
+        WHERE (LOWER(r.name) = LOWER($1)) AND (r.company_id = $2 OR r.company_id IS NULL)
+      `, [row.role, row.company_id]);
+      permissions = permsRes.rows.map(r => r.action);
+    }
+    if ((row.role || '').toLowerCase() === 'owner' || (row.role || '').toLowerCase() === 'superadmin') {
+      if (!permissions.includes('*')) permissions.unshift('*');
+    }
+
     res.json({
       id: row.id,
       company_id: row.company_id,
@@ -905,9 +926,285 @@ app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
       name: row.name,
       email: row.email,
       role: row.role,
+      status: row.status,
+      avatar_url: row.avatar_url || null,
+      phone: row.phone || null,
+      bio: row.bio || null,
+      notification_prefs: row.notification_prefs || {},
+      department_id: row.department_id || null,
+      department_name: row.department_name || null,
+      created_at: row.created_at,
+      permissions
     });
   } catch (err) {
-    return res.status(401).json({ error: 'Token invalid or expired' });
+    console.error('Error in /v1/auth/me:', err);
+    return res.status(500).json({ error: 'Failed to retrieve profile' });
+  }
+});
+
+// Update current user profile
+app.patch(['/api/auth/me', '/v1/auth/me', '/v1/users/me'], authenticateUser, async (req, res) => {
+  const { name, avatar_url, phone, bio, notification_prefs } = req.body;
+  try {
+    const updates = [];
+    const values = [];
+    let idx = 1;
+
+    if (name !== undefined) {
+      updates.push(`name = $${idx++}`);
+      values.push(name.trim());
+    }
+    if (avatar_url !== undefined) {
+      updates.push(`avatar_url = $${idx++}`);
+      values.push(avatar_url);
+    }
+    if (phone !== undefined) {
+      updates.push(`phone = $${idx++}`);
+      values.push(phone ? phone.trim() : null);
+    }
+    if (bio !== undefined) {
+      updates.push(`bio = $${idx++}`);
+      values.push(bio ? bio.trim() : null);
+    }
+    if (notification_prefs !== undefined) {
+      updates.push(`notification_prefs = $${idx++}`);
+      values.push(typeof notification_prefs === 'object' ? JSON.stringify(notification_prefs) : notification_prefs);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No fields provided to update' });
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(req.user.userId);
+
+    const query = `
+      UPDATE users
+      SET ${updates.join(', ')}
+      WHERE id = $${idx}
+      RETURNING id, name, email, role, avatar_url, phone, bio, notification_prefs, updated_at
+    `;
+
+    const result = await pool.query(query, values);
+    res.json({
+      success: true,
+      user: result.rows[0]
+    });
+  } catch (err) {
+    console.error('Error updating user profile:', err);
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// Change Password
+app.post(['/api/auth/me/change-password', '/v1/auth/me/change-password', '/v1/users/me/change-password'], authenticateUser, async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current password and new password are required' });
+  }
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+  }
+
+  try {
+    const userRes = await pool.query('SELECT password_hash FROM users WHERE id = $1', [req.user.userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isValid = await bcrypt.compare(currentPassword, userRes.rows[0].password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Incorrect current password' });
+    }
+
+    const newHash = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [newHash, req.user.userId]);
+
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (err) {
+    console.error('Error changing password:', err);
+    res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
+// Request Email Change with Re-verification
+app.post(['/api/auth/me/request-email-change', '/v1/auth/me/request-email-change'], authenticateUser, async (req, res) => {
+  const { newEmail, password } = req.body;
+  if (!newEmail || !password) {
+    return res.status(400).json({ error: 'New email address and current password are required' });
+  }
+
+  const normalizedEmail = newEmail.trim().toLowerCase();
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(normalizedEmail)) {
+    return res.status(400).json({ error: 'Invalid email address format' });
+  }
+
+  try {
+    const userRes = await pool.query('SELECT password_hash, email FROM users WHERE id = $1', [req.user.userId]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const isValid = await bcrypt.compare(password, userRes.rows[0].password_hash);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Incorrect password' });
+    }
+
+    if (userRes.rows[0].email === normalizedEmail) {
+      return res.status(400).json({ error: 'New email is identical to current email' });
+    }
+
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [normalizedEmail, req.user.userId]);
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ error: 'This email is already registered to another account' });
+    }
+
+    const verificationCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+
+    await pool.query(`
+      UPDATE users 
+      SET pending_email = $1, email_verification_token = $2, email_verification_expires_at = $3
+      WHERE id = $4
+    `, [normalizedEmail, verificationCode, expiresAt.toISOString(), req.user.userId]);
+
+    let emailSent = false;
+    const apiKey = (process.env.RESEND_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
+    if (apiKey) {
+      const fromEmail = (process.env.RESEND_FROM_EMAIL || '').trim().replace(/^['"]|['"]$/g, '') || 'Markova AI <onboarding@resend.dev>';
+      const payload = JSON.stringify({
+        from: fromEmail,
+        to: [normalizedEmail],
+        subject: 'Verify Your New Email Address - Markova OS',
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px 24px; background: #0f172a; color: #f8fafc; border-radius: 14px; border: 1px solid #1e293b;">
+            <h2 style="color: #ffffff; margin-top: 0;">Verify Your New Email</h2>
+            <p style="color: #94a3b8; font-size: 15px;">You requested to change your Markova OS account email to <strong>${normalizedEmail}</strong>.</p>
+            <div style="background: rgba(30, 41, 59, 0.8); border: 1px solid #334155; padding: 20px; border-radius: 10px; text-align: center; margin: 24px 0;">
+              <span style="font-family: monospace; font-size: 32px; letter-spacing: 6px; font-weight: 700; color: #38bdf8;">${verificationCode}</span>
+            </div>
+            <p style="color: #64748b; font-size: 12px; margin-bottom: 0;">This code will expire in 15 minutes. If you did not request this change, please ignore this email.</p>
+          </div>
+        `
+      });
+
+      try {
+        await new Promise((resolve) => {
+          const r = https.request({
+            hostname: 'api.resend.com',
+            port: 443,
+            path: '/emails',
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload)
+            }
+          }, (resp) => {
+            emailSent = resp.statusCode >= 200 && resp.statusCode < 300;
+            resolve();
+          });
+          r.on('error', () => resolve());
+          r.write(payload);
+          r.end();
+        });
+      } catch (e) {
+        console.warn('Failed to send verification email:', e);
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Verification code sent to ' + normalizedEmail,
+      emailSent
+    });
+  } catch (err) {
+    console.error('Error requesting email change:', err);
+    res.status(500).json({ error: 'Failed to process email change request' });
+  }
+});
+
+// Confirm Email Change with Code
+app.post(['/api/auth/me/verify-email-change', '/v1/auth/me/verify-email-change'], authenticateUser, async (req, res) => {
+  const { code } = req.body;
+  if (!code) {
+    return res.status(400).json({ error: 'Verification code is required' });
+  }
+
+  try {
+    const userRes = await pool.query(`
+      SELECT pending_email, email_verification_token, email_verification_expires_at
+      FROM users WHERE id = $1
+    `, [req.user.userId]);
+
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const { pending_email, email_verification_token, email_verification_expires_at } = userRes.rows[0];
+
+    if (!pending_email || !email_verification_token) {
+      return res.status(400).json({ error: 'No email change is currently pending' });
+    }
+
+    if (email_verification_token !== code.trim()) {
+      return res.status(400).json({ error: 'Invalid verification code' });
+    }
+
+    if (new Date(email_verification_expires_at) < new Date()) {
+      return res.status(410).json({ error: 'Verification code has expired. Please request a new one.' });
+    }
+
+    await pool.query(`
+      UPDATE users
+      SET email = pending_email, pending_email = NULL, email_verification_token = NULL, email_verification_expires_at = NULL, updated_at = CURRENT_TIMESTAMP
+      WHERE id = $1
+    `, [req.user.userId]);
+
+    res.json({
+      success: true,
+      message: 'Email address updated successfully to ' + pending_email,
+      newEmail: pending_email
+    });
+  } catch (err) {
+    console.error('Error verifying email change:', err);
+    res.status(500).json({ error: 'Failed to verify email change' });
+  }
+});
+
+// Test Email Dispatch Endpoint (Admin/Owner only)
+app.post(['/api/auth/email/test', '/v1/auth/email/test'], authenticateUser, async (req, res) => {
+  const userRole = (req.user.role || '').toLowerCase();
+  if (userRole !== 'owner' && userRole !== 'admin' && userRole !== 'superadmin') {
+    return res.status(403).json({ error: 'Only administrators or owners can test email dispatch.' });
+  }
+
+  const targetEmail = (req.body.email || req.user.email || '').trim().toLowerCase();
+  if (!targetEmail) {
+    return res.status(400).json({ error: 'Recipient email address is required.' });
+  }
+
+  const result = await sendInviteEmail({
+    to: targetEmail,
+    inviteUrl: (process.env.CLIENT_DASHBOARD_URL || req.headers.origin || 'https://app.markova.tech') + '/app/settings',
+    inviterName: req.user.name || 'System Administrator',
+    companyName: 'Markova OS Verification Test',
+    roleName: 'System Test'
+  });
+
+  if (result.sent) {
+    return res.json({
+      success: true,
+      message: `Test email dispatched successfully to ${targetEmail} via Resend.`,
+      delivery: result
+    });
+  } else {
+    return res.status(400).json({
+      success: false,
+      error: result.message || result.error || 'Failed to dispatch test email',
+      delivery: result
+    });
   }
 });
 
@@ -917,15 +1214,23 @@ app.get(['/api/auth/me', '/v1/auth/me'], async (req, res) => {
 
 // Helper: Send Invite Email via Resend API (Option A) with graceful fallback
 async function sendInviteEmail({ to, inviteUrl, inviterName, companyName, roleName }) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
+  const rawKey = (process.env.RESEND_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
+  if (!rawKey) {
     console.log(`[Invite Email] RESEND_API_KEY not configured. Generated magic invite link for ${to}: ${inviteUrl}`);
-    return { sent: false, reason: 'RESEND_API_KEY_NOT_CONFIGURED', inviteUrl };
+    return {
+      sent: false,
+      reason: 'RESEND_API_KEY_NOT_CONFIGURED',
+      message: 'RESEND_API_KEY is not configured in the Auth Service environment variables.',
+      inviteUrl
+    };
   }
+
+  const rawFrom = (process.env.RESEND_FROM_EMAIL || '').trim().replace(/^['"]|['"]$/g, '');
+  const fromEmail = rawFrom || 'Markova AI <onboarding@resend.dev>';
 
   return new Promise((resolve) => {
     const payload = JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL || 'Markova AI <onboarding@resend.dev>',
+      from: fromEmail,
       to: [to],
       subject: `You've been invited to join ${companyName || 'Markova OS'}`,
       html: `
@@ -964,7 +1269,7 @@ async function sendInviteEmail({ to, inviteUrl, inviterName, companyName, roleNa
       path: '/emails',
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        'Authorization': `Bearer ${rawKey}`,
         'Content-Type': 'application/json',
         'Content-Length': Buffer.byteLength(payload)
       }
@@ -974,20 +1279,40 @@ async function sendInviteEmail({ to, inviteUrl, inviterName, companyName, roleNa
       res.on('end', () => {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
-            resolve({ sent: true, data: JSON.parse(data), inviteUrl });
+            const parsed = JSON.parse(data);
+            console.log(`[Invite Email] Successfully sent email to ${to} via Resend (ID: ${parsed.id})`);
+            resolve({ sent: true, data: parsed, id: parsed.id, inviteUrl });
           } catch (e) {
             resolve({ sent: true, raw: data, inviteUrl });
           }
         } else {
-          console.warn(`[Invite Email] Resend API error (${res.statusCode}):`, data);
-          resolve({ sent: false, error: data, inviteUrl });
+          let errMessage = 'Resend API returned status ' + res.statusCode;
+          try {
+            const errObj = JSON.parse(data);
+            if (errObj.message) errMessage = errObj.message;
+          } catch (e) {}
+          console.warn(`[Invite Email] Resend API error (${res.statusCode}):`, errMessage);
+          resolve({
+            sent: false,
+            reason: 'RESEND_API_ERROR',
+            statusCode: res.statusCode,
+            message: errMessage,
+            error: data,
+            inviteUrl
+          });
         }
       });
     });
 
     req.on('error', (err) => {
       console.warn('[Invite Email] Network error to Resend:', err.message);
-      resolve({ sent: false, error: err.message, inviteUrl });
+      resolve({
+        sent: false,
+        reason: 'NETWORK_ERROR',
+        error: err.message,
+        message: 'Network connection to Resend API failed: ' + err.message,
+        inviteUrl
+      });
     });
 
     req.write(payload);

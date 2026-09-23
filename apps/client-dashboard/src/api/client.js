@@ -1287,3 +1287,88 @@ export const workspaceLogin = async ({ slug, email, password }) => {
 
 export const updateWorkspaceSlug = (slug) => api.patch('/workspace/slug', { slug });
 export const updateWorkspaceLogo = (logoUrl) => api.patch('/workspace/logo', { logoUrl });
+
+// ---------- Email & Invitation Diagnostics ----------
+export const checkEmailConfig = () =>
+  api.get('/auth/health/email').catch(() => ({
+    data: { status: 'offline', configured: false, from_email: 'unavailable' }
+  }));
+
+export const sendTestEmail = (email) => api.post('/auth/email/test', { email });
+
+// ---------- User Profile & Self-Service Management ----------
+export const getMyProfile = async () => {
+  if (isDemoMode()) {
+    const local = JSON.parse(localStorage.getItem('user') || '{}');
+    return {
+      data: {
+        id: local.id || 'demo-user',
+        name: local.name || 'Demo Developer',
+        email: local.email || 'demo@markova.et',
+        role: local.role || 'owner',
+        company_name: local.companyName || 'Markova Demo',
+        company_slug: 'markova-demo',
+        avatar_url: local.avatar_url || null,
+        phone: local.phone || '+251 91 234 5678',
+        bio: local.bio || 'AI Telephony Engineer at Markova OS',
+        notification_prefs: local.notification_prefs || { email_alerts: true, call_reports: true },
+        permissions: ['*'],
+        created_at: new Date().toISOString()
+      }
+    };
+  }
+  return api.get('/auth/me');
+};
+
+export const updateMyProfile = async (data) => {
+  if (isDemoMode()) {
+    const local = JSON.parse(localStorage.getItem('user') || '{}');
+    const updated = { ...local, ...data };
+    localStorage.setItem('user', JSON.stringify(updated));
+    return { data: { success: true, user: updated } };
+  }
+  return api.patch('/auth/me', data);
+};
+
+export const changeMyPassword = (data) => api.post('/auth/me/change-password', data);
+
+export const requestEmailChange = (data) => api.post('/auth/me/request-email-change', data);
+
+export const verifyEmailChange = (data) => api.post('/auth/me/verify-email-change', data);
+
+// Flexible Avatar Upload: Uploads to Supabase storage with graceful fallback to base64 data URL
+export const uploadAvatarToSupabase = async (file, userId) => {
+  try {
+    const fileExt = file.name ? file.name.split('.').pop() : 'png';
+    const fileName = `${userId || 'user'}-${Date.now()}.${fileExt}`;
+    const filePath = `avatars/${fileName}`;
+
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(filePath, file, { upsert: true });
+
+    if (!uploadError && uploadData) {
+      const { data: publicUrlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath);
+      if (publicUrlData?.publicUrl) {
+        return { success: true, url: publicUrlData.publicUrl };
+      }
+    }
+  } catch (err) {
+    console.warn('[Avatar Upload] Supabase storage upload skipped or failed, falling back to data URL:', err);
+  }
+
+  // Graceful fallback to client-side compressed base64 data URL (zero extra storage budget required)
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      resolve({ success: true, url: e.target.result, isLocalFallback: true });
+    };
+    reader.onerror = () => {
+      resolve({ success: false, error: 'Failed to read image file' });
+    };
+    reader.readAsDataURL(file);
+  });
+};
+

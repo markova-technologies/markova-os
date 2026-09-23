@@ -28,7 +28,7 @@ import {
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import './Settings.css'
-import api, { updateWorkspaceSlug, updateWorkspaceLogo } from '../api/client'
+import api, { updateWorkspaceSlug, updateWorkspaceLogo, checkEmailConfig, sendTestEmail } from '../api/client'
 
 const Settings = () => {
   const location = useLocation()
@@ -113,6 +113,35 @@ const Settings = () => {
   const [logoUrl, setLogoUrl] = useState('')
   const [savingLogo, setSavingLogo] = useState(false)
 
+  // Email diagnostic state
+  const [emailConfig, setEmailConfig] = useState(null)
+  const [testEmailAddress, setTestEmailAddress] = useState('')
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false)
+  const [testEmailFeedback, setTestEmailFeedback] = useState(null)
+
+  const handleSendTestEmail = async () => {
+    const target = (testEmailAddress || user?.email || '').trim()
+    if (!target) {
+      showError('Please enter a recipient email address')
+      return
+    }
+    setIsSendingTestEmail(true)
+    setTestEmailFeedback(null)
+    try {
+      const res = await sendTestEmail(target)
+      if (res.data?.success) {
+        success('Test email successfully dispatched via Resend!')
+        setTestEmailFeedback({ success: true, message: `Dispatched to ${target}` })
+      }
+    } catch (err) {
+      const msg = err.response?.data?.error || err.response?.data?.delivery?.message || err.message || 'Failed to dispatch test email'
+      showError(`Email test failed: ${msg}`)
+      setTestEmailFeedback({ success: false, message: msg })
+    } finally {
+      setIsSendingTestEmail(false)
+    }
+  }
+
   useEffect(() => {
     try {
       const rawUser = JSON.parse(localStorage.getItem('user') || '{}')
@@ -193,6 +222,9 @@ const Settings = () => {
     fetchProfileAndSettings()
     fetchProviders()
     fetchUsers()
+    checkEmailConfig().then(res => {
+      if (res.data) setEmailConfig(res.data)
+    }).catch(() => {})
   }, [])
 
   const fetchProviders = async () => {
@@ -768,6 +800,87 @@ const Settings = () => {
             </label>
           </div>
         ))}
+      </div>
+
+      {/* Email Delivery & Resend Service Diagnostic */}
+      <div style={{ marginTop: '2rem', padding: '1.5rem', background: 'var(--bg-main)', borderRadius: '12px', border: '1px solid var(--border-main)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <span>Transactional Email Service (Resend)</span>
+              {emailConfig?.configured ? (
+                <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.15)', color: '#10b981', border: '1px solid rgba(16, 185, 129, 0.3)' }}>
+                  Active
+                </span>
+              ) : (
+                <span style={{ fontSize: '0.75rem', padding: '2px 8px', borderRadius: '12px', background: 'rgba(234, 179, 8, 0.15)', color: '#eab308', border: '1px solid rgba(234, 179, 8, 0.3)' }}>
+                  Unconfigured
+                </span>
+              )}
+            </h4>
+            <p style={{ margin: '0.35rem 0 0', fontSize: '0.85rem', color: 'var(--gray)' }}>
+              Powers team invitations, workspace onboarding alerts, and password verification.
+            </p>
+          </div>
+          {emailConfig?.masked_key && (
+            <div style={{ fontFamily: 'monospace', fontSize: '0.8rem', padding: '4px 8px', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '6px', color: '#94a3b8' }}>
+              Key: {emailConfig.masked_key}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontSize: '0.85rem', color: 'var(--gray)', marginBottom: '1rem' }}>
+          <strong>Sender Address:</strong> <span style={{ color: '#38bdf8' }}>{emailConfig?.from_email || 'Markova AI <onboarding@resend.dev>'}</span>
+        </div>
+
+        {(isOwner || isAdmin) && (
+          <div style={{ borderTop: '1px solid var(--border-main)', paddingTop: '1rem' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.5rem' }}>
+              Test Email Dispatch:
+            </div>
+            <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+              <input
+                type="email"
+                placeholder={user?.email || 'name@company.com'}
+                value={testEmailAddress}
+                onChange={(e) => setTestEmailAddress(e.target.value)}
+                style={{
+                  flex: 1,
+                  minWidth: '220px',
+                  padding: '0.5rem 0.85rem',
+                  borderRadius: '8px',
+                  background: 'rgba(15, 23, 42, 0.6)',
+                  border: '1px solid var(--border-main)',
+                  color: 'var(--text-main)',
+                  fontSize: '0.88rem'
+                }}
+              />
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleSendTestEmail}
+                disabled={isSendingTestEmail}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                {isSendingTestEmail ? <Loader2 size={16} className="spinner" /> : <Plug size={16} />}
+                <span>{isSendingTestEmail ? 'Sending...' : 'Send Test Email'}</span>
+              </button>
+            </div>
+            {testEmailFeedback && (
+              <div style={{
+                marginTop: '0.75rem',
+                padding: '0.5rem 0.85rem',
+                borderRadius: '6px',
+                fontSize: '0.82rem',
+                background: testEmailFeedback.success ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                border: `1px solid ${testEmailFeedback.success ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`,
+                color: testEmailFeedback.success ? '#34d399' : '#f87171'
+              }}>
+                {testEmailFeedback.message}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

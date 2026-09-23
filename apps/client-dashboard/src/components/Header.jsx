@@ -144,12 +144,20 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
-              <div className="user-avatar">
-                <User size={18} />
+              <div className="user-avatar" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {(user?.avatar_url || user?.avatarUrl) ? (
+                  <img
+                    src={user.avatar_url || user.avatarUrl}
+                    alt={user?.name || 'User'}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                  />
+                ) : (
+                  <User size={18} />
+                )}
               </div>
               <div className="user-info">
                 <span className="user-name">{user?.name || 'Client User'}</span>
-                <span className="user-role">{user?.company || 'Client'}</span>
+                <span className="user-role">{user?.role ? user.role.toUpperCase() : (user?.company || 'Client')}</span>
               </div>
               <ChevronDown size={16} />
             </motion.button>
@@ -165,8 +173,16 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                 >
                   <div className="dropdown-header">
                     <div className="dropdown-user-info">
-                      <div className="dropdown-avatar">
-                        <User size={20} />
+                      <div className="dropdown-avatar" style={{ overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {(user?.avatar_url || user?.avatarUrl) ? (
+                          <img
+                            src={user.avatar_url || user.avatarUrl}
+                            alt={user?.name || 'User'}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+                          />
+                        ) : (
+                          <User size={20} />
+                        )}
                       </div>
                       <div>
                         <div className="dropdown-user-name">{user?.name || 'Client User'}</div>
@@ -182,11 +198,11 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
                       className="dropdown-item"
                       onClick={() => {
                         setShowUserMenu(false)
-                        navigate(ROUTES.settings)
+                        navigate(ROUTES.profile)
                       }}
                     >
                       <User size={16} />
-                      <span>Profile</span>
+                      <span>My Profile</span>
                     </button>
                     <button
                       className="dropdown-item"

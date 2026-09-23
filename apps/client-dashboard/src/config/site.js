@@ -32,4 +32,5 @@ export const ROUTES = {
   workspaceInvite: '/workspace/:slug/accept-invite',
   /** In-app invoices / plan management (after login) */
   billing: '/app/billing',
+  profile: '/app/profile',
 }

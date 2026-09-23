@@ -245,6 +245,8 @@ const TeamManagement = () => {
         if (inviteMethod === 'email') {
           if (inv.emailDelivery?.sent) {
             addToast(`Invitation email dispatched to ${inviteEmail}`, 'success');
+          } else if (inv.emailDelivery?.reason === 'RESEND_API_ERROR') {
+            addToast(`Invite link generated. Note: Email delivery returned (${inv.emailDelivery.message || 'Check email domain verification'}).`, 'warning');
           } else {
             addToast(`Invitation link generated! Copy the magic link below to share directly.`, 'success');
           }
@@ -1212,7 +1214,9 @@ const TeamManagement = () => {
                       ? 'Shareable Magic Link Generated!'
                       : createdInviteResult.emailDelivery?.sent
                         ? 'Invitation Email Sent!'
-                        : 'Invite Link Ready (Email Not Configured)'}
+                        : createdInviteResult.emailDelivery?.reason === 'RESEND_API_ERROR'
+                          ? 'Invite Link Ready (Email Dispatch Error)'
+                          : 'Invite Link Ready'}
                   </h4>
                   <div style={{ color: '#94a3b8', fontSize: '0.88rem', margin: 0, lineHeight: 1.5 }}>
                     {createdInviteResult.email ? (
@@ -1225,6 +1229,20 @@ const TeamManagement = () => {
                           <p style={{ margin: '0 0 0.5rem' }}>
                             An invitation was generated for <strong>{createdInviteResult.email}</strong> as <strong>{createdInviteResult.role_name || inviteRole}</strong>.
                           </p>
+                          {createdInviteResult.emailDelivery?.message && (
+                            <div style={{
+                              background: 'rgba(239, 68, 68, 0.1)',
+                              border: '1px solid rgba(239, 68, 68, 0.3)',
+                              borderRadius: '8px',
+                              padding: '0.5rem 0.8rem',
+                              color: '#fca5a5',
+                              fontSize: '0.82rem',
+                              marginBottom: '0.6rem',
+                              textAlign: 'left'
+                            }}>
+                              <strong>Email Service Note:</strong> {createdInviteResult.emailDelivery.message}
+                            </div>
+                          )}
                           <div style={{
                             display: 'inline-flex',
                             alignItems: 'center',

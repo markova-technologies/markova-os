@@ -29,6 +29,7 @@ const Organization = lazy(() => import('./pages/Organization'))
 const Notifications = lazy(() => import('./pages/Notifications'))
 const LandingPage = lazy(() => import('./pages/LandingPage'))
 const TeamManagement = lazy(() => import('./pages/TeamManagement'))
+const Profile = lazy(() => import('./pages/Profile'))
 const AcceptInvite = lazy(() => import('./pages/AcceptInvite'))
 const WorkspaceLogin = lazy(() => import('./pages/WorkspaceLogin'))
 const WorkspaceAcceptInvite = lazy(() => import('./pages/WorkspaceAcceptInvite'))
@@ -318,6 +319,7 @@ function App() {
                                 <Route path="usage" element={<RequirePermission permission="analytics:read"><UsageCenter /></RequirePermission>} />
                                 <Route path="analytics" element={<RequirePermission permission="analytics:read"><AnalyticsCenter /></RequirePermission>} />
                                 <Route path="settings" element={<Settings />} />
+                                <Route path="profile" element={<Profile />} />
                                 <Route path="billing" element={<RequirePermission permission="billing:read"><BillingCenter /></RequirePermission>} />
                                 <Route path="crm" element={<RequirePermission permission="crm:read"><CRM /></RequirePermission>} />
                                 <Route path="governance" element={<RequirePermission permission="governance:read"><Governance /></RequirePermission>} />

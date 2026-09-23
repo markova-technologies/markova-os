@@ -4,6 +4,22 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-22] Team Invitation Email Delivery Diagnostic & RBAC Profile Architecture
+- **Error/Problem:**
+  - Team invitation emails displayed `"Invite Link Ready (Email Not Configured)"` in the frontend modal, even after the developer configured `RESEND_API_KEY` on Render.
+  - The UI hid underlying Resend API domain validation errors and provided zero actionable feedback.
+  - Telephony channels were blocked for invited users due to an asymmetric permission check (`Sidebar.jsx` checked `phone:read` while `App.jsx` checked `telephony:read`).
+  - The platform lacked a dedicated self-service User Profile page for updating avatars, personal credentials, and reviewing assigned RBAC privileges.
+- **How it Happened:**
+  - `services/auth-service/server.js` was receiving environment variables that might contain trailing/leading quotes or whitespace, and failed to parse structured error JSON from Resend HTTP responses (`statusCode`, `message`).
+  - In `TeamManagement.jsx`, any falsy `emailDelivery?.sent` defaulted to the generic message `"Email Not Configured"`, hiding the actual Resend error (e.g. unverified sending domain `app.markova.tech` vs sandbox domain).
+  - Legacy seeds in `server.js` used `phone:read` while newer routes used `telephony:read`.
+- **Lesson Learned:**
+  1. Always sanitize API keys (`rawKey.trim().replace(/^['"]|['"]$/g, ''))`) and parse upstream provider response bodies (`errObj.message`) rather than swallowing them into generic failure flags.
+  2. Implement safe diagnostic endpoints (`GET /v1/auth/health/email`) and test email dispatches (`POST /v1/auth/email/test`) for administrators to verify mail delivery without generating dummy team invitations.
+  3. Support bidirectional permission aliasing (`telephony:*` <-> `phone:*`) in the RBAC permission evaluator (`can()`) so backwards/forwards schema compatibility is preserved across all navigation elements and protected routes.
+  4. Build modular self-service profile controls (`Profile.jsx`) equipped with dual-layer avatar storage (Supabase Storage with fallback to local data URLs) and secure two-step email change re-verification (6-digit expiring tokens).
+
 ### [2026-09-22] Redoc Search Icon 'Hanging Loose' Fixed via [role="search"] Selector & onLoaded Hook
 - **Error/Problem:**
   - In the API reference portal (`/docs/api`), the search bar's magnifying glass icon was "hanging on loose", sitting detached on its own line in the top-left corner of the sidebar above the `Search...` input box.

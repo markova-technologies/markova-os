@@ -37,7 +37,8 @@ const DEFAULT_ROLE_PERMISSIONS = {
     'settings:read', 'settings:write', 'billing:read',
     'users:read', 'users:invite', 'users:manage_roles', 'users:deactivate',
     'governance:read', 'governance:write', 'audit:read',
-    'phone:read', 'phone:create', 'phone:delete'
+    'phone:read', 'phone:create', 'phone:delete',
+    'telephony:read', 'telephony:create', 'telephony:delete'
   ],
   supervisor: [
     'calls:read', 'calls:listen', 'calls:barge', 'calls:download',
@@ -151,14 +152,31 @@ export const AuthProvider = ({ children, initialUser = null }) => {
       return true;
     }
 
-    return permissions.includes(requiredPermission);
+    if (permissions.includes(requiredPermission)) {
+      return true;
+    }
+
+    // Bidirectional alias support: telephony <-> phone
+    if (requiredPermission === 'telephony:read' && permissions.includes('phone:read')) return true;
+    if (requiredPermission === 'phone:read' && permissions.includes('telephony:read')) return true;
+    if (requiredPermission === 'telephony:create' && permissions.includes('phone:create')) return true;
+    if (requiredPermission === 'phone:create' && permissions.includes('telephony:create')) return true;
+    if (requiredPermission === 'telephony:delete' && permissions.includes('phone:delete')) return true;
+    if (requiredPermission === 'phone:delete' && permissions.includes('telephony:delete')) return true;
+
+    return false;
   }, [role, permissions]);
 
   const hasPermission = can;
 
-  const isOwner = (role || '').toLowerCase() === 'owner';
-  const isAdmin = isOwner || (role || '').toLowerCase() === 'admin' || (role || '').toLowerCase() === 'superadmin';
-  const isSupervisor = isAdmin || (role || '').toLowerCase() === 'supervisor';
+  const currentRole = (role || '').toLowerCase();
+  const isOwner = currentRole === 'owner';
+  const isAdmin = isOwner || currentRole === 'admin' || currentRole === 'superadmin';
+  const isSupervisor = isAdmin || currentRole === 'supervisor';
+  const isAgent = currentRole === 'agent';
+  const isAnalyst = currentRole === 'analyst';
+  const isViewer = currentRole === 'viewer';
+  const isDeveloper = currentRole === 'developer';
 
   const value = {
     user,
@@ -169,6 +187,10 @@ export const AuthProvider = ({ children, initialUser = null }) => {
     isOwner,
     isAdmin,
     isSupervisor,
+    isAgent,
+    isAnalyst,
+    isViewer,
+    isDeveloper,
     refreshAuth,
     setUser,
     setRole

@@ -19,6 +19,7 @@ import {
   Shield,
   Users,
   Building,
+  User,
   ChevronDown,
   ChevronRight
 } from 'lucide-react'
@@ -90,7 +91,7 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       path: ROUTES.phoneChannels,
       icon: Phone,
       color: 'text-indigo-400',
-      requiredPermission: 'phone:read'
+      requiredPermission: 'telephony:read'
     },
     {
       title: 'API Keys',
@@ -140,6 +141,12 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       icon: Users,
       color: 'text-blue-400',
       requiredPermission: 'crm:read'
+    },
+    {
+      title: 'My Profile',
+      path: ROUTES.profile,
+      icon: User,
+      color: 'text-violet-400'
     }
   ];
 

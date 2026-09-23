@@ -21,10 +21,15 @@ import {
   Smile,
   CheckCircle2,
   AlertCircle,
-  ExternalLink
+  ExternalLink,
+  Shield,
+  Users,
+  Headphones,
+  User
 } from 'lucide-react'
 import { listAgents, listCalls, getUsage } from '../api/client'
 import { useEnvironment } from '../contexts/EnvironmentContext'
+import { useAuth } from '../contexts/AuthContext'
 import Skeleton from '../components/Skeleton'
 import { ROUTES } from '../config/site'
 import realTimeService from '../services/realTimeService'
@@ -48,6 +53,7 @@ const relativeTime = (iso) => {
 const CommandCenter = () => {
   const navigate = useNavigate()
   const { environment } = useEnvironment()
+  const { role, isOwner, isAdmin, isSupervisor, isAgent, isAnalyst, can } = useAuth()
   const [agents, setAgents] = useState([])
   const [calls, setCalls] = useState([])
   const [usage, setUsage] = useState(null)
@@ -197,18 +203,79 @@ const CommandCenter = () => {
           <p className="hero-desc">
             Real-time telephony orchestrator, live agent analytics, and automated voice operations.
           </p>
+
+          <div className="role-context-strip">
+            <span className="role-context-badge">
+              <Shield size={13} /> {(role || 'OPERATOR').toUpperCase()} PERSPECTIVE
+            </span>
+            <span className="role-context-text">
+              {isSupervisor
+                ? 'Live listen-in and microphone barge-in capabilities active across all concurrent customer sessions.'
+                : isAgent
+                ? 'Frontline operator console with incoming call desk and customer CRM contact history.'
+                : isAnalyst
+                ? 'Telephony intelligence tracking call volume, recognition accuracy, and token utilization.'
+                : 'Full multi-tenant governance, agent provisioning, telephony routing, and organization control.'}
+            </span>
+          </div>
         </div>
 
         <div className="cc-hero-actions">
-          <button className="btn-hero primary" onClick={() => navigate(ROUTES.agentStudio)}>
-            <Plus size={16} /> Create AI Agent
-          </button>
-          <button className="btn-hero glass" onClick={() => navigate(ROUTES.phoneChannels)}>
-            <Phone size={16} /> Provision Number
-          </button>
-          <button className="btn-hero glass" onClick={() => navigate(ROUTES.keys)}>
-            <Key size={16} /> API Keys
-          </button>
+          {isSupervisor ? (
+            <>
+              <button className="btn-hero primary" onClick={() => navigate(ROUTES.callCenter)}>
+                <Headphones size={16} /> Live Call Center
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.crm)}>
+                <Users size={16} /> Customer CRM
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.analytics)}>
+                <BarChart3 size={16} /> Quality & Analytics
+              </button>
+            </>
+          ) : isAgent ? (
+            <>
+              <button className="btn-hero primary" onClick={() => navigate(ROUTES.callCenter)}>
+                <Headphones size={16} /> Call Center Desk
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.crm)}>
+                <Users size={16} /> Customer CRM
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.profile)}>
+                <User size={16} /> My Profile
+              </button>
+            </>
+          ) : isAnalyst ? (
+            <>
+              <button className="btn-hero primary" onClick={() => navigate(ROUTES.analytics)}>
+                <BarChart3 size={16} /> Analytics Center
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.usage)}>
+                <Clock size={16} /> Usage & Minutes
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.callCenter)}>
+                <Headphones size={16} /> Call Logs
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="btn-hero primary" onClick={() => navigate(ROUTES.agentStudio)}>
+                <Plus size={16} /> Create AI Agent
+              </button>
+              <button className="btn-hero glass" onClick={() => navigate(ROUTES.phoneChannels)}>
+                <Phone size={16} /> Provision Number
+              </button>
+              {can('users:read') ? (
+                <button className="btn-hero glass" onClick={() => navigate(ROUTES.team)}>
+                  <Users size={16} /> Team Roster
+                </button>
+              ) : (
+                <button className="btn-hero glass" onClick={() => navigate(ROUTES.keys)}>
+                  <Key size={16} /> API Keys
+                </button>
+              )}
+            </>
+          )}
         </div>
       </motion.div>
 
