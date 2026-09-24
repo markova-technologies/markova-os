@@ -1068,3 +1068,41 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lessons Learned:**
   1. NEVER silently fake API success on network failures (`!err.response`). If a backend service is offline, suspended, or unreachable, the UI must explicitly communicate the failure to the user rather than masquerading as a successful dispatch.
   2. In multi-tenant apps with a "Demo / Sandbox Mode", ensuring clean state transitions is paramount. Authenticating with real workspace credentials must always purge sandbox flags from storage immediately to prevent phantom mock sessions.
+
+---
+
+### [2026-09-24] Analytics Center Cramped Sub-Tabs UI/UX Defect & 6-Tab Production Telemetry Overhaul
+- **Problems Observed:**
+  1. **Cramped Sub-Tabs Layout Defect**: In `/app/analytics`, the top navigation tabs (`Agent Analytics`, `Team Analytics`, `Call Analytics`, `Business Analytics`, `Cost Analytics`, `Usage & Latency`) were jammed together with zero horizontal padding (`padding: 0.75rem 0`) and minimal flex gap (`0.5rem`), causing text labels to collide.
+  2. **Truncated/Incomplete Telemetry**: Clicking `Team`, `Call`, `Cost`, or `Usage` tabs defaulted back to `Agent` mock data, rendering 4 out of the 6 categories functionally dead and devoid of domain-specific KPIs.
+  3. **Unstyled & Non-Functional Controls**:
+     - The Date Range filter used an unstyled browser-native `<select>` element that failed to trigger real-time metric updates.
+     - The Daily vs Weekly time aggregation dropdown had no state handler or reactive chart re-indexing.
+     - Chart containers had dashed wireframe borders (`border: 1px dashed var(--border-main)`), looking like unfinished mockups.
+     - The Donut distribution chart had no legend labels or percentage shares, displaying raw numbers like `520%` due to hardcoded `%` string suffixes.
+     - The Detailed Breakdown table lacked search filtering, and the CSV export feature dumped hardcoded agent columns regardless of which tab was active.
+- **Root Causes:**
+  1. `.ac-tabs` had inline styles overriding CSS classes, and `.ac-tab` set `padding: 0.75rem 0`, stripping horizontal clearance.
+  2. `ANALYTICS_DATA` in `AnalyticsCenter.jsx` was only stubbed for `agent` and `business`; the fallback expression `ANALYTICS_DATA[activeTab] || ANALYTICS_DATA.agent` masked missing models for team, call, cost, and usage.
+  3. Percentage formatting in the PieChart legend and tooltip blindly appended `%` to `item.value` without normalizing against `totalPieVal`.
+- **Fixes Applied:**
+  1. **Spacious Obsidian Glass Segmented Tabs**:
+     - Redesigned the sub-tabs navigation into spacious pill controls (`.ac-tab-pill`) with generous horizontal padding (`0.6rem 1.1rem`), distinct category icons, and high-visibility domain badges (`Workforce`, `Containment`, `Traffic`, `Conversion`, `Finance`, `Engine`).
+     - Added subtle hover lift, active amber border glow (`var(--live-amber)`), and smooth Framer Motion tab transitions.
+  2. **Full 6-Domain Telemetry Architecture**:
+     - Built dedicated production models for:
+       - `agent`: Agent throughput, FCR, handle time, CSAT, agent call distribution.
+       - `team`: AI containment rate (88.5%), supervisor barge-ins/takeovers, containment vs escalation trends, department allocation.
+       - `call`: Telephony minutes (2,840 min), inbound/outbound ratio (78/22), peak concurrent calls (18 channels), hourly traffic volume, sentiment breakdown (Positive, Neutral, Inquiring, Escalated).
+       - `business`: Bookings/appointments (184), qualified leads (342), pipeline value in Ethiopian Birr (1,420,000 ETB), conversion funnel.
+       - `cost`: AI compute spend (1,842.50 ETB), cost per resolved call (1.47 ETB), net labor savings (41,830 ETB), infrastructure cost breakdown (LLM, Telephony SIP, STT/TTS, Cloud Compute).
+       - `usage`: P50 (685ms) & P95 (910ms) latency SLAs, STT/LLM/TTS pipeline breakdown, jitter variance.
+  3. **Interactive Visualizations & Tooling**:
+     - Upgraded the line chart to dual-axis plotting with working **Daily vs Weekly** aggregation toggle pill.
+     - Added dynamic donut legend with auto-computed percentage shares (`520 (42%)`, `340 (27%)`, etc.).
+     - Built client-side table search filtering (`.ac-table-search`) with live row counts ("Showing X of Y entries").
+     - Upgraded CSV export to dynamically generate columns and rows tailored to the active telemetry tab, paired with feedback toasts.
+- **Lessons Learned:**
+  1. Never eliminate horizontal padding on tab navigation (`padding: ... 0`) inside horizontally scrollable or flex containers, as this causes label text to jam tightly against adjacent boundaries.
+  2. Donut and pie charts should always compute percentages dynamically (`(val / total) * 100`) rather than naively appending `%` to raw volume counts.
+  3. Dashboards must maintain 100% data model coverage for all exposed navigation tabs before release; fallbacks should only serve as safety nets, not substitutes for actual domain schemas.
