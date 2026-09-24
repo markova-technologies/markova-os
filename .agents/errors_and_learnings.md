@@ -20,6 +20,7 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
   3. Include comprehensive auto-recharge rules and hard spending caps with multi-channel alerts (SMS, Email) to give enterprise call centers peace of mind against runaway call overages.
   4. Ensure official tax invoice statements reflect statutory requirements (Ministry of Innovation & Technology certification, Ethiopian Ministry of Revenues TIN, Addis Ababa address, 15% ECA Telecom VAT, and itemized line breakdowns) with both on-screen printable receipt modals and CSV export capabilities.
   5. Avoid using generic class names like `.header-left` that collide with global app shells; use scoped names like `.billing-header-info` with explicit `flex-direction: column` and `align-items: flex-start`.
+  6. Keep sidebar navigation focused on core operational surfaces (Usage, Calls, Agents, CRM); place administrative account items like Billing and Profile under the user avatar dropdown menu to prevent navigation clutter.
 
 ### [2026-09-24] Settings Section Overhaul: Low-Contrast Headers, Uncontrolled State Resets, Tab Trapping & SPA Auth Reload Kickouts
 - **Error/Problem:**
