@@ -4,6 +4,20 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-24] Role & Privileges Tab: CSS Grid Column 2 Blowout & Nowrap Text Overflow (507px Bleed)
+- **Error/Problem:**
+  - On `/app/profile` under the "Role & Privileges" tab, Column 2 cards (`AI Agents & Prompts`, `CRM & Customer Directory`, `Governance & Compliance`, `Billing & Subscriptions`) blew past the right edge of `.tab-card-pane` by over 500px, sticking out into the viewport background and triggering an unwanted horizontal scrollbar.
+  - The action tags (`agents:read`, `crm:delete`, `audit:read`, `billing:write`) hung in mid-air outside the main card boundary.
+- **How it Happened:**
+  - `.domains-matrix-container` was defined with `grid-template-columns: repeat(2, 1fr)`. According to the CSS Grid specification (section 7.2.1), `1fr` tracks have an implicit minimum size of `auto` (`min-content`).
+  - Child capability description strings (`.capability-desc`) declared `white-space: nowrap;` (e.g. `Update compliance guardrails and statutory recording disclosures` = 64 characters) without explicit `min-width: 0` on `.capability-domain-card` and `.capability-row`.
+  - The browser calculated the minimum content width of Column 1 and Column 2 as ~550px each (total ~1120px). When rendered inside a parent card of ~802px, the grid refused to shrink below 1120px and blew out to the right by 507px.
+- **Lesson Learned:**
+  1. Always use `grid-template-columns: repeat(2, minmax(0, 1fr))` rather than bare `repeat(2, 1fr)` when building multi-column card matrices with dynamic textual content. `minmax(0, 1fr)` forces columns to honor the parent container's width.
+  2. Set `min-width: 0; width: 100%; box-sizing: border-box; overflow: hidden;` on grid items and row containers.
+  3. Avoid rigid `white-space: nowrap` on descriptive text paragraphs; allow multi-line wrapping with clean line height (`line-height: 1.35; word-break: break-word;`) so users can read the complete explanation and the parent container remains responsive down to tablet viewports.
+  4. Use responsive breakpoints (`@media (max-width: 1100px)`) to collapse multi-column matrices into a clean single column on smaller laptop viewports.
+
 ### [2026-09-24] Profile Section Overhaul: Unscoped CSS Padding Leakage, Input Icon Collision, & Tab Ergonomics
 - **Error/Problem:**
   - Duplicate "My Profile" entry appeared in the sidebar under the "CRM" section, conflicting with the canonical "My Profile" item in the top header user dropdown.
