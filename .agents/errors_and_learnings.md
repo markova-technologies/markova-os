@@ -4,6 +4,26 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-24] Settings Section Overhaul: Low-Contrast Headers, Uncontrolled State Resets, Tab Trapping & SPA Auth Reload Kickouts
+- **Error/Problem:**
+  - In `/app/settings`, the primary `h1` header was virtually invisible in dark mode due to inheriting dark slate `color: var(--dark)`.
+  - Clicking "Reset Defaults" completely cleared the settings object to `{}` (`setSettings({})`), destroying all controlled input properties (`undefined`) and causing React uncontrolled component errors.
+  - Organization settings were skeletal (only 4 basic selects), lacking business hours, after-hours failover routing, and compliance recording retention.
+  - Provider configurations lacked secret masking toggles (`Eye`/`EyeOff`), live trunk/latency connection verification, and clear status pills.
+  - Audit log was a hardcoded static table with 5 rows without search, category filtering, or export functionality.
+  - Notifications lacked audio volume slider controls, audible chime preview, and robust demo email testing.
+  - Direct navigation or browser refresh on `/app/settings` instantly kicked authenticated users out to `/login` or `/app` due to synchronous `useState(false)` in `App.jsx` and unguarded `SIGNED_OUT` auth listeners.
+- **How it Happened:**
+  - `Settings.css` declared `.settings-header h1 { color: var(--dark); }`, which evaluated to `#0f172a` against the dark obsidian background.
+  - `handleReset()` wiped state to an empty object instead of restoring a comprehensive `DEFAULT_SETTINGS` constant.
+  - `App.jsx` initialized `const [isAuthenticated, setIsAuthenticated] = useState(false)` without inspecting `localStorage` synchronously. During initial render, React Router matched `<Route path="/app/*">` and immediately evaluated `<Navigate to={ROUTES.login} replace />` before async token verification could complete. Furthermore, `getMe()` in `client.js` lacked demo mode checks, throwing network errors and triggering `tokenStore.clear()` on unauthenticated microservice backends.
+- **Lesson Learned:**
+  1. Never initialize SPA authentication state to bare `false` if credentials (`token`, `demo-token`, or `user`) exist in local storage. Use lazy initializers (`useState(() => Boolean(tokenStore.get() || isDemoMode() || localStorage.getItem('user')))` to prevent race-condition redirects to `/login` on direct URL navigation and page reloads.
+  2. Guard Supabase `onAuthStateChange` listeners with `if (!isDemoMode())` to prevent synthetic `SIGNED_OUT` events from terminating local sandbox sessions.
+  3. Ensure `getMe()` returns sanitized demo user context in sandbox mode without attempting failing external HTTP calls.
+  4. Always define a full `DEFAULT_SETTINGS` constant for form reset actions so React controlled inputs never receive `undefined`.
+  5. Provide rich enterprise controls for telephony settings: operational hours, after-hours failover actions, on-call emergency numbers, carrier latency testing, live Web Audio API synthesized chimes, and downloadable CSV audit trails.
+
 ### [2026-09-24] Role & Privileges Tab: CSS Grid Column 2 Blowout & Nowrap Text Overflow (507px Bleed)
 - **Error/Problem:**
   - On `/app/profile` under the "Role & Privileges" tab, Column 2 cards (`AI Agents & Prompts`, `CRM & Customer Directory`, `Governance & Compliance`, `Billing & Subscriptions`) blew past the right edge of `.tab-card-pane` by over 500px, sticking out into the viewport background and triggering an unwanted horizontal scrollbar.

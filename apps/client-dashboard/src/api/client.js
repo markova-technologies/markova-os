@@ -233,6 +233,20 @@ export const logout = async () => {
   return api.post('/auth/logout').catch(() => ({}));
 };
 export const getMe = async () => {
+  if (isDemoMode()) {
+    const local = JSON.parse(localStorage.getItem('user') || '{}');
+    return {
+      data: {
+        id: local.id || 'demo-user',
+        name: local.name || 'Demo Developer',
+        email: local.email || 'demo@markova.et',
+        role: local.role || 'owner',
+        companyName: local.companyName || local.company || 'Markova AI Technologies',
+        company: local.company || local.companyName || 'Markova AI Technologies',
+        company_slug: local.company_slug || 'markova-workspace'
+      }
+    };
+  }
   const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: {} }))
   if (user) {
     return {

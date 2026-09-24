@@ -84,9 +84,17 @@ const PageLoadingFallback = () => (
 )
 
 function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return Boolean(tokenStore.get() || isDemoMode() || localStorage.getItem('user'))
+  })
 
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('user') || 'null')
+    } catch {
+      return null
+    }
+  })
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
@@ -123,8 +131,10 @@ function App() {
           window.history.replaceState(null, '', window.location.pathname === '/' ? '/app' : window.location.pathname)
         }
       } else if (event === 'SIGNED_OUT') {
-        setIsAuthenticated(false)
-        setUser(null)
+        if (!isDemoMode()) {
+          setIsAuthenticated(false)
+          setUser(null)
+        }
       }
     })
 
