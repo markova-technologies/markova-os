@@ -4,6 +4,24 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-25] Agent Studio Light Theme: Inline Hardcoded Styles (#ffffff), Obsidian Sub-Tab Overrides & Zero Dark Mode Regressions
+- **Error/Problem:**
+  - When switching the dashboard to Light Mode and opening the Agent Studio editor view (`/app/agent-studio` -> Edit Agent):
+    1. The top header agent name rename `<input>` appeared completely empty / white-on-white because of inline `color: '#ffffff'` and dynamic JS `onFocus`/`onBlur` handlers re-injecting white background strings.
+    2. The horizontal sub-tabs bar (`.builder-tabs`: `Prompt`, `Voice`, `Model`, `Knowledge`, `Integrations`, `Analytics`, `Version History`) was rendered as an unstyled dark obsidian bar (`background: rgba(10, 10, 10, 0.6)`) with dark muddy text.
+    3. The `Agent Name *` form input and label in the Prompt tab had inline `color: 'white'` and `color: '#cbd5e1'`, causing low-contrast or invisible input values.
+    4. The System Prompt textarea rendered as a dark muddy block (`background: rgba(0, 0, 0, 0.3)`), clashing with the light canvas.
+    5. Modals (Create Team, Version Preview, Voice Sandbox) had inline dark background hexes (`#111b15`, `#090e0b`) and `color: 'white'`.
+- **How it Happened:**
+  - `AgentStudio.jsx` was developed with extensive inline JSX style objects and inline event handlers (`onFocus={(e) => e.target.style.background = '...'}`) rather than semantic CSS classes, bypassing external theme overrides.
+  - `AgentStudio.css` defaulted `.builder-tabs` to hardcoded `background: rgba(10, 10, 10, 0.6)` without corresponding `[data-theme='light']` rules in `light-theme.css`.
+- **Lesson Learned:**
+  1. Never write hardcoded color hexes (`#ffffff`, `white`, `#cbd5e1`) or dynamic style mutations (`onFocus={(e) => ...}`) directly in JSX inline styles for form inputs. Always abstract styling into dedicated CSS classes (`.builder-agent-name-input`, `.builder-agent-field-input`, `.badge-commander`).
+  2. Scope all theme adaptations cleanly inside `[data-theme='light']` in `src/styles/light-theme.css`, preserving 100% of dark mode obsidian glass aesthetics without changing default styles.
+  3. Support all sub-tabs (`Prompt`, `Voice`, `Model`, `Knowledge`, `Integrations`, `Analytics`, `Version History`) with dedicated high-contrast card states (`.option-select-card`, `.bridge-item-card`, `.stat-metric-card`, `.version-item-card`) in light mode.
+  4. Always verify both light mode and dark mode via headless browser testing with automated screenshot capture before closing tasks.
+
+
 ### [2026-09-25] Enterprise Light Theme System: CSS Selector Specificity, `--white` Variable Inversion & Zero Dark Mode Regressions
 - **Error/Problem:**
   - Initial implementations of the light mode theme across the client dashboard suffered from lingering dark blocks, low-contrast text, and unstyled containers across several primary tabs:

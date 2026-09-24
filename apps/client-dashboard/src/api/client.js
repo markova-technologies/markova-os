@@ -1903,6 +1903,59 @@ export const deleteTeam = (id) => {
 // ---------- Composite Studio Data Loader (Single Round-Trip) ----------
 export const getStudioData = async () => {
   return apiCache.wrap('studio-data', async () => {
+    if (isDemoMode()) {
+      const demoTeams = [
+        { id: 'commander-team-id', name: 'Commander Master', type: 'commander', count: 2, isCommander: true },
+        { id: 'team-sales', name: 'Sales & Inquiries', type: 'sales', count: 1 },
+        { id: 'team-support', name: 'Customer Care', type: 'support', count: 1 }
+      ];
+      const demoAgents = [
+        {
+          id: 'agent-markova',
+          name: 'Markova - Commander Agent',
+          isCommander: true,
+          team_id: 'commander-team-id',
+          status: 'active',
+          voice_provider: 'edge_tts',
+          voice_id: 'am-ET-MekdesNeural',
+          model_provider: 'groq',
+          model_id: 'groq/compound-mini',
+          temperature: 0.3,
+          stt_provider: 'elevenlabs_scribe',
+          prompt: 'You are Markova, the primary Commander and Orchestrator AI for this enterprise call center. Your role is to warmly greet customers in Amharic (ሰላም! እንኳን ወደ ድርጅታችን ደህና መጡ), understand their inquiry, identify their needs, and provide clear assistance or direct their request to the appropriate department.\nAlways maintain a professional, respectful, and helpful Ethiopian conversational tone. Keep spoken responses concise, natural, and friendly.\n(💡 Tip: You can rename this agent or customize its prompt anytime).'
+        },
+        {
+          id: 'agent-almaz',
+          name: 'Almaz - GM Furniture Specialist',
+          isCommander: false,
+          team_id: 'commander-team-id',
+          status: 'active',
+          voice_provider: 'edge_tts',
+          voice_id: 'am-ET-MekdesNeural',
+          model_provider: 'groq',
+          model_id: 'groq/compound-mini',
+          temperature: 0.3,
+          stt_provider: 'elevenlabs_scribe',
+          prompt: 'You are Almaz, a friendly and experienced furniture sales consultant at GM Furniture in Addis Ababa. Assist customers with inquiries about sofa sets, dining tables, and bedroom furnishings in polite, natural Amharic.'
+        },
+        {
+          id: 'agent-dawit',
+          name: 'Dawit - Technical Support',
+          isCommander: false,
+          team_id: 'team-support',
+          status: 'active',
+          voice_provider: 'edge_tts',
+          voice_id: 'am-ET-AmehaNeural',
+          model_provider: 'groq',
+          model_id: 'groq/compound-mini',
+          temperature: 0.2,
+          stt_provider: 'elevenlabs_scribe',
+          prompt: 'You are Dawit, technical support engineer. Help callers resolve hardware and assembly questions with step-by-step guidance.'
+        }
+      ];
+      return { data: { teams: demoTeams, agents: demoAgents } };
+    }
+
     try {
       const res = await api.get('/studio-data');
       if (res.data && (res.data.teams || res.data.agents)) {

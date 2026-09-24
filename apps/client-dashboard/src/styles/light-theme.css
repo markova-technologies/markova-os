@@ -2497,3 +2497,473 @@
   background: #f8fafc !important;
   color: #0f172a !important;
 }
+
+/* ── Agent Studio & Teams Hub ────────────────────────────────────────────── */
+[data-theme='light'] .agent-studio {
+  background: var(--bg-main, #f8fafc) !important;
+  color: var(--text-main, #0f172a) !important;
+}
+
+[data-theme='light'] .teams-sidebar {
+  background: #ffffff !important;
+  border-right: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .teams-header h2 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .team-item {
+  color: #475569 !important;
+  background: transparent !important;
+}
+
+[data-theme='light'] .team-item:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .team-item.active {
+  background: rgba(245, 158, 11, 0.12) !important;
+  color: #b45309 !important;
+  border-left-color: #d97706 !important;
+}
+
+[data-theme='light'] .team-item.commander.active {
+  background: rgba(139, 92, 246, 0.12) !important;
+  color: #6d28d9 !important;
+  border-left-color: #7c3aed !important;
+}
+
+[data-theme='light'] .team-count {
+  background: #f1f5f9 !important;
+  color: #64748b !important;
+}
+
+[data-theme='light'] .team-item.active .team-count {
+  background: #ffffff !important;
+  color: #b45309 !important;
+}
+
+[data-theme='light'] .studio-main {
+  background: #f8fafc !important;
+}
+
+[data-theme='light'] .studio-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .studio-title h1 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .studio-title p {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .studio-content {
+  background: #f8fafc !important;
+}
+
+[data-theme='light'] .agent-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme='light'] .agent-card:hover {
+  border-color: #d97706 !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .agent-card.commander-card {
+  border-color: rgba(139, 92, 246, 0.35) !important;
+}
+
+[data-theme='light'] .agent-card.commander-card:hover {
+  border-color: #7c3aed !important;
+  box-shadow: 0 8px 24px rgba(139, 92, 246, 0.15) !important;
+}
+
+[data-theme='light'] .agent-status {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .agent-icon-wrapper {
+  background: #f1f5f9 !important;
+  color: #d97706 !important;
+  border-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .commander-card .agent-icon-wrapper {
+  background: rgba(139, 92, 246, 0.1) !important;
+  color: #7c3aed !important;
+  border-color: rgba(139, 92, 246, 0.2) !important;
+}
+
+[data-theme='light'] .agent-info h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .agent-info p {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .create-card {
+  background: #ffffff !important;
+  border: 1.5px dashed rgba(15, 23, 42, 0.2) !important;
+}
+
+[data-theme='light'] .create-card:hover {
+  background: #f8fafc !important;
+  border-color: #10b981 !important;
+}
+
+[data-theme='light'] .create-icon {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #059669 !important;
+}
+
+/* ── Agent Builder / Editor View ────────────────────────────────────────── */
+[data-theme='light'] .agent-builder {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .builder-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03) !important;
+}
+
+[data-theme='light'] .back-btn {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  color: #475569 !important;
+}
+
+[data-theme='light'] .back-btn:hover {
+  background: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: rgba(15, 23, 42, 0.24) !important;
+}
+
+[data-theme='light'] .builder-title h2 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .builder-title p {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .builder-agent-name-input {
+  color: #0f172a !important;
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.18) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06) !important;
+}
+
+[data-theme='light'] .builder-agent-name-input:focus {
+  background: #ffffff !important;
+  border-color: #10b981 !important;
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.16) !important;
+}
+
+[data-theme='light'] .badge-commander {
+  background: #f5f3ff !important;
+  color: #6d28d9 !important;
+  border: 1px solid rgba(109, 40, 217, 0.25) !important;
+}
+
+[data-theme='light'] .builder-tabs {
+  background: #ffffff !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .b-tab {
+  color: #64748b !important;
+  font-weight: 500 !important;
+}
+
+[data-theme='light'] .b-tab:hover {
+  color: #0f172a !important;
+  background: rgba(15, 23, 42, 0.03) !important;
+}
+
+[data-theme='light'] .b-tab.active {
+  color: #d97706 !important;
+  border-bottom-color: #d97706 !important;
+  font-weight: 600 !important;
+  background: transparent !important;
+}
+
+[data-theme='light'] .builder-content {
+  background: #f8fafc !important;
+}
+
+[data-theme='light'] .panel-group {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme='light'] .panel-group label {
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+
+[data-theme='light'] .builder-field-label {
+  color: #0f172a !important;
+  font-weight: 600 !important;
+}
+
+[data-theme='light'] .builder-agent-field-input {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .builder-agent-field-input:focus {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12) !important;
+}
+
+[data-theme='light'] .panel-group textarea {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.16) !important;
+  color: #0f172a !important;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.04) !important;
+  line-height: 1.55 !important;
+}
+
+[data-theme='light'] .panel-group textarea:focus {
+  outline: none !important;
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.15) !important;
+}
+
+[data-theme='light'] .panel-group select,
+[data-theme='light'] .panel-group input {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .panel-group select:focus,
+[data-theme='light'] .panel-group input:focus {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12) !important;
+}
+
+/* ── Prompt Suggester UI ─────────────────────────────────────────────────── */
+[data-theme='light'] .prompt-suggestions-trigger {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  color: #059669 !important;
+}
+
+[data-theme='light'] .prompt-suggestions-trigger:hover {
+  background: rgba(16, 185, 129, 0.18) !important;
+  border-color: #059669 !important;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.2) !important;
+}
+
+[data-theme='light'] .prompt-chip {
+  background: #f1f5f9 !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  color: #334155 !important;
+}
+
+[data-theme='light'] .prompt-chip:hover {
+  background: #e2e8f0 !important;
+  border-color: #059669 !important;
+  color: #059669 !important;
+}
+
+[data-theme='light'] .suggestions-tray {
+  background: #ffffff !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .suggestion-card {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .suggestion-card:hover {
+  background: #ffffff !important;
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.08) !important;
+}
+
+[data-theme='light'] .suggestion-title {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .suggestion-desc {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .suggestion-badge {
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #059669 !important;
+  border-color: rgba(16, 185, 129, 0.25) !important;
+}
+
+[data-theme='light'] .btn-use-suggestion {
+  background: rgba(16, 185, 129, 0.12) !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  color: #059669 !important;
+}
+
+[data-theme='light'] .btn-use-suggestion:hover {
+  background: #059669 !important;
+  color: #ffffff !important;
+}
+
+/* ── Voice & Model Options Grid ─────────────────────────────────────────── */
+[data-theme='light'] .option-select-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme='light'] .option-select-card:hover {
+  border-color: rgba(16, 185, 129, 0.4) !important;
+  background: #f8fafc !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .option-select-card.active {
+  border-color: #059669 !important;
+  background: rgba(16, 185, 129, 0.06) !important;
+  box-shadow: 0 4px 16px rgba(16, 185, 129, 0.14) !important;
+}
+
+[data-theme='light'] .option-title {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .option-tag {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+[data-theme='light'] .option-select-card.active .option-tag {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #059669 !important;
+}
+
+[data-theme='light'] .option-desc {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .option-footer {
+  color: #059669 !important;
+}
+
+/* ── Bridges & Toggles ──────────────────────────────────────────────────── */
+[data-theme='light'] .bridge-item-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03) !important;
+}
+
+[data-theme='light'] .bridge-item-card:hover {
+  border-color: rgba(15, 23, 42, 0.18) !important;
+  background: #f8fafc !important;
+}
+
+[data-theme='light'] .bridge-item-card.connected {
+  border-color: rgba(16, 185, 129, 0.35) !important;
+  background: rgba(16, 185, 129, 0.04) !important;
+}
+
+[data-theme='light'] .bridge-icon-box {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+[data-theme='light'] .bridge-item-card.connected .bridge-icon-box {
+  background: rgba(16, 185, 129, 0.15) !important;
+  color: #059669 !important;
+}
+
+[data-theme='light'] .bridge-details h4 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .bridge-details p {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .slider {
+  background-color: #cbd5e1 !important;
+  border-color: #94a3b8 !important;
+}
+
+[data-theme='light'] .slider:before {
+  background-color: #ffffff !important;
+}
+
+[data-theme='light'] input:checked + .slider {
+  background-color: #10b981 !important;
+  border-color: #10b981 !important;
+}
+
+/* ── Stats & Analytics Cards ────────────────────────────────────────────── */
+[data-theme='light'] .stat-metric-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme='light'] .stat-label {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .stat-value {
+  color: #0f172a !important;
+}
+
+/* ── Version History Tab ─────────────────────────────────────────────────── */
+[data-theme='light'] .version-item-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.03) !important;
+}
+
+[data-theme='light'] .version-item-card:hover {
+  background: #f8fafc !important;
+  border-color: rgba(15, 23, 42, 0.16) !important;
+}
+
+/* ── Visual Flow Agent Builder (/app/agent-builder) ──────────────────────── */
+[data-theme='light'] .agent-builder-container {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .ab-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .ab-sidebar {
+  background: #ffffff !important;
+  border-right: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .palette-item {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .palette-item:hover {
+  background: #ffffff !important;
+  border-color: #d97706 !important;
+}

@@ -699,17 +699,17 @@ const AgentStudio = () => {
       <AnimatePresence>
         {isCreateTeamOpen && (
           <motion.div className="modal-overlay" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(5px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div className="modal-content" style={{ background: 'var(--bg-card)', padding: '2rem', borderRadius: '1rem', width: '400px', border: '1px solid var(--border-main)' }}>
-              <h3>Create New AI Team</h3>
+            <div className="modal-content" style={{ background: 'var(--bg-card, #ffffff)', padding: '2rem', borderRadius: '1rem', width: '400px', border: '1px solid var(--border-main)', color: 'var(--text-main)' }}>
+              <h3 style={{ margin: '0 0 1rem 0', color: 'var(--text-main)' }}>Create New AI Team</h3>
               <input 
                 type="text" 
                 placeholder="Team Name (e.g. GM Sales, Tech Support)" 
                 value={newTeamName} 
                 onChange={e => setNewTeamName(e.target.value)} 
-                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', background: 'var(--bg-main)', color: 'white', border: '1px solid var(--border-main)', margin: '1rem 0' }} 
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '0.5rem', background: 'var(--bg-main)', color: 'var(--text-main)', border: '1px solid var(--border-main)', margin: '1rem 0' }} 
               />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button onClick={() => setIsCreateTeamOpen(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: 'none', color: 'var(--gray)', cursor: 'pointer' }}>Cancel</button>
+                <button onClick={() => setIsCreateTeamOpen(false)} style={{ padding: '0.5rem 1rem', background: 'transparent', border: 'none', color: 'var(--text-muted, var(--gray))', cursor: 'pointer' }}>Cancel</button>
                 <button onClick={handleCreateTeam} style={{ padding: '0.5rem 1rem', background: 'var(--primary)', border: 'none', color: 'white', borderRadius: '0.5rem', cursor: 'pointer', fontWeight: 600 }}>Create Team</button>
               </div>
             </div>
@@ -754,44 +754,21 @@ const AgentStudio = () => {
               <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <input
                   type="text"
+                  className="builder-agent-name-input"
                   value={editingAgent.name || ''}
                   onChange={(e) => setEditingAgent(prev => ({ ...prev, name: e.target.value }))}
                   placeholder="Agent Name (e.g. Markova, Customer Care...)"
-                  style={{
-                    fontSize: '1.35rem',
-                    fontWeight: '700',
-                    color: '#ffffff',
-                    background: 'rgba(255, 255, 255, 0.06)',
-                    border: '1px solid rgba(255, 255, 255, 0.2)',
-                    borderRadius: '0.45rem',
-                    padding: '0.25rem 2.2rem 0.25rem 0.65rem',
-                    outline: 'none',
-                    minWidth: '220px',
-                    maxWidth: '360px',
-                    transition: 'all 0.2s ease',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.15)'
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = '#10b981';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.09)';
-                    e.target.style.boxShadow = '0 0 0 2px rgba(16, 185, 129, 0.25)';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                    e.target.style.background = 'rgba(255, 255, 255, 0.06)';
-                    e.target.style.boxShadow = '0 2px 4px rgba(0,0,0,0.15)';
-                  }}
                   title="Click to rename this agent"
                 />
-                <Edit3 size={15} style={{ position: 'absolute', right: '10px', color: '#94a3b8', pointerEvents: 'none' }} />
+                <Edit3 size={15} style={{ position: 'absolute', right: '10px', color: 'var(--text-muted, #94a3b8)', pointerEvents: 'none' }} />
               </div>
               {editingAgent.isCommander && (
-                <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '0.35rem', background: 'rgba(139, 92, 246, 0.25)', color: '#c4b5fd', border: '1px solid rgba(139, 92, 246, 0.4)', fontWeight: 600 }}>
+                <span className="badge-commander">
                   Commander Master
                 </span>
               )}
             </div>
-            <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: '#94a3b8' }}>
+            <p style={{ margin: '0.35rem 0 0 0', fontSize: '0.82rem', color: 'var(--text-muted, #94a3b8)' }}>
               {editingAgent.isCommander 
                 ? 'Master Call Center Orchestrator • 💡 Tip: Click the name above to rename anytime.' 
                 : 'Specialized AI Voice Agent • 💡 Tip: Click the name above to rename anytime.'}
@@ -847,28 +824,19 @@ const AgentStudio = () => {
             {builderTab === 'prompt' && (
               <motion.div className="panel-group" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                 <div style={{ marginBottom: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                  <label style={{ fontSize: '0.85rem', color: '#cbd5e1', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <label className="builder-field-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     Agent Name <span style={{ color: '#ef4444' }}>*</span>
                   </label>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', maxWidth: '420px' }}>
                     <input
                       type="text"
+                      className="builder-agent-field-input"
                       value={editingAgent.name || ''}
                       onChange={e => setEditingAgent(prev => ({ ...prev, name: e.target.value }))}
                       placeholder="e.g. Markova, Customer Support, Billing Specialist..."
-                      style={{
-                        flex: 1,
-                        padding: '0.65rem 0.85rem',
-                        borderRadius: '0.5rem',
-                        background: 'rgba(255, 255, 255, 0.04)',
-                        border: '1px solid var(--border-main)',
-                        color: 'white',
-                        fontSize: '0.92rem',
-                        outline: 'none'
-                      }}
                     />
                   </div>
-                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted, #64748b)' }}>
                     The display name for your AI voice agent. Default primary orchestrator is <strong>Markova</strong>.
                   </span>
                 </div>
@@ -1435,30 +1403,30 @@ const AgentStudio = () => {
             <div 
               className="modal-content"
               style={{
-                background: '#111b15',
+                background: 'var(--bg-card, #111b15)',
                 padding: '2rem',
                 borderRadius: '1.25rem',
                 width: '600px',
                 maxHeight: '80vh',
-                border: '1px solid #1f3b2b',
+                border: '1px solid var(--border-main, #1f3b2b)',
                 display: 'flex',
                 flexDirection: 'column',
                 gap: '1rem'
               }}
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <h3 style={{ margin: 0, color: 'white', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h3 style={{ margin: 0, color: 'var(--text-main, white)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <History size={18} color="#10b981" /> Preview Version {selectedVersionPreview.version}
                 </h3>
                 <button 
                   onClick={() => setSelectedVersionPreview(null)}
-                  style={{ background: 'none', border: 'none', color: '#888', fontSize: '1.5rem', cursor: 'pointer' }}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted, #888)', fontSize: '1.5rem', cursor: 'pointer' }}
                 >
                   &times;
                 </button>
               </div>
 
-              <div style={{ fontSize: '0.8rem', color: '#71717a' }}>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted, #71717a)' }}>
                 Saved: {new Date(selectedVersionPreview.created_at).toLocaleString()} • Engine: {selectedVersionPreview.model_provider}
               </div>
 
@@ -1468,11 +1436,11 @@ const AgentStudio = () => {
                 style={{
                   width: '100%',
                   height: '240px',
-                  background: '#090e0b',
-                  border: '1px solid #1f3b2b',
+                  background: 'var(--bg-main, #090e0b)',
+                  border: '1px solid var(--border-main, #1f3b2b)',
                   borderRadius: '0.5rem',
                   padding: '1rem',
-                  color: '#e4e4e7',
+                  color: 'var(--text-main, #e4e4e7)',
                   fontFamily: 'inherit',
                   fontSize: '0.88rem',
                   resize: 'none'
@@ -1530,14 +1498,14 @@ const AgentStudio = () => {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               style={{ 
-                background: '#111b15', 
+                background: 'var(--bg-card, #111b15)', 
                 padding: '2.5rem', 
                 borderRadius: '1.5rem', 
                 width: '520px', 
-                maxHeight: '85vh',
-                display: 'flex',
-                flexDirection: 'column',
-                border: '1px solid #1f3b2b',
+                maxHeight: '85vh', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                border: '1px solid var(--border-main, #1f3b2b)', 
                 boxShadow: '0 20px 40px rgba(0,0,0,0.5)'
               }}
             >
@@ -1547,13 +1515,13 @@ const AgentStudio = () => {
                     <Mic size={20} />
                   </div>
                   <div>
-                    <h3 style={{ margin: 0, color: 'white', fontSize: '1.25rem' }}>Voice Sandbox Simulator</h3>
-                    <p style={{ margin: 0, color: '#888', fontSize: '0.8rem' }}>Live test for {editingAgent?.name || 'Markova'}</p>
+                    <h3 style={{ margin: 0, color: 'var(--text-main, white)', fontSize: '1.25rem' }}>Voice Sandbox Simulator</h3>
+                    <p style={{ margin: 0, color: 'var(--text-muted, #888)', fontSize: '0.8rem' }}>Live test for {editingAgent?.name || 'Markova'}</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => { endSandboxCall(); setIsVoiceSandboxOpen(false); }} 
-                  style={{ background: 'transparent', border: 'none', color: '#888', fontSize: '1.5rem', cursor: 'pointer' }}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted, #888)', fontSize: '1.5rem', cursor: 'pointer' }}
                 >
                   &times;
                 </button>
@@ -1565,8 +1533,8 @@ const AgentStudio = () => {
                     <Bot size={40} color="#10b981" />
                   </div>
                   <div style={{ textAlign: 'center' }}>
-                    <h4 style={{ color: 'white', margin: '0 0 0.5rem 0' }}>Ready to launch voice test?</h4>
-                    <p style={{ color: '#888', fontSize: '0.85rem', margin: 0, padding: '0 1rem' }}>
+                    <h4 style={{ color: 'var(--text-main, white)', margin: '0 0 0.5rem 0' }}>Ready to launch voice test?</h4>
+                    <p style={{ color: 'var(--text-muted, #888)', fontSize: '0.85rem', margin: 0, padding: '0 1rem' }}>
                       Connects directly to the orchestrator test bridge using {editingAgent?.name || 'Markova'}'s system prompt, voice ({editingAgent?.voice_id || 'am-ET-MekdesNeural'}), and model.
                     </p>
                   </div>
@@ -1582,7 +1550,7 @@ const AgentStudio = () => {
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden' }}>
                   {/* Call Status Header */}
-                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid #1f3b2b', padding: '0.75rem 1rem', borderRadius: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                  <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-main, #1f3b2b)', padding: '0.75rem 1rem', borderRadius: '0.75rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                     <span style={{ color: '#10b981', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 600 }}>
                       <span className="dot" style={{ background: '#10b981', width: '8px', height: '8px', borderRadius: '50%' }}></span> Simulated Call Active
                     </span>
@@ -1614,7 +1582,7 @@ const AgentStudio = () => {
                   )}
 
                   {/* Sandbox Chat/Speech Log */}
-                  <div style={{ flex: 1, background: '#090e0b', border: '1px solid #1f3b2b', borderRadius: '0.75rem', padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: '200px', maxHeight: '300px', marginBottom: '1rem' }}>
+                  <div style={{ flex: 1, background: 'var(--bg-main, #090e0b)', border: '1px solid var(--border-main, #1f3b2b)', borderRadius: '0.75rem', padding: '1rem', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', minHeight: '200px', maxHeight: '300px', marginBottom: '1rem' }}>
                     {sandboxTranscript.map((msg, i) => (
                       <div 
                         key={i} 
@@ -1646,7 +1614,7 @@ const AgentStudio = () => {
                       value={sandboxInput}
                       onChange={e => setSandboxInput(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleUserSandboxInput(sandboxInput)}
-                      style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '0.75rem', background: '#090e0b', border: '1px solid #1f3b2b', color: 'white', fontSize: '0.9rem' }}
+                      style={{ flex: 1, padding: '0.75rem 1rem', borderRadius: '0.75rem', background: 'var(--bg-main, #090e0b)', border: '1px solid var(--border-main, #1f3b2b)', color: 'var(--text-main, white)', fontSize: '0.9rem' }}
                     />
                     
                     <button 
@@ -1660,8 +1628,8 @@ const AgentStudio = () => {
                       onClick={startSpeechRecognition}
                       style={{ 
                         background: isListeningForSpeech ? '#ef4444' : 'rgba(255,255,255,0.05)', 
-                        color: 'white', 
-                        border: '1px solid #1f3b2b', 
+                        color: 'var(--text-main, white)', 
+                        border: '1px solid var(--border-main, #1f3b2b)', 
                         padding: '0 0.75rem', 
                         borderRadius: '0.75rem', 
                         cursor: 'pointer',
