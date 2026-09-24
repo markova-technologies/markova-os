@@ -72,6 +72,11 @@
   --shadow: var(--shadow-sm);
   --dark: var(--bg-primary);
   --gray: var(--text-muted);
+
+  /* Fallback color tokens */
+  --signal-ink: #f8fafc;
+  --slate-wire: #94a3b8;
+  --wire-white: #0a0a0a;
 }
 
 /* Glassmorphism Utilities */
@@ -99,35 +104,50 @@
   border-color: rgba(99, 102, 241, 0.4);
 }
 
-/* Light Theme */
+/* Executive Light Theme Design Tokens */
 [data-theme='light'] {
-  --primary: var(--live-amber);
-  --primary-dark: #C9852E;
-  --secondary: var(--slate-wire);
-  --success: var(--live-amber);
-  --warning: var(--live-amber);
-  --danger: var(--coral-pulse);
-  --dark: var(--signal-ink);
-  /* Main text color */
-  --dark-light: var(--slate-wire);
-  /* Muted text color */
-  --gray: var(--slate-wire);
-  --light: var(--wire-white);
-  /* Main background color */
-  --white: #ffffff;
-  /* Card/Container background color */
-  --border: rgba(18, 23, 43, 0.08);
-  --glass-bg: rgba(255, 255, 255, 0.7);
-  --shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.05), 0 2px 6px -1px rgba(0, 0, 0, 0.02);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
-
-  /* Semantic Variables (Light) */
-  --bg-main: var(--wire-white);
+  --bg-primary: #f8fafc;
+  --bg-secondary: #ffffff;
+  --bg-tertiary: #f1f5f9;
+  --bg-glass: rgba(255, 255, 255, 0.92);
+  --bg-main: #f8fafc;
   --bg-card: #ffffff;
   --bg-sidebar: #ffffff;
-  --text-main: var(--signal-ink);
-  --text-muted: var(--slate-wire);
-  --border-main: rgba(0, 0, 0, 0.08);
+
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-main: #0f172a;
+
+  --signal-ink: #0f172a;
+  --slate-wire: #64748b;
+  --wire-white: #f8fafc;
+  --dark: #0f172a;
+  --dark-light: #334155;
+  --gray: #64748b;
+  --white: #ffffff;
+
+  --border-primary: rgba(15, 23, 42, 0.08);
+  --border-secondary: rgba(15, 23, 42, 0.04);
+  --border-main: rgba(15, 23, 42, 0.08);
+  --border: rgba(15, 23, 42, 0.08);
+  --glass-bg: rgba(255, 255, 255, 0.9);
+
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-md: 0 4px 16px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.04);
+  --shadow-lg: 0 12px 32px -4px rgba(15, 23, 42, 0.1), 0 4px 12px -2px rgba(15, 23, 42, 0.05);
+  --shadow-glow: 0 0 24px rgba(217, 119, 6, 0.2);
+  --shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
+
+  --primary: #d97706;
+  --primary-dark: #b45309;
+  --secondary: #475569;
+  --accent: #d97706;
+  --live-amber: #d97706;
+  --success: #059669;
+  --danger: #dc2626;
+  --warning: #d97706;
+  --info: #2563eb;
 }
 
 /* Sandbox vs Live (Brief §3) — a real palette shift, driven by EnvironmentContext

@@ -4,6 +4,27 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-25] Enterprise Light Theme System: CSS Selector Specificity, `--white` Variable Inversion & Zero Dark Mode Regressions
+- **Error/Problem:**
+  - Initial implementations of the light mode theme across the client dashboard suffered from lingering dark blocks, low-contrast text, and unstyled containers across several primary tabs:
+    - On `/app/usage`, the hero spend card rendered as an unstyled dark grey container.
+    - On `/app/profile`, form input icons collided with input text and form inputs had dark backgrounds with white text.
+    - On `/app/team`, department headers remained dark obsidian boxes.
+    - On `/app/keys`, the "No keys found" card remained dark grey with poor contrast.
+    - On `/app/organization`, headers and descriptive subtitles were completely invisible (white text on a `#f8fafc` canvas).
+    - On `/app/crm`, the search toolbar and detail drawer insights had dark backgrounds, and the active tab pill had invisible white-on-white text.
+- **How it Happened:**
+  - Speculative/generic CSS class names were used in early drafts (e.g. `.usage-metric-val`, `.dept-header`, `.key-name`, `.hub-header`) that did not match the actual component classes (`.usage-metric-value`, `.department-group-header`, `.key-title`, `.ih-header`).
+  - In `Profile.css`, inputs were scoped under `.profile-page .form-input` with high specificity and `!important` padding, which overrode general light theme utility classes.
+  - In `Organization.css`, `.org-page` declared `color: var(--white)`. In `:root` and default variables, `--white` evaluated to `#ffffff`, causing text on the light canvas to become invisible white-on-white.
+  - In `CRM.css`, `.crm-tab-pill.is-active` explicitly set `color: #ffffff`, which made active tab text unreadable against a light background without an explicit light mode override.
+- **Lesson Learned:**
+  1. Always audit the exact JSX AST and component CSS files before writing theme overrides; never rely on speculative class names.
+  2. Isolate all light mode CSS strictly under the `[data-theme='light']` selector in `src/styles/light-theme.css`, ensuring zero bytes of dark mode rules are touched or regressed.
+  3. Avoid relying on color variable names with hardcoded semantic meanings like `--white` for text typography; always map theme typography to semantic tokens like `var(--text-main, #0f172a)` and `var(--text-muted, #64748b)`.
+  4. In lazy-loaded SPA routes (`<Suspense>`), automated test harnesses must provide sufficient wait times (~2500ms post-navigation) to allow route chunks to finish hydration before taking viewport screenshots.
+  5. Always verify theme changes with an automated test suite across every single authenticated route and run regression metric checks against dark mode to guarantee absolute visual stability.
+
 ### [2026-09-24] Billing Center Overhaul: Unhandled API Rejections, Red Alert Crash, Skeletal MVP & Lack of Ethiopian Telephony Rails
 - **Error/Problem:**
   - Navigating to `/app/billing` rendered a prominent red error banner: `"We couldn't load your billing details just now. Try again in a moment."`

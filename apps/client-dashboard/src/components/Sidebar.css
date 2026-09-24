@@ -55,7 +55,7 @@
   font-size: 1.15rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  color: #ffffff;
+  color: var(--text-main, #ffffff);
 }
 
 .sidebar-brand .brand-badge {
