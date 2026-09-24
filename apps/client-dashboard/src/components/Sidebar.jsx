@@ -141,12 +141,6 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       icon: Users,
       color: 'text-blue-400',
       requiredPermission: 'crm:read'
-    },
-    {
-      title: 'My Profile',
-      path: ROUTES.profile,
-      icon: User,
-      color: 'text-violet-400'
     }
   ];
 

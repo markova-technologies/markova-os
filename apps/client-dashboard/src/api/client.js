@@ -1716,11 +1716,29 @@ export const updateMyProfile = async (data) => {
   return api.patch('/auth/me', data);
 };
 
-export const changeMyPassword = (data) => api.post('/auth/me/change-password', data);
+export const changeMyPassword = async (data) => {
+  if (isDemoMode()) {
+    await new Promise(r => setTimeout(r, 500));
+    return { data: { success: true, message: 'Password updated successfully' } };
+  }
+  return api.post('/auth/me/change-password', data);
+};
 
-export const requestEmailChange = (data) => api.post('/auth/me/request-email-change', data);
+export const requestEmailChange = async (data) => {
+  if (isDemoMode()) {
+    await new Promise(r => setTimeout(r, 500));
+    return { data: { success: true, message: `A 6-digit confirmation code was sent to ${data.newEmail}` } };
+  }
+  return api.post('/auth/me/request-email-change', data);
+};
 
-export const verifyEmailChange = (data) => api.post('/auth/me/verify-email-change', data);
+export const verifyEmailChange = async (data) => {
+  if (isDemoMode()) {
+    await new Promise(r => setTimeout(r, 500));
+    return { data: { success: true, newEmail: data.newEmail } };
+  }
+  return api.post('/auth/me/verify-email-change', data);
+};
 
 // Flexible Avatar Upload: Uploads to Supabase storage with graceful fallback to base64 data URL
 export const uploadAvatarToSupabase = async (file, userId) => {

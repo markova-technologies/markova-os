@@ -4,6 +4,23 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-24] Profile Section Overhaul: Unscoped CSS Padding Leakage, Input Icon Collision, & Tab Ergonomics
+- **Error/Problem:**
+  - Duplicate "My Profile" entry appeared in the sidebar under the "CRM" section, conflicting with the canonical "My Profile" item in the top header user dropdown.
+  - On `/app/profile`, form input icons (User, Phone, Mail, Building) directly collided and overlapped the initial characters of their respective input values (e.g. "Demo User", "+251...").
+  - The upper section navigation tabs (`General Info`, `Role & Privileges`, `Security & Password`, `Notifications`) were crammed tightly together without visual hierarchy, proper padding, or active gold-amber indicator states.
+  - In sandbox/demo mode, attempting password change or email verification threw unhandled network rejection errors.
+- **How it Happened:**
+  - `Settings.css` declared an unscoped global rule `.form-input, .form-textarea { padding: 0.75rem 1rem; }`. When both style sheets loaded in Vite's bundle, this rule overrode the left padding declared in `Profile.css`, stripping the inset needed to clear the absolute-positioned icons at `left: 1.1rem`.
+  - The profile tabs container used minimal flex gap (`0.25rem`) with unbordered plain links rather than Markova OS standard obsidian glass pill buttons.
+  - `client.js` lacked demo mode simulation traps for `changeMyPassword`, `requestEmailChange`, and `verifyEmailChange`.
+- **Lesson Learned:**
+  1. Never declare bare utility classes like `.form-input` or `.form-textarea` at the root level of page CSS modules. Always scope them under the specific page wrapper (`.settings-page .form-input`) to avoid cross-page CSS cascade pollution.
+  2. In form inputs with leading or trailing action icons, enforce explicit icon container bounds (`pointer-events: none; z-index: 3`) and secure text indentation with scoped `!important` padding (`padding: 0.85rem 1.1rem 0.85rem 3.1rem !important; box-sizing: border-box;`) to prevent collision under any bundle ordering.
+  3. Design navigation tab bars with segmented pill aesthetics (`gap: 0.85rem; padding: 0.75rem 1.4rem`), translucent glass borders, subtle gold-amber active gradients (`linear-gradient(135deg, rgba(245, 158, 11, 0.16), rgba(232, 163, 61, 0.08))`), and styled count pills.
+  4. Ensure client API methods for credentials/account security contain seamless demo-mode resolution to guarantee zero runtime rejections during sandbox testing.
+
+
 ### [2026-09-24] Usage Center Crash on Unprotected getUsage API & Zero-Telemetry Sandbox Experience
 - **Error/Problem:**
   - Upon visiting the "Usage" section, a prominent red alert banner displayed: `"We couldn't load your usage just now. Try again in a moment."`, and all 4 metric counters rendered zero (`0 min`, `0 sec`, `0 chars`, `0 tokens`).
