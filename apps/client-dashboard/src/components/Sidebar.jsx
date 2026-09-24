@@ -129,6 +129,13 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       requiredPermission: 'billing:read'
     },
     {
+      title: 'Billing',
+      path: ROUTES.billing,
+      icon: CreditCard,
+      color: 'text-amber-400',
+      requiredPermission: 'billing:read'
+    },
+    {
       title: 'Analytics Center',
       path: ROUTES.analytics,
       icon: BarChart3,

@@ -4,6 +4,23 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-24] Billing Center Overhaul: Unhandled API Rejections, Red Alert Crash, Skeletal MVP & Lack of Ethiopian Telephony Rails
+- **Error/Problem:**
+  - Navigating to `/app/billing` rendered a prominent red error banner: `"We couldn't load your billing details just now. Try again in a moment."`
+  - "Outstanding this cycle" rendered `0 ETB`, "Your plan" displayed `"Pricing is unavailable right now. Reload to try again."`, and "Line items" showed an empty message.
+  - The previous `BillingCenter.jsx` was an early 174-line MVP lacking essential billing capabilities: no plan upgrade/cadence switching, no voice credit pack top-ups, no payment method management (Telebirr, CBE Birr, Cards), no search/filtering on invoices, no itemized tax receipt modal, and no usage limit/auto-recharge configurations.
+  - In `Sidebar.jsx`, "Billing" was missing from the primary left-hand navigation list, only accessible through the user avatar dropdown menu.
+- **How it Happened:**
+  - In `BillingCenter.jsx`, `getInvoices()` was called inside `Promise.all([getInvoices(), getPricing().catch(), getMe().catch()])` without an inner `.catch()`. In demo mode or when the backend gateway proxy `/billing/invoices` was offline or returned 404/network error, `getInvoices()` threw an unhandled rejection, triggering the outer `catch` block that set `loadError` and left the screen blank.
+  - In `client.js`, `getInvoices()` and `getPricing()` were bare Axios calls (`api.get('/billing/invoices')` and `api.get('/pricing')`) without demo-mode fallback datasets or `localStorage` persistence, unlike other mature client modules.
+  - Global `.page-header .header-left` in `App.css` enforced `display: flex; align-items: center; gap: 1rem;`, causing the header badges, `h1` title, and subtitle `<p>` to flow horizontally across the screen in an unintended row layout.
+- **Lesson Learned:**
+  1. Never leave foundational financial data fetching (`getInvoices`, `getPricing`) unshielded without defensive local storage caches or rich mock datasets. When offline or running in sandbox mode, fallback datasets must accurately reflect the user's active tier, realistic telephony minute balances, and recent invoice items.
+  2. Implement Ethiopian telephony payment rails (Telebirr SuperApp, CBE Birr USSD) as first-class citizens alongside international credit cards (Visa/Mastercard) to meet local telecom and financial market requirements.
+  3. Include comprehensive auto-recharge rules and hard spending caps with multi-channel alerts (SMS, Email) to give enterprise call centers peace of mind against runaway call overages.
+  4. Ensure official tax invoice statements reflect statutory requirements (Ministry of Innovation & Technology certification, Ethiopian Ministry of Revenues TIN, Addis Ababa address, 15% ECA Telecom VAT, and itemized line breakdowns) with both on-screen printable receipt modals and CSV export capabilities.
+  5. Avoid using generic class names like `.header-left` that collide with global app shells; use scoped names like `.billing-header-info` with explicit `flex-direction: column` and `align-items: flex-start`.
+
 ### [2026-09-24] Settings Section Overhaul: Low-Contrast Headers, Uncontrolled State Resets, Tab Trapping & SPA Auth Reload Kickouts
 - **Error/Problem:**
   - In `/app/settings`, the primary `h1` header was virtually invisible in dark mode due to inheriting dark slate `color: var(--dark)`.

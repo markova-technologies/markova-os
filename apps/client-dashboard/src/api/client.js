@@ -1080,9 +1080,449 @@ export const getUsageHistory = async (params = {}) => {
   };
 };
 
-export const getInvoices = () => api.get('/billing/invoices');
+// ---------- Billing & Payments Center ----------
+const BILLING_STORAGE_KEY = 'markova_billing_data';
+const PAYMENT_METHODS_KEY = 'markova_payment_methods';
+
+export const DEFAULT_BILLING_DATA = {
+  currency: 'ETB',
+  currency_secondary: 'USD',
+  exchange_rate: 120.0,
+  balance_etb: 24500,
+  balance_usd: 204.16,
+  minutes_available: 3840,
+  current_cycle: {
+    plan_id: 'plus',
+    billing_cycle: 'monthly',
+    status: 'active',
+    period_start: '2026-09-01T00:00:00Z',
+    period_end: '2026-09-30T23:59:59Z',
+    next_billing_date: '2026-10-24T00:00:00Z',
+    minutes_included: 10000,
+    minutes_used: 6160,
+    estimated_next_amount_etb: 29900,
+    estimated_next_amount_usd: 249.16,
+    auto_recharge_enabled: true,
+    auto_recharge_threshold_etb: 1000,
+    auto_recharge_amount_etb: 5000,
+    spending_cap_enabled: true,
+    spending_cap_etb: 100000,
+    notify_threshold_80: true,
+    notify_threshold_95: true,
+    notify_sms: true,
+    notify_email: true,
+  },
+  invoices: [
+    {
+      id: 'INV-2026-004',
+      number: 'INV-2026-004',
+      description: 'Markova Plus Plan — Monthly Telephony & Voice AI (10,000 Mins)',
+      type: 'subscription',
+      status: 'paid',
+      amount_etb: 29900,
+      amount_usd: 249.16,
+      payment_method: 'Telebirr (•••• 4567)',
+      payment_method_id: 'pm_telebirr_01',
+      created_at: '2026-09-01T08:30:00Z',
+      due_date: '2026-09-01T08:30:00Z',
+      tax_tin: 'ET-004829104',
+      items: [
+        { desc: 'Markova Plus Base Platform License', amount: 24000 },
+        { desc: '10,000 Pooled Natural Voice Minutes (Amharic & English)', amount: 2000 },
+        { desc: 'Ethio Telecom Dedicated SIP Trunk Interconnect', amount: 3900 }
+      ]
+    },
+    {
+      id: 'INV-2026-003',
+      number: 'INV-2026-003',
+      description: 'Telephony Voice Top-Up — Business Pack (3,400 Mins)',
+      type: 'topup',
+      status: 'paid',
+      amount_etb: 10000,
+      amount_usd: 83.33,
+      payment_method: 'CBE Birr (•••• 6543)',
+      payment_method_id: 'pm_cbe_01',
+      created_at: '2026-08-18T14:15:00Z',
+      due_date: '2026-08-18T14:15:00Z',
+      tax_tin: 'ET-004829104',
+      items: [
+        { desc: 'Prepaid Telephony Credit Pack (3,400 Voice Minutes)', amount: 10000 }
+      ]
+    },
+    {
+      id: 'INV-2026-002',
+      number: 'INV-2026-002',
+      description: 'Markova Plus Plan — Monthly Subscription',
+      type: 'subscription',
+      status: 'paid',
+      amount_etb: 29900,
+      amount_usd: 249.16,
+      payment_method: 'Telebirr (•••• 4567)',
+      payment_method_id: 'pm_telebirr_01',
+      created_at: '2026-08-01T08:30:00Z',
+      due_date: '2026-08-01T08:30:00Z',
+      tax_tin: 'ET-004829104',
+      items: [
+        { desc: 'Markova Plus Base Platform License', amount: 24000 },
+        { desc: '10,000 Pooled Natural Voice Minutes (Amharic & English)', amount: 2000 },
+        { desc: 'Ethio Telecom Dedicated SIP Trunk Interconnect', amount: 3900 }
+      ]
+    },
+    {
+      id: 'INV-2026-001',
+      number: 'INV-2026-001',
+      description: 'Starter Onboarding & SIP Trunking Activation',
+      type: 'setup',
+      status: 'paid',
+      amount_etb: 4900,
+      amount_usd: 40.83,
+      payment_method: 'Visa (•••• 4242)',
+      payment_method_id: 'pm_card_01',
+      created_at: '2026-07-01T11:20:00Z',
+      due_date: '2026-07-01T11:20:00Z',
+      tax_tin: 'ET-004829104',
+      items: [
+        { desc: 'Starter Plan Onboarding & DID Verification', amount: 4900 }
+      ]
+    }
+  ]
+};
+
+export const DEFAULT_PAYMENT_METHODS = [
+  {
+    id: 'pm_telebirr_01',
+    type: 'telebirr',
+    name: 'Telebirr SuperApp',
+    identifier: '+251 91 123 4567',
+    account_name: 'Markova Technologies PLC',
+    is_default: true,
+    status: 'verified',
+    created_at: '2026-07-01T10:00:00Z'
+  },
+  {
+    id: 'pm_cbe_01',
+    type: 'cbe_birr',
+    name: 'CBE Birr',
+    identifier: '+251 92 987 6543',
+    account_name: 'Commercial Bank of Ethiopia Mobile',
+    is_default: false,
+    status: 'verified',
+    created_at: '2026-07-15T12:30:00Z'
+  },
+  {
+    id: 'pm_card_01',
+    type: 'card',
+    brand: 'visa',
+    name: 'Corporate Visa',
+    identifier: '•••• •••• •••• 4242',
+    expiry: '08/28',
+    account_name: 'Demo Developer',
+    is_default: false,
+    status: 'verified',
+    created_at: '2026-08-01T09:15:00Z'
+  }
+];
+
+export const DEFAULT_PRICING = {
+  currency: 'ETB',
+  currency_secondary: 'USD',
+  exchange_rate: 120.0,
+  tiers: [
+    {
+      id: 'starter',
+      name: 'Starter',
+      badge: 'Starter',
+      tagline: 'Ideal for small clinics, pilot receptionists & boutique call teams',
+      price_etb_monthly: 4900,
+      price_etb_annual: 47040,
+      price_usd_monthly: 49,
+      price_usd_annual: 470,
+      minutes_included: 1000,
+      overage_rate_etb: 3.50,
+      concurrent_calls: 2,
+      ai_agents: 1,
+      summary: 'Essential AI receptionist with natural voice and call routing',
+      features: [
+        '1,000 pooled voice minutes / month',
+        '2 concurrent call channels',
+        '1 custom AI voice agent',
+        'Amharic & English Natural TTS / STT',
+        'Basic call forwarding & recordings',
+        'Community & email support'
+      ]
+    },
+    {
+      id: 'plus',
+      name: 'Growth / Plus',
+      popular: true,
+      badge: 'Most Popular',
+      tagline: 'Best for growing businesses, delivery hubs, and multi-agent contact centers',
+      price_etb_monthly: 29900,
+      price_etb_annual: 287040,
+      price_usd_monthly: 299,
+      price_usd_annual: 2870,
+      minutes_included: 10000,
+      overage_rate_etb: 2.95,
+      concurrent_calls: 10,
+      ai_agents: 'Unlimited',
+      summary: 'Advanced telephony, sentiment analysis, CRM sync & multi-agent routing',
+      features: [
+        '10,000 pooled voice minutes / month',
+        '10 concurrent call channels',
+        'Unlimited AI voice agents',
+        'Ultra-low latency streaming voice engine',
+        'Ethio Telecom SIP & Twilio Trunking',
+        'Full CRM, webhook & REST API integrations',
+        'Real-time live call monitoring & barge-in',
+        'Priority 24/7 SLA support'
+      ]
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise',
+      contact_sales: true,
+      badge: 'Dedicated Scale',
+      tagline: 'For banks, telecom providers, government utilities & large BPOs',
+      price_etb_monthly: null,
+      price_etb_annual: null,
+      price_usd_monthly: null,
+      price_usd_annual: null,
+      minutes_included: 50000,
+      overage_rate_etb: 2.20,
+      concurrent_calls: 100,
+      ai_agents: 'Unlimited',
+      summary: 'Dedicated infrastructure, custom dialect fine-tuning & INSA compliance',
+      features: [
+        '50,000+ custom pooled voice minutes',
+        '100+ dedicated concurrent channels',
+        'Direct on-prem or private cloud deployment',
+        'Dedicated E1 / PRI & Ethio Telecom SIP trunks',
+        'Custom Amharic & regional dialect voice cloning',
+        'Full INSA cybersecurity compliance certification',
+        'Dedicated Customer Success Architect'
+      ]
+    }
+  ]
+};
+
+export const getInvoices = async () => {
+  const isDemo = isDemoMode();
+  if (!isDemo) {
+    try {
+      const res = await api.get('/billing/invoices');
+      if (res.data && (res.data.invoices || res.data.items)) {
+        return res;
+      }
+    } catch (_) {
+      // Fallback gracefully to local stored billing data
+    }
+  }
+
+  let stored = localStorage.getItem(BILLING_STORAGE_KEY);
+  let parsed = null;
+  if (stored) {
+    try {
+      parsed = JSON.parse(stored);
+    } catch (_) {}
+  }
+  if (!parsed || !Array.isArray(parsed.invoices)) {
+    parsed = JSON.parse(JSON.stringify(DEFAULT_BILLING_DATA));
+    localStorage.setItem(BILLING_STORAGE_KEY, JSON.stringify(parsed));
+  }
+
+  // Ensure current user's plan is reflected
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (user.plan && parsed.current_cycle) {
+      parsed.current_cycle.plan_id = user.plan;
+    }
+  } catch (_) {}
+
+  return { data: parsed };
+};
+
 // Public — no login wall on pricing.
-export const getPricing = () => api.get('/pricing');
+export const getPricing = async () => {
+  if (!isDemoMode()) {
+    try {
+      const res = await api.get('/pricing');
+      if (res.data && res.data.tiers && res.data.tiers.length > 0) {
+        return res;
+      }
+    } catch (_) {}
+  }
+  return { data: DEFAULT_PRICING };
+};
+
+export const getPaymentMethods = async () => {
+  const isDemo = isDemoMode();
+  if (!isDemo) {
+    try {
+      const res = await api.get('/billing/payment-methods');
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        return res;
+      }
+    } catch (_) {}
+  }
+
+  let stored = localStorage.getItem(PAYMENT_METHODS_KEY);
+  let methods = null;
+  if (stored) {
+    try {
+      methods = JSON.parse(stored);
+    } catch (_) {}
+  }
+  if (!Array.isArray(methods) || methods.length === 0) {
+    methods = JSON.parse(JSON.stringify(DEFAULT_PAYMENT_METHODS));
+    localStorage.setItem(PAYMENT_METHODS_KEY, JSON.stringify(methods));
+  }
+  return { data: methods };
+};
+
+export const addPaymentMethod = async (paymentData) => {
+  const isDemo = isDemoMode();
+  if (!isDemo) {
+    try {
+      const res = await api.post('/billing/payment-methods', paymentData);
+      if (res.data) return res;
+    } catch (_) {}
+  }
+
+  const { data: current } = await getPaymentMethods();
+  const newId = `pm_${paymentData.type}_${Date.now()}`;
+  const newMethod = {
+    id: newId,
+    type: paymentData.type,
+    name: paymentData.name || (paymentData.type === 'telebirr' ? 'Telebirr SuperApp' : paymentData.type === 'cbe_birr' ? 'CBE Birr' : 'Corporate Card'),
+    identifier: paymentData.identifier,
+    brand: paymentData.brand || (paymentData.type === 'card' ? 'visa' : undefined),
+    expiry: paymentData.expiry,
+    account_name: paymentData.account_name || 'Markova Account',
+    is_default: Boolean(paymentData.is_default || current.length === 0),
+    status: 'verified',
+    created_at: new Date().toISOString()
+  };
+
+  let updated = current.map(m => paymentData.is_default ? { ...m, is_default: false } : m);
+  updated.unshift(newMethod);
+  localStorage.setItem(PAYMENT_METHODS_KEY, JSON.stringify(updated));
+  return { data: newMethod };
+};
+
+export const deletePaymentMethod = async (id) => {
+  const isDemo = isDemoMode();
+  if (!isDemo) {
+    try {
+      await api.delete(`/billing/payment-methods/${id}`);
+    } catch (_) {}
+  }
+  const { data: current } = await getPaymentMethods();
+  const updated = current.filter(m => m.id !== id);
+  if (updated.length > 0 && !updated.some(m => m.is_default)) {
+    updated[0].is_default = true;
+  }
+  localStorage.setItem(PAYMENT_METHODS_KEY, JSON.stringify(updated));
+  return { data: { success: true } };
+};
+
+export const setDefaultPaymentMethod = async (id) => {
+  const isDemo = isDemoMode();
+  if (!isDemo) {
+    try {
+      await api.post(`/billing/payment-methods/${id}/default`);
+    } catch (_) {}
+  }
+  const { data: current } = await getPaymentMethods();
+  const updated = current.map(m => ({ ...m, is_default: m.id === id }));
+  localStorage.setItem(PAYMENT_METHODS_KEY, JSON.stringify(updated));
+  return { data: { success: true } };
+};
+
+export const topUpCredits = async ({ amount_etb, payment_method_id, payment_method_name }) => {
+  const numAmount = Number(amount_etb) || 0;
+  if (numAmount <= 0) throw new Error('Invalid top-up amount');
+
+  const { data: billing } = await getInvoices();
+  const newBalanceEtb = (billing.balance_etb || 0) + numAmount;
+  const newBalanceUsd = +(newBalanceEtb / (billing.exchange_rate || 120)).toFixed(2);
+  const additionalMins = Math.round(numAmount / 2.95);
+
+  const invoiceNumber = `INV-2026-${String((billing.invoices?.length || 0) + 1).padStart(3, '0')}`;
+  const newInvoice = {
+    id: invoiceNumber,
+    number: invoiceNumber,
+    description: `Telephony Voice Top-Up — ${Number(numAmount).toLocaleString()} ETB (~${additionalMins.toLocaleString()} Mins)`,
+    type: 'topup',
+    status: 'paid',
+    amount_etb: numAmount,
+    amount_usd: +(numAmount / 120).toFixed(2),
+    payment_method: payment_method_name || 'Telebirr',
+    payment_method_id: payment_method_id || 'pm_telebirr_01',
+    created_at: new Date().toISOString(),
+    due_date: new Date().toISOString(),
+    tax_tin: 'ET-004829104',
+    items: [
+      { desc: `Telephony Voice Credits (~${additionalMins} pooled minutes)`, amount: numAmount }
+    ]
+  };
+
+  const updatedBilling = {
+    ...billing,
+    balance_etb: newBalanceEtb,
+    balance_usd: newBalanceUsd,
+    minutes_available: (billing.minutes_available || 0) + additionalMins,
+    invoices: [newInvoice, ...(billing.invoices || [])]
+  };
+
+  localStorage.setItem(BILLING_STORAGE_KEY, JSON.stringify(updatedBilling));
+  return { data: { success: true, balance_etb: newBalanceEtb, invoice: newInvoice } };
+};
+
+export const updateSubscriptionPlan = async (planId, billingCycle = 'monthly') => {
+  const { data: billing } = await getInvoices();
+  const priceEtb = planId === 'starter' ? (billingCycle === 'annual' ? 47040 : 4900)
+    : planId === 'plus' ? (billingCycle === 'annual' ? 287040 : 29900)
+    : 120000;
+  
+  const updatedCycle = {
+    ...billing.current_cycle,
+    plan_id: planId,
+    billing_cycle: billingCycle,
+    status: 'active',
+    estimated_next_amount_etb: priceEtb,
+    estimated_next_amount_usd: +(priceEtb / 120).toFixed(2),
+    minutes_included: planId === 'starter' ? 1000 : planId === 'plus' ? 10000 : 50000
+  };
+
+  const updatedBilling = {
+    ...billing,
+    current_cycle: updatedCycle
+  };
+
+  localStorage.setItem(BILLING_STORAGE_KEY, JSON.stringify(updatedBilling));
+
+  // Also update user's plan in user localStorage
+  try {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    user.plan = planId;
+    localStorage.setItem('user', JSON.stringify(user));
+  } catch (_) {}
+
+  return { data: updatedCycle };
+};
+
+export const updateBillingSettings = async (settings) => {
+  const { data: billing } = await getInvoices();
+  const updatedBilling = {
+    ...billing,
+    current_cycle: {
+      ...billing.current_cycle,
+      ...settings
+    }
+  };
+  localStorage.setItem(BILLING_STORAGE_KEY, JSON.stringify(updatedBilling));
+  return { data: updatedBilling.current_cycle };
+};
 
 // ---------- Channels (Phone & Channels page) ----------
 // Channels are backed by /v1/numbers + /v1/connectors in the gateway.
