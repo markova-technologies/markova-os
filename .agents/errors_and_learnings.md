@@ -1106,3 +1106,39 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
   1. Never eliminate horizontal padding on tab navigation (`padding: ... 0`) inside horizontally scrollable or flex containers, as this causes label text to jam tightly against adjacent boundaries.
   2. Donut and pie charts should always compute percentages dynamically (`(val / total) * 100`) rather than naively appending `%` to raw volume counts.
   3. Dashboards must maintain 100% data model coverage for all exposed navigation tabs before release; fallbacks should only serve as safety nets, not substitutes for actual domain schemas.
+
+---
+
+### [2026-09-24] Customers & CRM Section: Cramped Upper Tabs Defect & End-to-End Production Overhaul
+- **Problems Observed:**
+  1. **Cramped Sub-Tabs Layout Defect**: In `/app/crm`, the tab strip (`Contacts / Leads`, `Companies`, `Opportunities`, `Appointments`) used `padding: 0.75rem 0` with flat bottom borders, jamming the labels together with zero horizontal breathing room.
+  2. **Non-Functional Toolbar Controls**:
+     - The search input had no `value` or `onChange` event binding, leaving search non-functional.
+     - The `Filters` button had no `onClick` handler and did nothing.
+  3. **Mock Creation Modal with Native Browser Alert**: Clicking `+ Add Contact` opened a 2-field generic modal that called `alert('Added new ...')` instead of appending records to the workspace state.
+  4. **Data Breadth & Persistence Gaps**:
+     - The CRM defaulted to a single contact record (`Alice Walker`), with only 2 hardcoded companies and opportunities, and lacked localStorage persistence for newly created records.
+     - Contacts lacked rich timeline note creation, click-to-call, email actions, and status updates.
+- **Root Causes:**
+  1. Legacy CSS class `.crm-tab` specified `padding: 0.75rem 0`, causing the same horizontal label crowding seen previously in Analytics.
+  2. The creation modal was a prototype placeholder with unmanaged input fields and hardcoded window alerts.
+  3. No client-side state filtering logic was wired to the search input or status filters.
+- **Fixes Applied:**
+  1. **Spacious Obsidian Glass Segmented Tabs**:
+     - Upgraded the tab bar into spacious pill buttons (`.crm-tab-pill`) with `0.6rem 1.15rem` padding, category icons (`Users`, `Building2`, `Target`, `Calendar`), and real-time count badges (`crm-tab-count`).
+     - Added active amber glow (`var(--live-amber)`), subtle hover lift, and smooth state switching.
+  2. **Executive CRM KPI Stats Bar**:
+     - Added 4 top summary cards: Active Leads & Callers (7), Total Pipeline Value (14.2M ETB / $118,500), Active Opportunities (6 Deals, 78% win probability), and Upcoming AI Demos (4 Scheduled, 98% attendance).
+  3. **Live Search & Category Filter Pills**:
+     - Bound real-time multi-field search across caller names, organizations, roles, emails, and phone numbers.
+     - Added tab-specific status filter pills (`All`, `Qualified`, `Customer`, `Leads`, `Churn Risk`, `Enterprise`, `Mid-Market`, etc.).
+  4. **Interactive Detail Drawer**:
+     - Added quick action triggers: **Call Now** (simulating FreeSWITCH dialer bridge), **Email**, and a live **Lifecycle Status Select** dropdown.
+     - Integrated AI Conversation Insights with sentiment scores, source, intent, and verbatim quotes.
+     - Built an **Interactive Timeline** with an inline **"Add Note / Interaction"** form that instantly posts timestamped notes to the contact's activity feed.
+  5. **Production Multi-Tab Creation Modal**:
+     - Designed tab-specific forms for Contacts, Companies, Opportunities, and Appointments with validation, localStorage persistence, and `useToast()` feedback.
+  6. **Dynamic CSV Export**: Added active CSV download for all 4 CRM record types.
+- **Lessons Learned:**
+  1. Avoid using native browser `alert()` or `prompt()` anywhere in client-facing SaaS interfaces; all user interactions must utilize integrated toast notifications and non-blocking modals.
+  2. In CRM directory modules, provide immediate interactive actions (quick-copy, click-to-dial, email compose, status toggles, note logging) directly within the detail drawer to streamline agent and supervisor workflows.
