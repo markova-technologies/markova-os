@@ -4,6 +4,20 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-24] Usage Center Crash on Unprotected getUsage API & Zero-Telemetry Sandbox Experience
+- **Error/Problem:**
+  - Upon visiting the "Usage" section, a prominent red alert banner displayed: `"We couldn't load your usage just now. Try again in a moment."`, and all 4 metric counters rendered zero (`0 min`, `0 sec`, `0 chars`, `0 tokens`).
+  - The "Call minutes over time" waveform chart rendered an empty state (`"No metered events yet"`), and the recent calls table showed `0 in this period`.
+  - The section lacked date range filtering, cost/ETB estimation, call drill-down inspection, interactive currency switching, and test call simulation.
+- **How it Happened:**
+  - In `apps/client-dashboard/src/pages/UsageCenter.jsx`, `getUsage()` was invoked inside `Promise.all([getUsage(), getUsageHistory(), listCalls()])` without error shielding or fallback handling. In sandbox or demo mode, `api.get('/usage')` rejected, triggering the outer `catch` block and displaying the error banner.
+  - Furthermore, `getUsageHistory()` expected `{ items: [...] }` from the backend, but the frontend was only checking for `historyRes.data?.events`, discarding all returned ledger records.
+  - `apps/client-dashboard/src/api/client.js` did not generate or store fallback telemetry in demo mode, leaving developers with a dead-end UI.
+- **Lesson Learned:**
+  1. Always design API client methods with defensive fallbacks and persistent local storage generators (`getStoredUsageData()`) for sandbox/demo modes so dashboards remain fully interactive and never render broken red alert banners.
+  2. Normalize API response structures (e.g. supporting both `.items`, `.events`, and arrays) to ensure backward and forward schema compatibility between microservices.
+  3. Enrich usage dashboards with business-critical context: date range filters (Today, 7D, 30D, Month, All Time), cost computation in local currency (ETB) and USD, transparent unit rate transparency matrices, interactive waveform metric selection, call inspection modals with transcripts, and sandbox call simulators with live ledger incrementing.
+
 ### [2026-09-23] CommandCenter BarChart3 ReferenceError & Markova OS Favicon/Tab Title Fix
 - **Error/Problem:**
   - After logging in, the dashboard crashed with: `"This page hit a snag. Something didn't load right. BarChart3 is not defined"`.
