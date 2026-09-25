@@ -737,13 +737,11 @@ const Settings = () => {
                     style={{
                       width: '100%',
                       padding: '0.65rem 0.85rem',
-                      background: 'rgba(15, 23, 42, 0.9)',
-                      border: '1px solid rgba(56, 189, 248, 0.4)',
                       borderRadius: '8px',
-                      color: '#ffffff',
                       fontSize: '0.88rem',
                       boxSizing: 'border-box'
                     }}
+                    className="settings-dark-input-inline"
                   />
                 </div>
                 <button
@@ -812,12 +810,10 @@ const Settings = () => {
                   flex: 1,
                   minWidth: '200px',
                   padding: '0.65rem 0.85rem',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '8px',
-                  color: '#ffffff',
                   fontSize: '0.88rem'
                 }}
+                className="settings-dark-input-inline"
               />
               {(isOwner || isAdmin) && (
                 <button
@@ -1044,10 +1040,10 @@ const Settings = () => {
             </select>
           </div>
           <div className="settings-field" style={{ justifyContent: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(15, 23, 42, 0.75)', borderRadius: '0.65rem', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+            <div className="settings-inline-toggle-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '0.65rem' }}>
               <div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc' }}>Mask PII in Transcripts</div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Redact credit cards, National IDs, & passwords</div>
+                <div className="settings-toggle-title" style={{ fontSize: '0.9rem', fontWeight: 600 }}>Mask PII in Transcripts</div>
+                <div className="settings-toggle-desc" style={{ fontSize: '0.78rem' }}>Redact credit cards, National IDs, & passwords</div>
               </div>
               <label className="toggle-switch">
                 <input 
@@ -1080,11 +1076,9 @@ const Settings = () => {
       </div>
 
       {/* Enterprise RBAC Banner */}
-      <div style={{
+      <div className="settings-rbac-banner" style={{
         padding: '1.5rem',
         borderRadius: '1rem',
-        background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%)',
-        border: '1px solid rgba(245, 158, 11, 0.3)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -1094,9 +1088,9 @@ const Settings = () => {
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.35rem' }}>
             <ShieldCheck size={22} style={{ color: '#fbbf24' }} />
-            <h4 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#ffffff' }}>Enterprise RBAC & Security Matrix</h4>
+            <h4 className="settings-rbac-title" style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700 }}>Enterprise RBAC & Security Matrix</h4>
           </div>
-          <p style={{ margin: 0, fontSize: '0.9rem', color: '#cbd5e1', maxWidth: '640px' }}>
+          <p className="settings-rbac-desc" style={{ margin: 0, fontSize: '0.9rem', maxWidth: '640px' }}>
             Manage team invitations with magic links, define custom granular role permissions (30+ actions), and organize agents across Customer Support, Sales, and Billing.
           </p>
         </div>
@@ -1141,8 +1135,8 @@ const Settings = () => {
                         {member.name.charAt(0)}
                       </div>
                       <div>
-                        <div style={{ fontWeight: 600, color: '#ffffff', fontSize: '0.88rem' }}>{member.name}</div>
-                        <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>{member.email}</div>
+                        <div className="settings-member-name" style={{ fontWeight: 600, fontSize: '0.88rem' }}>{member.name}</div>
+                        <div className="settings-member-email" style={{ fontSize: '0.78rem' }}>{member.email}</div>
                       </div>
                     </div>
                   </td>
@@ -1290,10 +1284,10 @@ const Settings = () => {
             </select>
           </div>
           <div className="settings-field" style={{ justifyContent: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', background: 'rgba(15, 23, 42, 0.75)', borderRadius: '0.65rem', border: '1px solid rgba(255, 255, 255, 0.1)' }}>
+            <div className="settings-inline-toggle-box" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.75rem', borderRadius: '0.65rem' }}>
               <div>
-                <div style={{ fontSize: '0.9rem', fontWeight: 600, color: '#f8fafc' }}>Strong Password Complexity</div>
-                <div style={{ fontSize: '0.78rem', color: '#94a3b8' }}>Require 12+ chars, numbers & symbols</div>
+                <div className="settings-toggle-title" style={{ fontSize: '0.9rem', fontWeight: 600 }}>Strong Password Complexity</div>
+                <div className="settings-toggle-desc" style={{ fontSize: '0.78rem' }}>Require 12+ chars, numbers & symbols</div>
               </div>
               <label className="toggle-switch">
                 <input 
@@ -1739,8 +1733,8 @@ const Settings = () => {
                         <span title={event.fullTime}>{event.timestamp}</span>
                       </td>
                       <td>
-                        <div style={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.88rem' }}>{event.user}</div>
-                        <div style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{event.role}</div>
+                        <div className="settings-event-user" style={{ fontWeight: 600, fontSize: '0.88rem' }}>{event.user}</div>
+                        <div className="settings-event-role" style={{ fontSize: '0.75rem' }}>{event.role}</div>
                       </td>
                       <td>
                         <span className={`event-badge ${badgeClass}`}>
@@ -1937,14 +1931,12 @@ const Settings = () => {
                 placeholder={user?.email || 'name@company.com'}
                 value={testEmailAddress}
                 onChange={(e) => setTestEmailAddress(e.target.value)}
+                className="settings-dark-input-inline"
                 style={{
                   flex: 1,
                   minWidth: '220px',
                   padding: '0.65rem 0.85rem',
                   borderRadius: '8px',
-                  background: 'rgba(15, 23, 42, 0.75)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: '#ffffff',
                   fontSize: '0.88rem'
                 }}
               />

@@ -774,3 +774,52 @@
     justify-content: flex-start;
   }
 }
+
+/* Extracted Semantic Tokens for Theme Adaptability */
+.settings-rbac-banner {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(59, 130, 246, 0.1) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.settings-rbac-title {
+  color: #ffffff;
+}
+
+.settings-rbac-desc {
+  color: #cbd5e1;
+}
+
+.settings-inline-toggle-box {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.settings-toggle-title {
+  color: #f8fafc;
+}
+
+.settings-toggle-desc {
+  color: #94a3b8;
+}
+
+.settings-member-name {
+  color: #ffffff;
+}
+
+.settings-member-email {
+  color: #94a3b8;
+}
+
+.settings-event-user {
+  color: #f8fafc;
+}
+
+.settings-event-role {
+  color: #94a3b8;
+}
+
+.settings-dark-input-inline {
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}

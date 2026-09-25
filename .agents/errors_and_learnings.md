@@ -4,6 +4,31 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-25] Multi-Section Light Theme Overhaul: API Keys, Call Center, Analytics Breakdown, Profile (All Tabs), and Settings (All Tabs)
+- **Error/Problem:**
+  - The user requested extending the comprehensive Light Mode design system across 5 major sections, pointing out specific dark unstyled blocks:
+    1. **API Keys** (`/app/keys`): Environment toggle pill (`Sandbox (mk_test_)` vs `Live (mk_live_)`) and row action buttons (`>_ Test`, `</> Code`, `⚠️ Revoke`) remained unstyled dark blocks.
+    2. **Call Center** (`/app/call-center`):
+       - Header action buttons (`Export CSV`, `Listen In`, `Barge In`) and left-hand call queue / filter tabs (`All (3)`, `Live (1)`, etc.) were not styled in light theme.
+       - A layout bug in Call Center auto-scroll called `scrollIntoView()` on an inner transcript ref without `block: 'nearest'`, pulling down the outer browser viewport and scrolling the top headers out of sight.
+    3. **Analytics Center** (`/app/analytics`): The bottom "Detailed Telemetry Breakdown (Agent Analytics)" card remained a pitch-black box with unstyled search inputs and table rows.
+    4. **My Profile** (`/app/profile`):
+       - Tab 2 (Role & Privileges): Clearance banner ("Account Owner Privileges") and capability domain cards needed light styling.
+       - Tab 3 (Security & Password): Password update fields and two-step verification cards needed light contrast.
+       - Tab 4 (Notifications): The 5 notification alert channel cards (`Inbound Call Summaries`, `Missed Call & Voicemail Alerts`, `Security & Session Alerts`, `Weekly Executive Analytics Digest`, `Urgent SMS Bridge Notification`) needed crisp white cards, high-contrast typography, and styled toggle switches.
+    5. **Settings** (`/app/settings`):
+       - Checked all 7 sub-tabs (`profile`, `organization`, `users`, `security`, `providers`, `audit`, `notifications`).
+       - Found hardcoded inline styles (`color: '#ffffff'`, `color: '#f8fafc'`, `background: 'rgba(15, 23, 42, ...)'`) on the Enterprise RBAC banner, member name, audit event username, inline toggles, and input boxes that caused white-on-white text or dark boxes in light mode.
+- **How it Happened:**
+  - `CallCenter.jsx` had a `useEffect` that invoked `transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' })`. In modern browsers, calling `scrollIntoView()` on a deeply nested element scrolls ancestor containers and the window itself if not confined.
+  - In `Settings.jsx`, certain elements used hardcoded inline JSX styles (e.g. `color: '#ffffff'` and `color: '#f8fafc'`) rather than semantic CSS classes or variables, bypassing standard CSS cascade rules.
+  - Components were originally designed primarily for obsidian glass dark mode, relying on default inheritance without explicit `[data-theme='light']` rules for specialized sub-components.
+- **Lesson Learned:**
+  1. Never use unbounded `element.scrollIntoView()` inside container components with nested scroll boxes. Instead, locate the scrollable container (`const box = ref.current.closest('.transcript-box')`) and scroll it directly (`box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' })`) to prevent window and parent layout jumping.
+  2. Avoid hardcoding text colors like `#ffffff` or `#f8fafc` in inline JSX `style={{ ... }}` objects. Either extract them into semantic classes (`.settings-rbac-title`, `.settings-member-name`, `.settings-event-user`) or use semantic CSS custom properties (`var(--text-primary, #ffffff)`).
+  3. All light theme rules must be strictly isolated under `[data-theme='light']` in `src/styles/light-theme.css`, preserving 100% of dark mode obsidian glass styles without altering default component themes.
+  4. Perform thorough headless browser CDP automated testing across all sub-tabs and sub-sections, verifying both Light Mode visual quality and Dark Mode regression freedom.
+
 ### [2026-09-25] Agent Studio Light Theme: Inline Hardcoded Styles (#ffffff), Obsidian Sub-Tab Overrides & Zero Dark Mode Regressions
 - **Error/Problem:**
   - When switching the dashboard to Light Mode and opening the Agent Studio editor view (`/app/agent-studio` -> Edit Agent):

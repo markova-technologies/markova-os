@@ -295,7 +295,10 @@ const CallCenter = () => {
 
   useEffect(() => {
     if (transcriptEndRef.current) {
-      transcriptEndRef.current.scrollIntoView({ behavior: 'smooth' })
+      const box = transcriptEndRef.current.closest('.transcript-box')
+      if (box) {
+        box.scrollTo({ top: box.scrollHeight, behavior: 'smooth' })
+      }
     }
   }, [selectedCall?.transcript])
 
