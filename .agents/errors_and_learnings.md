@@ -4,6 +4,33 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-25] AI Governance & Safety Command: Unhandled Kill-Switch, Invisible Light Text (#ffffff), Undefined CSS Variables & End-to-End Interactive Production Overhaul
+- **Error/Problem:**
+  - The "Governance" section (`/app/governance`) was incomplete, semi-static, and suffered from critical bugs across both dark and light modes:
+    1. **Dead Emergency Kill-Switch**: In Tab 4 (Service SLAs & Risk), `<button className="emergency-btn">` had **no `onClick` handler** at all, leaving the critical emergency stop button completely inoperative.
+    2. **Invisible Text in Light Mode**: `.sla-value` had hardcoded `color: #ffffff !important;` in `Governance.css` without a light theme rule, causing "118 ms" and "Sentiment < 2.0 / 5.0" to render as completely invisible white text on white cards.
+    3. **Missing / Undefined CSS Variables in Dark & Light**:
+       - Risk pills: `.risk-pill.high` used `var(--icon-primary-bg)` and `var(--icon-primary-color)` which were undefined in `:root`, leaving the badges without background color.
+       - Progress bar: `.progress-fill.green` used `var(--icon-success-color)` which was undefined, rendering the audio latency progress bar invisible.
+       - Metric icons: `color: var(--icon-primary-color)` rendered icons white.
+       - Utility classes like `.text-green-400`, `.text-blue-400`, `.text-amber-400` were used from Tailwind conventions without being defined in vanilla CSS.
+    4. **Lack of Persistence & Toasts**: Approvals (`Approve & Execute` / `Reject Action`) and policy toggles had zero toast feedback and reset on page refresh.
+    5. **Static Mock Tables & Missing Functionality**:
+       - Human Approvals: No status filters (`All`, `Pending`, `Approved`, `Rejected`), no search input, no modal to inspect payload / transcript context, no ability to simulate a new test approval request.
+       - Guardrails & Safety: No category filters, no search, no policy parameter configuration modal, no custom guardrail creation.
+       - Hallucination & Audits: Static rows, no search filter, no deep-dive drawer showing retrieved pgvector chunks and cosine distance, no real-time audit trigger, no CSV export.
+       - Service SLAs: Static cards, no threshold configuration, no upstream carrier peering observability (Ethio Telecom, Twilio, OpenAI, ElevenLabs).
+- **How it Happened:**
+  - `Governance.jsx` was developed as an early static visual preview without implementing actual state machines, event handlers, or modals.
+  - Hardcoded `#ffffff` styles in `Governance.css` were written for obsidian dark mode without adding corresponding `[data-theme='light']` overrides to `light-theme.css`.
+  - Reliance on speculative CSS custom properties (`--icon-primary-color`, `--icon-primary-bg`, `--icon-success-color`) that were never declared in the global design system tokens in `index.css`.
+- **Lesson Learned:**
+  1. Always declare local scoped CSS fallback tokens on the page root (`--gov-amber: #f59e0b; --gov-amber-bg: rgba(...)`) to guarantee visual fidelity even if global variables are unset or renamed.
+  2. Never hardcode `color: #ffffff` on critical data metrics (`.sla-value`) without an explicit `[data-theme='light']` override targeting `#0f172a`.
+  3. Every high-stakes operational control (such as an Emergency Agent Kill-Switch) must have a complete lifecycle: confirmation modals, visual active alerts, persistent state in `localStorage`, dynamic header status badge updates, and a safe disengage flow.
+  4. Ensure all modals, interactive buttons, search toolbars, category filters, and CSV export capabilities are tested visually in both Dark and Light modes using automated browser testing prior to deployment.
+
+
 ### [2026-09-25] Multi-Section Light Theme Overhaul: API Keys, Call Center, Analytics Breakdown, Profile (All Tabs), and Settings (All Tabs)
 - **Error/Problem:**
   - The user requested extending the comprehensive Light Mode design system across 5 major sections, pointing out specific dark unstyled blocks:

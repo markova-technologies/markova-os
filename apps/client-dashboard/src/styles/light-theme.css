@@ -4146,3 +4146,622 @@
   box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12) !important;
 }
 
+/* ==========================================================================
+   AI Governance & Safety Command - Light Mode Theme System
+   ========================================================================== */
+
+[data-theme='light'] .governance-page {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .governance-header h1 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .governance-page .subtitle {
+  color: #475569 !important;
+}
+
+/* System status badges */
+[data-theme='light'] .system-status-badge.online {
+  background: rgba(16, 185, 129, 0.1) !important;
+  border-color: rgba(16, 185, 129, 0.3) !important;
+  color: #059669 !important;
+}
+
+[data-theme='light'] .system-status-badge.critical {
+  background: rgba(239, 68, 68, 0.12) !important;
+  border-color: rgba(239, 68, 68, 0.35) !important;
+  color: #dc2626 !important;
+}
+
+[data-theme='light'] .live-shield-pill {
+  background: rgba(2, 132, 199, 0.08) !important;
+  border-color: rgba(2, 132, 199, 0.25) !important;
+  color: #0284c7 !important;
+}
+
+/* Emergency banner in light mode */
+[data-theme='light'] .gov-emergency-banner {
+  background: linear-gradient(135deg, #fee2e2, #fecaca) !important;
+  border: 1px solid #f87171 !important;
+  box-shadow: 0 4px 20px rgba(239, 68, 68, 0.15) !important;
+}
+
+[data-theme='light'] .gov-emergency-banner strong {
+  color: #991b1b !important;
+}
+
+[data-theme='light'] .gov-emergency-banner p {
+  color: #b91c1c !important;
+}
+
+[data-theme='light'] .disengage-banner-btn {
+  background: #dc2626 !important;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .disengage-banner-btn:hover {
+  background: #b91c1c !important;
+}
+
+/* KPI Metric Cards */
+[data-theme='light'] .gov-metric-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.09) !important;
+  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.04) !important;
+}
+
+[data-theme='light'] .gov-metric-card:hover {
+  background: #ffffff !important;
+  border-color: rgba(15, 23, 42, 0.18) !important;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .gov-metric-card.active-kpi {
+  border-color: #d97706 !important;
+  background: #fffbeb !important;
+  box-shadow: 0 0 0 1px #d97706, 0 4px 16px rgba(217, 119, 6, 0.08) !important;
+}
+
+[data-theme='light'] .gov-metric-card .metric-label {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .gov-metric-card .metric-val {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-metric-card .metric-val.text-green-400 {
+  color: #059669 !important;
+}
+
+[data-theme='light'] .action-required-badge {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme='light'] .kpi-sub-pill {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+[data-theme='light'] .kpi-sub-pill.success {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+}
+
+[data-theme='light'] .kpi-sub-pill.purple {
+  background: #f3e8ff !important;
+  color: #7e22ce !important;
+}
+
+[data-theme='light'] .kpi-arrow {
+  color: #94a3b8 !important;
+}
+
+[data-theme='light'] .gov-metric-card:hover .kpi-arrow {
+  color: #0f172a !important;
+}
+
+/* Tabs */
+[data-theme='light'] .gov-tabs-container {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.1) !important;
+}
+
+[data-theme='light'] .gov-tab {
+  color: #64748b !important;
+}
+
+[data-theme='light'] .gov-tab:hover {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-tab.active {
+  color: #d97706 !important;
+  border-bottom-color: #d97706 !important;
+}
+
+[data-theme='light'] .gov-badge-subcount {
+  background: #f1f5f9 !important;
+  color: #475569 !important;
+}
+
+/* Section Intros */
+[data-theme='light'] .section-intro h2 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .section-intro p {
+  color: #64748b !important;
+}
+
+/* Secondary & Ghost buttons */
+[data-theme='light'] .gov-btn-secondary {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme='light'] .gov-btn-secondary:hover {
+  background: #fde68a !important;
+  color: #92400e !important;
+}
+
+[data-theme='light'] .gov-btn-ghost {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+[data-theme='light'] .gov-btn-ghost:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Search & Filters */
+[data-theme='light'] .gov-search-input {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.14) !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-search-input:focus {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12) !important;
+}
+
+[data-theme='light'] .filter-pill {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  color: #475569 !important;
+}
+
+[data-theme='light'] .filter-pill:hover {
+  background: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .filter-pill.active {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #f59e0b !important;
+}
+
+/* Cards Common */
+[data-theme='light'] .gov-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 2px 10px rgba(15, 23, 42, 0.03) !important;
+}
+
+/* Empty State */
+[data-theme='light'] .gov-empty-state {
+  background: #f8fafc !important;
+  border-color: rgba(15, 23, 42, 0.15) !important;
+}
+
+[data-theme='light'] .gov-empty-state h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-empty-state p {
+  color: #64748b !important;
+}
+
+/* Tab 1: Approvals */
+[data-theme='light'] .agent-title-wrap strong {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .agent-icon {
+  color: #d97706 !important;
+}
+
+[data-theme='light'] .card-body h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .card-body p {
+  color: #475569 !important;
+}
+
+[data-theme='light'] .view-payload-btn {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+  border-color: #bae6fd !important;
+}
+
+[data-theme='light'] .view-payload-btn:hover {
+  background: #bae6fd !important;
+}
+
+[data-theme='light'] .card-action-bar,
+[data-theme='light'] .card-resolved-bar {
+  border-top-color: rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .risk-pill.critical {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+
+[data-theme='light'] .risk-pill.high {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme='light'] .risk-pill.medium {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+  border-color: #bae6fd !important;
+}
+
+[data-theme='light'] .gov-btn.approve {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+[data-theme='light'] .gov-btn.approve:hover {
+  background: #bbf7d0 !important;
+}
+
+[data-theme='light'] .gov-btn.reject {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+}
+
+[data-theme='light'] .gov-btn.reject:hover {
+  background: #fecaca !important;
+}
+
+[data-theme='light'] .status-banner.approved {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border: 1px solid #86efac !important;
+}
+
+[data-theme='light'] .status-banner.rejected {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border: 1px solid #fca5a5 !important;
+}
+
+/* Tab 2: Guardrails */
+[data-theme='light'] .policy-header h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .policy-main p {
+  color: #475569 !important;
+}
+
+[data-theme='light'] .policy-config-btn {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+[data-theme='light'] .policy-config-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .toggle-slider {
+  background-color: #cbd5e1 !important;
+}
+
+[data-theme='light'] .category-chip.privacy {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+  border-color: #bae6fd !important;
+}
+
+[data-theme='light'] .category-chip.safety {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+[data-theme='light'] .category-chip.compliance {
+  background: #f3e8ff !important;
+  color: #7e22ce !important;
+  border-color: #e9d5ff !important;
+}
+
+[data-theme='light'] .category-chip.financial {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme='light'] .category-chip.cost-control {
+  background: #ffe4e6 !important;
+  color: #be123c !important;
+  border-color: #fecdd3 !important;
+}
+
+/* Tab 3: Audits */
+[data-theme='light'] .audit-stat-box .label {
+  display: block !important;
+  color: #64748b !important;
+  margin-bottom: 0.25rem !important;
+}
+
+[data-theme='light'] .audit-stat-box .value {
+  display: block !important;
+  color: #0f172a !important;
+  line-height: 1.2 !important;
+  margin: 0.2rem 0 !important;
+}
+
+[data-theme='light'] .audit-stat-box .subtext {
+  display: block !important;
+  margin-top: 0.25rem !important;
+}
+
+[data-theme='light'] .audit-stat-box .value.text-green-400 {
+  color: #059669 !important;
+}
+
+[data-theme='light'] .audit-stat-box .value.text-blue-400 {
+  color: #0284c7 !important;
+}
+
+[data-theme='light'] .audit-stat-box .value.text-amber-400 {
+  color: #d97706 !important;
+}
+
+[data-theme='light'] .reindex-btn {
+  background: #fef3c7 !important;
+  color: #b45309 !important;
+  border-color: #fde68a !important;
+}
+
+[data-theme='light'] .reindex-btn:hover {
+  background: #fde68a !important;
+}
+
+[data-theme='light'] .table-header-row h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .logs-table th {
+  background: #f8fafc !important;
+  color: #475569 !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .logs-table td {
+  color: #0f172a !important;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06) !important;
+}
+
+[data-theme='light'] .agent-cell {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .query-cell {
+  color: #334155 !important;
+}
+
+[data-theme='light'] .response-cell {
+  color: #475569 !important;
+}
+
+[data-theme='light'] .confidence-pill {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+[data-theme='light'] .distance-pill {
+  background: #e0f2fe !important;
+  color: #0369a1 !important;
+}
+
+[data-theme='light'] .status-pill.passed {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+[data-theme='light'] .inspect-rag-btn {
+  background: #f1f5f9 !important;
+  color: #334155 !important;
+  border-color: rgba(15, 23, 42, 0.1) !important;
+}
+
+[data-theme='light'] .inspect-rag-btn:hover {
+  background: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* Tab 4: SLAs & Kill-Switch - CRITICAL CONTRAST FIX */
+[data-theme='light'] .sla-card-header h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .sla-value {
+  color: #0f172a !important; /* Overrides hardcoded dark mode white */
+}
+
+[data-theme='light'] .progress-bar-track {
+  background: rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .sla-card.emergency {
+  background: #fef2f2 !important;
+  border-color: #fca5a5 !important;
+}
+
+[data-theme='light'] .sla-card.emergency.is-engaged {
+  background: #fee2e2 !important;
+  border-color: #ef4444 !important;
+}
+
+[data-theme='light'] .emergency-btn {
+  background: #ef4444 !important;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .emergency-btn:hover {
+  background: #dc2626 !important;
+}
+
+[data-theme='light'] .disengage-btn {
+  background: #10b981 !important;
+  color: #ffffff !important;
+}
+
+[data-theme='light'] .disengage-btn:hover {
+  background: #059669 !important;
+}
+
+[data-theme='light'] .carrier-header-row h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .peering-uptime-pill {
+  background: #dcfce7 !important;
+  color: #15803d !important;
+  border-color: #86efac !important;
+}
+
+[data-theme='light'] .carrier-card {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .carrier-name-wrap strong {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .carrier-metrics {
+  background: #f8fafc !important;
+}
+
+[data-theme='light'] .m-val {
+  color: #0f172a !important;
+}
+
+/* Modals in Light Mode */
+[data-theme='light'] .gov-modal-content {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.12) !important;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.2) !important;
+}
+
+[data-theme='light'] .gov-modal-header {
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .modal-title-wrap h3 {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-modal-footer {
+  background: #f8fafc !important;
+  border-top: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .modal-info-box {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .reasoning-box {
+  background: #eff6ff !important;
+  border: 1px solid #bfdbfe !important;
+  color: #1e40af !important;
+}
+
+[data-theme='light'] .payload-json-box {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  color: #0369a1 !important;
+}
+
+[data-theme='light'] .modal-meta-grid {
+  background: #f8fafc !important;
+}
+
+[data-theme='light'] .meta-val {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .form-label {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-form-input,
+[data-theme='light'] .gov-form-select,
+[data-theme='light'] .gov-form-textarea {
+  background: #ffffff !important;
+  border: 1px solid rgba(15, 23, 42, 0.15) !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .gov-form-input:focus,
+[data-theme='light'] .gov-form-select:focus,
+[data-theme='light'] .gov-form-textarea:focus {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12) !important;
+}
+
+[data-theme='light'] .gov-form-select option {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .danger-warning-box {
+  background: #fee2e2 !important;
+  border: 1px solid #fca5a5 !important;
+  color: #991b1b !important;
+}
+
+[data-theme='light'] .audit-detail-box {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .audit-detail-box .text-main {
+  color: #0f172a !important;
+}
+
+[data-theme='light'] .chunk-card {
+  background: #f8fafc !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+}
+
+[data-theme='light'] .chunk-snippet {
+  color: #334155 !important;
+}
+
+
