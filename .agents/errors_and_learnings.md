@@ -4,6 +4,21 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-25] AI Governance UI/UX Restoration: Sidebar Icon Color Leakage, KPI Text-Wrap Breakdown & Obsidian Aesthetics Preservation
+- **Error/Problem:**
+  1. **Global CSS Rule Leaked Color onto Sidebar Icons**: In `Governance.css`, utility classes (`.text-amber-400 { color: #fbbf24 !important; }`, `.text-blue-400 { color: #60a5fa !important; }`) were defined globally without being scoped to `.governance-page`. Because `Sidebar.jsx` contained `color: 'text-amber-400'` on API Keys and `color: 'text-blue-400'` on CRM (which were previously unused inactive fields), the global `!important` rule leaked into the sidebar navigation, tinting those two icons amber and blue instead of maintaining the uniform muted gray.
+  2. **Top Metric Cards Layout Degradation**: Adding cluttered badges (`Action Needed`, `G-Eval v4.2`, `Within SLA`), colored square icon containers, and right arrows starved cards of flex width in the 4-column grid. This caused labels and values to wrap awkwardly across lines ("PENDING \n APPROVALS", "5/ \n 6").
+  3. **Loss of Minimalist Obsidian Aesthetics**: Tab 4 (Service SLAs) had been overloaded with unstyled carrier peering telemetry and toolbar action buttons, and active tabs used yellow borders rather than the clean white underline and pure stroke-icon layout of the original obsidian design.
+- **How it Happened:**
+  - Fast iteration added global utility classes directly at the top of a page-specific CSS stylesheet (`Governance.css`) rather than strictly scoping them under `.governance-page`.
+  - Adding multiple sub-badges and pills inside fixed-column grid metric cards without `white-space: nowrap` broke responsive formatting.
+- **Lesson Learned:**
+  1. Always strictly scope all custom utility classes (`.governance-page .text-amber-400`) within component CSS files to prevent cascade leakage across global application layouts such as sidebars and headers.
+  2. Ensure sidebar icons explicitly declare `color: inherit;` and remove legacy or unused color metadata strings from navigation configuration objects.
+  3. Keep KPI metric cards clean with transparent icon wrappers, stroke icons, single-line uppercase titles, and `white-space: nowrap` on labels and values.
+  4. Preserve all rich interactive workflows (payload inspection, guardrail toggles, audit deep-dives, kill-switch modals, toast alerts, and localStorage persistence) while strictly honoring the minimalist visual identity of the design system.
+
+
 ### [2026-09-25] AI Governance & Safety Command: Unhandled Kill-Switch, Invisible Light Text (#ffffff), Undefined CSS Variables & End-to-End Interactive Production Overhaul
 - **Error/Problem:**
   - The "Governance" section (`/app/governance`) was incomplete, semi-static, and suffered from critical bugs across both dark and light modes:

@@ -678,12 +678,7 @@ const Governance = () => {
       {/* Top Header */}
       <div className="governance-header">
         <div>
-          <div className="title-row">
-            <h1>AI Governance & Safety Command</h1>
-            <span className="live-shield-pill">
-              <Shield size={14} /> Enterprise Guardrails
-            </span>
-          </div>
+          <h1>AI Governance & Safety Command</h1>
           <p className="subtitle">
             Human-in-the-loop oversight, guardrail compliance, hallucination tracking, and SLA safety controls.
           </p>
@@ -704,10 +699,10 @@ const Governance = () => {
         </div>
       </div>
 
-      {/* Interactive Metrics Row */}
+      {/* Metrics Row - Clean Obsidian Cards matching Image 2 */}
       <div className="gov-metrics-grid">
         <div
-          className={`gov-metric-card amber ${activeTab === 'approvals' ? 'active-kpi' : ''}`}
+          className="gov-metric-card amber"
           onClick={() => setActiveTab('approvals')}
           title="Click to view Human Approvals"
         >
@@ -716,16 +711,12 @@ const Governance = () => {
           </div>
           <div className="metric-info">
             <span className="metric-label">Pending Approvals</span>
-            <div className="metric-val-row">
-              <span className="metric-val">{pendingApprovalsCount}</span>
-              {pendingApprovalsCount > 0 && <span className="action-required-badge">Action Needed</span>}
-            </div>
+            <span className="metric-val">{pendingApprovalsCount}</span>
           </div>
-          <ChevronRight size={16} className="kpi-arrow" />
         </div>
 
         <div
-          className={`gov-metric-card blue ${activeTab === 'guardrails' ? 'active-kpi' : ''}`}
+          className="gov-metric-card blue"
           onClick={() => setActiveTab('guardrails')}
           title="Click to view Safety Guardrails"
         >
@@ -734,18 +725,14 @@ const Governance = () => {
           </div>
           <div className="metric-info">
             <span className="metric-label">Active Guardrails</span>
-            <div className="metric-val-row">
-              <span className="metric-val">
-                {activePoliciesCount} / {policies.length}
-              </span>
-              <span className="kpi-sub-pill">Enforced</span>
-            </div>
+            <span className="metric-val">
+              {activePoliciesCount} / {policies.length}
+            </span>
           </div>
-          <ChevronRight size={16} className="kpi-arrow" />
         </div>
 
         <div
-          className={`gov-metric-card green ${activeTab === 'audits' ? 'active-kpi' : ''}`}
+          className="gov-metric-card green"
           onClick={() => setActiveTab('audits')}
           title="Click to view Knowledge Grounding Audits"
         >
@@ -754,16 +741,12 @@ const Governance = () => {
           </div>
           <div className="metric-info">
             <span className="metric-label">Hallucination Rate</span>
-            <div className="metric-val-row">
-              <span className="metric-val text-green-400">0.02%</span>
-              <span className="kpi-sub-pill success">G-Eval v4.2</span>
-            </div>
+            <span className="metric-val text-green-400">0.02%</span>
           </div>
-          <ChevronRight size={16} className="kpi-arrow" />
         </div>
 
         <div
-          className={`gov-metric-card purple ${activeTab === 'slas' ? 'active-kpi' : ''}`}
+          className="gov-metric-card purple"
           onClick={() => setActiveTab('slas')}
           title="Click to view Service SLAs & Operational Risk"
         >
@@ -772,16 +755,12 @@ const Governance = () => {
           </div>
           <div className="metric-info">
             <span className="metric-label">SLA Compliance</span>
-            <div className="metric-val-row">
-              <span className="metric-val">99.98%</span>
-              <span className="kpi-sub-pill purple">&lt;200ms Latency</span>
-            </div>
+            <span className="metric-val">99.98%</span>
           </div>
-          <ChevronRight size={16} className="kpi-arrow" />
         </div>
       </div>
 
-      {/* Tab Navigation Bar */}
+      {/* Tab Navigation Bar - Clean White Underline matching Image 2 */}
       <div className="gov-tabs-container">
         <button
           className={`gov-tab ${activeTab === 'approvals' ? 'active' : ''}`}
@@ -796,7 +775,6 @@ const Governance = () => {
           onClick={() => setActiveTab('guardrails')}
         >
           <Lock size={16} /> Guardrails & Safety
-          <span className="gov-badge-subcount">{activePoliciesCount} on</span>
         </button>
 
         <button
@@ -804,7 +782,6 @@ const Governance = () => {
           onClick={() => setActiveTab('audits')}
         >
           <FileCheck size={16} /> Hallucination & Audits
-          <span className="gov-badge-subcount">{hallucinationLogs.length} logs</span>
         </button>
 
         <button
@@ -812,108 +789,41 @@ const Governance = () => {
           onClick={() => setActiveTab('slas')}
         >
           <Activity size={16} /> Service SLAs & Risk
-          {killSwitch.engaged && <span className="gov-badge-count red">Active Stop</span>}
         </button>
       </div>
 
       {/* Tab Content Wrapper */}
       <div className="gov-content-wrapper">
         {/* ================================================================= */}
-        {/* Tab 1: Human Approvals Queue */}
+        {/* Tab 1: Human Approvals Queue - Minimalist Obsidian Cards matching Image 2 */}
         {/* ================================================================= */}
         {activeTab === 'approvals' && (
           <div className="approvals-section">
-            <div className="section-header-toolbar">
-              <div className="section-intro">
-                <h2>Human-in-the-Loop Action Approvals</h2>
-                <p>Review high-risk actions requested by AI Agents before execution in live telephony.</p>
-              </div>
-
-              <div className="toolbar-actions">
-                <button
-                  className="gov-btn-secondary"
-                  onClick={() => setShowSimulateModal(true)}
-                  title="Simulate high-risk action request from an agent"
-                >
-                  <Plus size={15} /> Simulate Agent Action
-                </button>
-              </div>
+            <div className="section-intro">
+              <h2>Human-in-the-Loop Action Approvals</h2>
+              <p>Review high-risk actions requested by AI Agents before execution.</p>
             </div>
 
-            {/* Filter & Search Bar */}
-            <div className="gov-filter-bar">
-              <div className="gov-search-input-wrap">
-                <Search size={16} className="search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search requests by agent, action title, or details..."
-                  value={approvalSearch}
-                  onChange={(e) => setApprovalSearch(e.target.value)}
-                  className="gov-search-input"
-                />
-                {approvalSearch && (
-                  <button className="clear-search-btn" onClick={() => setApprovalSearch('')}>
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="filter-pills-row">
-                <button
-                  className={`filter-pill ${approvalFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => setApprovalFilter('all')}
-                >
-                  All ({queue.length})
-                </button>
-                <button
-                  className={`filter-pill ${approvalFilter === 'pending' ? 'active' : ''}`}
-                  onClick={() => setApprovalFilter('pending')}
-                >
-                  Pending ({pendingApprovalsCount})
-                </button>
-                <button
-                  className={`filter-pill ${approvalFilter === 'approved' ? 'active' : ''}`}
-                  onClick={() => setApprovalFilter('approved')}
-                >
-                  Approved ({queue.filter(q => q.status === 'approved').length})
-                </button>
-                <button
-                  className={`filter-pill ${approvalFilter === 'rejected' ? 'active' : ''}`}
-                  onClick={() => setApprovalFilter('rejected')}
-                >
-                  Rejected ({queue.filter(q => q.status === 'rejected').length})
-                </button>
-              </div>
-            </div>
-
-            {/* Queue Cards Grid */}
-            {filteredQueue.length === 0 ? (
+            {queue.length === 0 ? (
               <div className="gov-empty-state">
                 <UserCheck size={40} className="empty-icon text-muted" />
-                <h3>No approval requests match your criteria</h3>
-                <p>
-                  {approvalSearch || approvalFilter !== 'all'
-                    ? 'Try adjusting your search terms or filter selection.'
-                    : 'All agent actions are currently cleared and running smoothly.'}
-                </p>
+                <h3>All approval requests cleared</h3>
+                <p>All agent actions are currently cleared and running smoothly.</p>
                 <button className="gov-btn-secondary mt-3" onClick={() => setShowSimulateModal(true)}>
                   <Plus size={14} /> Simulate Test Request
                 </button>
               </div>
             ) : (
               <div className="queue-cards-grid">
-                {filteredQueue.map(item => (
+                {queue.map(item => (
                   <div
                     key={item.id}
-                    className={`gov-card approval-card ${item.status !== 'pending' ? 'resolved' : ''} ${item.riskLevel}`}
+                    className={`gov-card approval-card ${item.status !== 'pending' ? 'resolved' : ''}`}
                   >
                     <div className="card-header-row">
                       <div className="agent-title-wrap">
-                        <TerminalSquare size={18} className="agent-icon" />
-                        <div>
-                          <strong>{item.agent}</strong>
-                          <span className="session-tag">Session: {item.sessionId}</span>
-                        </div>
+                        <TerminalSquare size={16} className="agent-icon" />
+                        <span className="agent-name">{item.agent}</span>
                       </div>
 
                       <div className="card-header-tags">
@@ -923,7 +833,12 @@ const Governance = () => {
                       </div>
                     </div>
 
-                    <div className="card-body">
+                    <div
+                      className="card-body"
+                      onClick={() => setSelectedApproval(item)}
+                      title="Click to inspect full request payload"
+                      style={{ cursor: 'pointer' }}
+                    >
                       <h3>{item.action}</h3>
                       <p>{item.details}</p>
 
@@ -931,17 +846,6 @@ const Governance = () => {
                         <span className="time-stamp">
                           <Clock size={13} /> Requested {new Date(item.timestamp).toLocaleTimeString()}
                         </span>
-                        {item.callerPhone && (
-                          <span className="phone-tag">
-                            <Radio size={13} /> {item.callerPhone}
-                          </span>
-                        )}
-                        <button
-                          className="view-payload-btn"
-                          onClick={() => setSelectedApproval(item)}
-                        >
-                          <Eye size={13} /> Inspect Payload
-                        </button>
                       </div>
                     </div>
 
@@ -970,7 +874,7 @@ const Governance = () => {
                             </>
                           ) : (
                             <>
-                              <AlertCircle size={16} /> Action Blocked by Supervisor
+                              <AlertCircle size={16} /> Action Rejected by Supervisor
                               <span className="resolved-by">({item.rejectionReason || 'Policy Threshold'})</span>
                             </>
                           )}
@@ -992,85 +896,29 @@ const Governance = () => {
         )}
 
         {/* ================================================================= */}
-        {/* Tab 2: Safety Guardrails & Policies */}
+        {/* Tab 2: Safety Guardrails & Policies - Clean Grid matching Image 2 */}
         {/* ================================================================= */}
         {activeTab === 'guardrails' && (
           <div className="guardrails-section">
-            <div className="section-header-toolbar">
-              <div className="section-intro">
-                <h2>AI Agent Safety Guardrails</h2>
-                <p>Configure automated system boundaries, PII redaction filters, and enterprise compliance rules.</p>
-              </div>
-
-              <div className="toolbar-actions">
-                <button
-                  className="gov-btn-ghost"
-                  onClick={handleResetPolicies}
-                  title="Reset all policies to standard recommended baseline"
-                >
-                  <RotateCcw size={14} /> Reset to Baseline
-                </button>
-                <button
-                  className="gov-btn-secondary"
-                  onClick={() => setShowNewPolicyModal(true)}
-                >
-                  <Plus size={15} /> Add Custom Policy
-                </button>
-              </div>
+            <div className="section-intro">
+              <h2>AI Agent Safety Guardrails</h2>
+              <p>Configure automated system boundaries and compliance policy filters.</p>
             </div>
 
-            {/* Filter Bar */}
-            <div className="gov-filter-bar">
-              <div className="gov-search-input-wrap">
-                <Search size={16} className="search-icon" />
-                <input
-                  type="text"
-                  placeholder="Filter policies by name or rule description..."
-                  value={policySearch}
-                  onChange={(e) => setPolicySearch(e.target.value)}
-                  className="gov-search-input"
-                />
-                {policySearch && (
-                  <button className="clear-search-btn" onClick={() => setPolicySearch('')}>
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="filter-pills-row">
-                {['all', 'Privacy', 'Safety', 'Compliance', 'Financial', 'Cost Control'].map(cat => (
-                  <button
-                    key={cat}
-                    className={`filter-pill ${policyCategory === cat ? 'active' : ''}`}
-                    onClick={() => setPolicyCategory(cat)}
-                  >
-                    {cat === 'all' ? `All (${policies.length})` : cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Policies Grid */}
             <div className="policies-grid">
-              {filteredPolicies.map(p => (
-                <div key={p.id} className={`gov-card policy-card ${p.enabled ? 'is-enabled' : 'is-disabled'}`}>
-                  <div className="policy-main">
+              {policies.map(p => (
+                <div key={p.id} className="gov-card policy-card">
+                  <div
+                    className="policy-main"
+                    onClick={() => setSelectedPolicyConfig(p)}
+                    title="Click to configure parameters"
+                    style={{ cursor: 'pointer' }}
+                  >
                     <div className="policy-header">
-                      <span className={`category-chip ${p.category.toLowerCase().replace(/\s+/g, '-')}`}>
-                        {p.category}
-                      </span>
+                      <span className="category-chip">{p.category}</span>
                       <h3>{p.name}</h3>
                     </div>
                     <p>{p.desc}</p>
-
-                    <div className="policy-footer-actions">
-                      <button
-                        className="policy-config-btn"
-                        onClick={() => setSelectedPolicyConfig(p)}
-                      >
-                        <Sliders size={13} /> Configure Parameters
-                      </button>
-                    </div>
                   </div>
 
                   <div className="policy-toggle-wrap">
@@ -1093,33 +941,13 @@ const Governance = () => {
         )}
 
         {/* ================================================================= */}
-        {/* Tab 3: Knowledge Grounding & Hallucination Audits */}
+        {/* Tab 3: Knowledge Grounding & Hallucination Audits - Clean Image 2 */}
         {/* ================================================================= */}
         {activeTab === 'audits' && (
           <div className="audits-section">
-            <div className="section-header-toolbar">
-              <div className="section-intro">
-                <h2>Knowledge Grounding & Hallucination Audits</h2>
-                <p>Automated evaluation checking RAG vector grounding accuracy, semantic drift, and citation fidelity.</p>
-              </div>
-
-              <div className="toolbar-actions">
-                <button
-                  className="gov-btn-ghost"
-                  onClick={handleExportAuditsCSV}
-                  title="Export evaluation logs to CSV"
-                >
-                  <Download size={15} /> Export CSV
-                </button>
-                <button
-                  className="gov-btn-secondary"
-                  onClick={handleRunRAGAudit}
-                  disabled={isAuditing}
-                >
-                  <RefreshCw size={15} className={isAuditing ? 'spin-anim' : ''} />
-                  {isAuditing ? 'Evaluating Grounding...' : 'Run RAG Grounding Audit'}
-                </button>
-              </div>
+            <div className="section-intro">
+              <h2>Knowledge Grounding & Hallucination Audits</h2>
+              <p>Automated evaluation checking RAG vector grounding accuracy and response fidelity.</p>
             </div>
 
             {/* Audits Summary Metric Cards */}
@@ -1127,83 +955,31 @@ const Governance = () => {
               <div className="gov-card audit-stat-box">
                 <span className="label">Knowledge Verification Score</span>
                 <span className="value text-green-400">99.8%</span>
-                <span className="subtext">Vector cosine distance &lt; 0.15 threshold</span>
+                <span className="subtext">Vector distance threshold &lt; 0.15</span>
               </div>
               <div className="gov-card audit-stat-box">
                 <span className="label">Evaluation Engine</span>
                 <span className="value text-blue-400">G-Eval v4.2</span>
-                <span className="subtext">Real-time vector sampling active</span>
+                <span className="subtext">Real-time sampling active</span>
               </div>
               <div className="gov-card audit-stat-box">
-                <div className="stat-box-split">
-                  <div>
-                    <span className="label">Stale Document Warnings</span>
-                    <span className={`value ${staleDocsCount > 0 ? 'text-amber-400' : 'text-green-400'}`}>
-                      {staleDocsCount} {staleDocsCount === 1 ? 'Document' : 'Documents'}
-                    </span>
-                    <span className="subtext">
-                      {staleDocsCount > 0 ? 'Requires vector re-indexing' : 'All embeddings synchronized'}
-                    </span>
-                  </div>
-                  {staleDocsCount > 0 && (
-                    <button
-                      className="reindex-btn"
-                      onClick={handleReindexKnowledge}
-                      disabled={isReindexing}
-                    >
-                      <Database size={13} className={isReindexing ? 'spin-anim' : ''} />
-                      {isReindexing ? 'Re-indexing...' : 'Re-index Chunks'}
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Filter and Search Bar */}
-            <div className="gov-filter-bar">
-              <div className="gov-search-input-wrap">
-                <Search size={16} className="search-icon" />
-                <input
-                  type="text"
-                  placeholder="Search logs by agent name, customer query, or response..."
-                  value={auditSearch}
-                  onChange={(e) => setAuditSearch(e.target.value)}
-                  className="gov-search-input"
-                />
-                {auditSearch && (
-                  <button className="clear-search-btn" onClick={() => setAuditSearch('')}>
-                    <X size={14} />
-                  </button>
-                )}
-              </div>
-
-              <div className="filter-pills-row">
-                <button
-                  className={`filter-pill ${auditFilter === 'all' ? 'active' : ''}`}
-                  onClick={() => setAuditFilter('all')}
-                >
-                  All ({hallucinationLogs.length})
-                </button>
-                <button
-                  className={`filter-pill ${auditFilter === 'passed' ? 'active' : ''}`}
-                  onClick={() => setAuditFilter('passed')}
-                >
-                  Passed ({hallucinationLogs.filter(l => l.status === 'Passed').length})
-                </button>
-                <button
-                  className={`filter-pill ${auditFilter === 'flagged' ? 'active' : ''}`}
-                  onClick={() => setAuditFilter('flagged')}
-                >
-                  Flagged (0)
-                </button>
+                <span className="label">Stale Document Warnings</span>
+                <span className="value text-amber-400">
+                  {staleDocsCount} {staleDocsCount === 1 ? 'Document' : 'Documents'}
+                </span>
+                <span className="subtext">
+                  {staleDocsCount > 0 ? 'Requires vector re-indexing' : 'Synchronized with pgvector'}
+                </span>
               </div>
             </div>
 
             {/* Evaluation Logs Table Card */}
             <div className="gov-card audit-logs-card">
               <div className="table-header-row">
-                <h3>Recent Grounding Evaluation Logs</h3>
-                <span className="table-count-label">{filteredAudits.length} sampled evaluations</span>
+                <h3>Recent Evaluation Logs</h3>
+                <button className="gov-btn-ghost" onClick={handleExportAuditsCSV}>
+                  <Download size={14} /> Export CSV
+                </button>
               </div>
 
               <div className="logs-table-wrapper">
@@ -1214,43 +990,29 @@ const Governance = () => {
                       <th>Customer Query</th>
                       <th>AI Response</th>
                       <th>Confidence</th>
-                      <th>Grounding Score</th>
                       <th>Status</th>
-                      <th>Action</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredAudits.map(log => (
-                      <tr key={log.id}>
-                        <td className="font-semibold agent-cell">
-                          <TerminalSquare size={14} className="agent-icon-table" />
-                          {log.agent}
-                        </td>
-                        <td className="query-cell">{log.query}</td>
-                        <td className="response-cell">{log.response}</td>
+                    {hallucinationLogs.map(log => (
+                      <tr
+                        key={log.id}
+                        onClick={() => setSelectedAudit(log)}
+                        style={{ cursor: 'pointer' }}
+                        title="Click to inspect grounding chunks"
+                      >
+                        <td className="font-semibold">{log.agent}</td>
+                        <td className="text-muted">{log.query}</td>
+                        <td className="text-muted">{log.response}</td>
                         <td>
                           <span className="confidence-pill">
                             {(log.confidence * 100).toFixed(0)}%
                           </span>
                         </td>
                         <td>
-                          <span className="distance-pill">
-                            {log.vectorDistance ? `${log.vectorDistance} dist` : '0.038 dist'}
-                          </span>
-                        </td>
-                        <td>
                           <span className={`status-pill ${log.status.toLowerCase()}`}>
                             <CheckCircle2 size={13} /> {log.status}
                           </span>
-                        </td>
-                        <td>
-                          <button
-                            className="inspect-rag-btn"
-                            onClick={() => setSelectedAudit(log)}
-                            title="Inspect retrieved vector chunks & citation source"
-                          >
-                            <Eye size={13} /> Inspect
-                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1262,102 +1024,48 @@ const Governance = () => {
         )}
 
         {/* ================================================================= */}
-        {/* Tab 4: Service SLAs & Operational Risk */}
+        {/* Tab 4: Service SLAs & Operational Risk - Clean Image 2 Layout */}
         {/* ================================================================= */}
         {activeTab === 'slas' && (
           <div className="slas-section">
-            <div className="section-header-toolbar">
-              <div className="section-intro">
-                <h2>Service SLAs & Operational Risk Controls</h2>
-                <p>Real-time telemetry, WebSocket audio latency thresholds, carrier peering, and emergency kill-switch controls.</p>
-              </div>
-
-              <div className="toolbar-actions">
-                <button
-                  className="gov-btn-ghost"
-                  onClick={() => setShowSlaConfigModal(true)}
-                >
-                  <Settings2 size={15} /> Configure Thresholds
-                </button>
-                <button
-                  className="gov-btn-secondary"
-                  onClick={handlePingCarriers}
-                  disabled={isTestingCarriers}
-                >
-                  <RefreshCw size={15} className={isTestingCarriers ? 'spin-anim' : ''} />
-                  {isTestingCarriers ? 'Pinging Carriers...' : 'Ping & Verify Carriers'}
-                </button>
-              </div>
+            <div className="section-intro">
+              <h2>Service SLAs & Operational Risk Controls</h2>
+              <p>Real-time telemetry, latency thresholds, and emergency kill-switch controls.</p>
             </div>
 
-            {/* SLA Telemetry Cards Grid */}
             <div className="sla-cards-grid">
-              {/* Card 1: Latency */}
               <div className="gov-card sla-card">
                 <div className="sla-card-header">
-                  <div className="sla-icon-wrap blue">
-                    <Activity size={20} />
-                  </div>
-                  <div>
-                    <h3>Telephony Audio Latency</h3>
-                    <span className="sla-sub">Opus WebSocket Stream</span>
-                  </div>
+                  <Activity size={20} className="icon-blue" />
+                  <h3>Telephony Audio Latency</h3>
                 </div>
                 <div className="sla-card-body">
-                  <div className="sla-value-row">
-                    <div className="sla-value">118 ms</div>
-                    <span className="sla-badge green">Within SLA</span>
-                  </div>
-                  <p className="text-muted">Target SLA: &lt; {slaConfig.latencyThresholdMs} ms roundtrip audio latency</p>
+                  <div className="sla-value">118 ms</div>
+                  <p className="text-muted">Target SLA: &lt; {slaConfig.latencyThresholdMs || 200} ms (WebSocket Opus Stream)</p>
                   <div className="progress-bar-track">
                     <div className="progress-fill green" style={{ width: '59%' }} />
                   </div>
-                  <div className="progress-labels">
-                    <span>0 ms</span>
-                    <span>Target: 200 ms</span>
-                    <span>Max: 500 ms</span>
-                  </div>
                 </div>
               </div>
 
-              {/* Card 2: Auto Escalation */}
               <div className="gov-card sla-card">
                 <div className="sla-card-header">
-                  <div className="sla-icon-wrap green">
-                    <UserCheck size={20} />
-                  </div>
-                  <div>
-                    <h3>Auto-Human Escalation Trigger</h3>
-                    <span className="sla-sub">Sentiment Analysis Queue</span>
-                  </div>
+                  <UserCheck size={20} className="icon-green" />
+                  <h3>Auto-Human Escalation Trigger</h3>
                 </div>
                 <div className="sla-card-body">
-                  <div className="sla-value-row">
-                    <div className="sla-value">Sentiment &lt; {slaConfig.sentimentThreshold.toFixed(1)} / 5.0</div>
-                    <span className="status-pill active">
-                      <CheckCircle2 size={13} /> Active Trigger
-                    </span>
-                  </div>
-                  <p className="text-muted">
-                    Automatically routes live caller to supervisor queue upon customer frustration signals.
-                  </p>
-                  <div className="escalation-triggers-list">
-                    <span className="trigger-chip">• Frustration Tone Detected</span>
-                    <span className="trigger-chip">• Repeated Silence &gt; 5s</span>
-                  </div>
+                  <div className="sla-value">Sentiment &lt; {slaConfig.sentimentThreshold ? slaConfig.sentimentThreshold.toFixed(1) : '2.0'} / 5.0</div>
+                  <p className="text-muted">Automatically routes live call to supervisor queue</p>
+                  <span className="status-pill active">
+                    <CheckCircle2 size={13} /> Active Trigger
+                  </span>
                 </div>
               </div>
 
-              {/* Card 3: Kill-Switch */}
               <div className={`gov-card sla-card emergency ${killSwitch.engaged ? 'is-engaged' : ''}`}>
                 <div className="sla-card-header">
-                  <div className="sla-icon-wrap red">
-                    <Zap size={20} />
-                  </div>
-                  <div>
-                    <h3>Emergency Agent Kill-Switch</h3>
-                    <span className="sla-sub">Global Telephony Failover</span>
-                  </div>
+                  <Zap size={20} className="icon-red" />
+                  <h3>Emergency Agent Kill-Switch</h3>
                 </div>
                 <div className="sla-card-body">
                   {killSwitch.engaged ? (
@@ -1379,7 +1087,7 @@ const Governance = () => {
                   ) : (
                     <>
                       <p className="text-muted">
-                        Instantly pause all active AI telephony bots and route incoming calls to backup IVR trunk.
+                        Instantly pause all active AI telephony bots and route incoming calls to backup IVR.
                       </p>
                       <button
                         className="emergency-btn"
@@ -1389,117 +1097,6 @@ const Governance = () => {
                       </button>
                     </>
                   )}
-                </div>
-              </div>
-            </div>
-
-            {/* Carrier Telephony Peering Grid */}
-            <div className="carrier-peering-section">
-              <div className="carrier-header-row">
-                <div>
-                  <h3>Upstream Carrier Telephony Peering Health</h3>
-                  <p>Real-time status of SIP trunks, speech models, and audio gateway bridges.</p>
-                </div>
-                <span className="peering-uptime-pill">
-                  <Server size={14} /> 99.98% Network Uptime
-                </span>
-              </div>
-
-              <div className="carrier-grid">
-                <div className="gov-card carrier-card">
-                  <div className="carrier-top">
-                    <div className="carrier-name-wrap">
-                      <span className="carrier-indicator green" />
-                      <strong>Ethio Telecom (ECA PSTN Trunk)</strong>
-                    </div>
-                    <span className="carrier-status green">{carrierPings.ethioTelecom.status}</span>
-                  </div>
-                  <div className="carrier-metrics">
-                    <div className="metric-col">
-                      <span className="m-label">Roundtrip Latency</span>
-                      <span className="m-val">{carrierPings.ethioTelecom.latency}</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Packet Loss</span>
-                      <span className="m-val">{carrierPings.ethioTelecom.loss}</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Protocol</span>
-                      <span className="m-val">SIP over TLS</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="gov-card carrier-card">
-                  <div className="carrier-top">
-                    <div className="carrier-name-wrap">
-                      <span className="carrier-indicator green" />
-                      <strong>Twilio Voice Bridge</strong>
-                    </div>
-                    <span className="carrier-status green">{carrierPings.twilio.status}</span>
-                  </div>
-                  <div className="carrier-metrics">
-                    <div className="metric-col">
-                      <span className="m-label">Roundtrip Latency</span>
-                      <span className="m-val">{carrierPings.twilio.latency}</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Packet Loss</span>
-                      <span className="m-val">{carrierPings.twilio.loss}</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Regions</span>
-                      <span className="m-val">EU-Central & AF</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="gov-card carrier-card">
-                  <div className="carrier-top">
-                    <div className="carrier-name-wrap">
-                      <span className="carrier-indicator green" />
-                      <strong>OpenAI Realtime Voice Engine</strong>
-                    </div>
-                    <span className="carrier-status green">{carrierPings.openai.status}</span>
-                  </div>
-                  <div className="carrier-metrics">
-                    <div className="metric-col">
-                      <span className="m-label">Inference TTFT</span>
-                      <span className="m-val">{carrierPings.openai.latency}</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Model Endpoint</span>
-                      <span className="m-val">gpt-4o-realtime</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Connection</span>
-                      <span className="m-val">WebSocket WSS</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="gov-card carrier-card">
-                  <div className="carrier-top">
-                    <div className="carrier-name-wrap">
-                      <span className="carrier-indicator green" />
-                      <strong>ElevenLabs Low-Latency TTS</strong>
-                    </div>
-                    <span className="carrier-status green">{carrierPings.elevenLabs.status}</span>
-                  </div>
-                  <div className="carrier-metrics">
-                    <div className="metric-col">
-                      <span className="m-label">Synthesis Latency</span>
-                      <span className="m-val">{carrierPings.elevenLabs.latency}</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Codec Output</span>
-                      <span className="m-val">PCM 24kHz / Opus</span>
-                    </div>
-                    <div className="metric-col">
-                      <span className="m-label">Availability</span>
-                      <span className="m-val">99.99%</span>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>

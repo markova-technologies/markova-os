@@ -162,6 +162,7 @@
 
 .nav-icon {
   min-width: 20px;
+  color: inherit;
   transition: var(--transition);
 }
 

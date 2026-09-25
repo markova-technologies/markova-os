@@ -53,13 +53,11 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
     {
       title: 'Command Center',
       path: ROUTES.app,
-      icon: LayoutDashboard,
-      color: 'text-emerald-400'
+      icon: LayoutDashboard
     },
     {
       title: 'Agents',
       icon: Bot,
-      color: 'text-purple-400',
       isDropdown: true,
       requiredPermission: 'agents:read',
       subItems: [
@@ -67,21 +65,18 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
           title: 'Agent Studio',
           path: ROUTES.agentStudio,
           icon: Bot,
-          color: 'text-purple-400',
           requiredPermission: 'agents:read'
         },
         {
           title: 'Knowledge Center',
           path: ROUTES.knowledge,
           icon: BookOpen,
-          color: 'text-rose-400',
           requiredPermission: 'knowledge:read'
         },
         {
           title: 'Governance',
           path: ROUTES.governance,
           icon: Shield,
-          color: 'text-amber-500',
           requiredPermission: 'governance:read'
         }
       ]
@@ -90,56 +85,48 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
       title: 'Phone & Channels',
       path: ROUTES.phoneChannels,
       icon: Phone,
-      color: 'text-indigo-400',
       requiredPermission: 'telephony:read'
     },
     {
       title: 'API Keys',
       path: ROUTES.keys,
       icon: Key,
-      color: 'text-amber-400',
       requiredPermission: 'keys:read'
     },
     {
       title: 'Integration Hub',
       path: ROUTES.integrations,
       icon: Plug,
-      color: 'text-cyan-400',
       requiredPermission: 'integrations:read'
     },
     {
       title: 'Call Center',
       path: ROUTES.callCenter,
       icon: Headphones,
-      color: 'text-pink-400',
       requiredPermission: 'calls:read'
     },
     {
       title: 'Team',
       path: ROUTES.team,
       icon: Users,
-      color: 'text-sky-400',
       requiredPermission: 'users:read'
     },
     {
       title: 'Usage',
       path: ROUTES.usage,
       icon: BarChart3,
-      color: 'text-teal-400',
       requiredPermission: 'billing:read'
     },
     {
       title: 'Analytics Center',
       path: ROUTES.analytics,
       icon: BarChart3,
-      color: 'text-pink-400',
       requiredPermission: 'analytics:read'
     },
     {
       title: 'CRM',
       path: ROUTES.crm,
       icon: Users,
-      color: 'text-blue-400',
       requiredPermission: 'crm:read'
     }
   ];
@@ -203,7 +190,7 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
                     onClick={() => setOpenDropdown(isOpen ? null : item.title)}
                     style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', outline: 'none' }}
                   >
-                    <Icon className={`nav-icon ${item.color}`} size={20} />
+                    <Icon className="nav-icon" size={20} />
                     <span className="nav-text" style={{ flex: 1 }}>{item.title}</span>
                     {isOpen ? <ChevronDown size={16} className="nav-icon" /> : <ChevronRight size={16} className="nav-icon" />}
                   </button>
@@ -221,7 +208,7 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
                           return (
                             <li key={sub.path} style={{ marginTop: '0.25rem' }}>
                               <Link to={sub.path} className={`nav-link ${isSubActive ? 'active' : ''}`} style={{ padding: '0.5rem 1rem' }}>
-                                <SubIcon className={`nav-icon ${sub.color}`} size={18} />
+                                <SubIcon className="nav-icon" size={18} />
                                 <span className="nav-text" style={{ fontSize: '0.9em' }}>{sub.title}</span>
                               </Link>
                             </li>
@@ -246,7 +233,7 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
                   to={item.path}
                   className={`nav-link ${isActive ? 'active' : ''}`}
                 >
-                  <Icon className={`nav-icon ${item.color}`} size={20} />
+                  <Icon className="nav-icon" size={20} />
                   <span className="nav-text">{item.title}</span>
                 </Link>
               </motion.li>
