@@ -243,6 +243,15 @@
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   margin-bottom: 1.75rem;
   padding-bottom: 0.5rem;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.gov-tabs-container::-webkit-scrollbar {
+  display: none;
 }
 
 .gov-tab {
@@ -257,6 +266,8 @@
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
   transition: all 0.2s ease;
 }
 
@@ -1850,4 +1861,114 @@ input:checked + .toggle-slider:before {
 [data-theme='light'] .inspect-rag-btn:hover {
   background: #e2e8f0;
   color: #0f172a;
+}
+
+/* ── Responsive Overrides: Mobile & Tablet ────────────────────────────────── */
+@media (max-width: 1024px) {
+  .governance-page {
+    padding: 1.25rem 1rem;
+  }
+
+  .gov-metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+  }
+
+  .policies-grid,
+  .sla-metrics-grid,
+  .sla-peering-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .governance-page {
+    padding: 0.75rem 0.5rem;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+  }
+
+  .governance-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .governance-header h1 {
+    font-size: 1.45rem;
+  }
+
+  .header-actions {
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .gov-metrics-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .gov-metric-card {
+    padding: 1rem 1.15rem;
+  }
+
+  .section-header-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .toolbar-actions {
+    width: 100%;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .toolbar-actions > * {
+    flex: 1 1 auto;
+  }
+
+  .policies-grid,
+  .sla-metrics-grid,
+  .sla-peering-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+
+  .queue-card,
+  .policy-card,
+  .audit-log-item {
+    padding: 1rem !important;
+  }
+
+  .queue-card-header,
+  .policy-card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .queue-card-actions {
+    width: 100%;
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .queue-card-actions button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .gov-modal-container {
+    width: 100% !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+    border-radius: 1rem 1rem 0 0 !important;
+    max-height: 90vh !important;
+  }
 }

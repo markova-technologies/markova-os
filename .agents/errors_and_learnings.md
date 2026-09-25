@@ -4,6 +4,31 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-09-25] Comprehensive Mobile-First & Tablet Responsive Overhaul: 26 Routes & All Nested Subtabs with Zero Horizontal Overflow
+- **Error/Problem:**
+  1. **Global App Shell & Content Width Overflow on Mobile (`390px`)**:
+     - In `App.css`, `.app-layout` was missing `overflow-x: hidden; width: 100%; max-width: 100vw; box-sizing: border-box;`.
+     - In `Header.css`, `.header-actions` lacked flex-wrapping, `.header-search` retained fixed minimum widths (`min-width: 260px`), and user info and system status pills pushed elements offscreen on mobile viewports.
+     - In `Sidebar.css`, the mobile drawer (`.mobile-open`) lacked proper z-index precedence (`z-index: 1000`) and a backdrop blur scrim overlay to dismiss the navigation drawer cleanly on tap.
+  2. **Page-Specific Mobile Overflows & Fixed Dimensions**:
+     - `Governance.css`: Tab bar `.gov-nav-tabs` and `.gov-filters` were not horizontally scrollable with touch momentum, causing buttons to clip or blow out the document width.
+     - `BillingCenter.css`: Top stats grid retained 4 fixed columns (`grid-template-columns: repeat(4, 1fr)`) instead of collapsing to 1 column on mobile and 2 on tablet, and `.billing-plan-cards` had rigid minimum card widths.
+     - `CallCenter.css`: Split-pane layout (`.active-call-grid: grid-template-columns: 1fr 340px`) failed to stack vertically on mobile, and `.call-filter-tabs` lacked scrollable touch containers.
+     - `CRM.css`: `.crm-pipeline-board` had fixed column widths overflowing 390px screens without a native horizontal swimlane scroll container, and `.crm-stats-grid` lacked responsive 1-column breakdown.
+     - `AgentStudio.css`: Horizontal editor tab bar (`.builder-tabs`) lacked smooth `-webkit-overflow-scrolling: touch;` and collapsed awkwardly on phone screens.
+     - `KnowledgeCenter.css`: Root class was `.knowledge-center`, but media query targeted `.kc-container`, leaving `padding: 2rem;` unreduced on mobile and generating document overflow.
+     - `LandingPage.css`, `Pricing.css`, `Login.css`: Fixed container widths (`width: 480px`), unstacked hero CTAs, and large display fonts (`clamp` font sizes required).
+- **How it Happened:**
+  - Fast desktop-oriented development prioritized widescreen obsidian aesthetic layouts, relying on fixed-width tables, multi-column CSS grids, and absolute-positioned drawers without applying mobile-first media query breakpoints (`@media (max-width: 1024px)` and `@media (max-width: 768px)`).
+  - Class name mismatch in `KnowledgeCenter.css` where media query styled `.kc-container` instead of `.knowledge-center`.
+- **Lesson Learned:**
+  1. Always enforce `box-sizing: border-box; max-width: 100vw; overflow-x: hidden;` on the global layout shell (`html, body, #root, .app-layout, .main-content`).
+  2. Implement horizontal scroll containers (`overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; flex-wrap: nowrap;`) for sub-tab navigation bars (`.builder-tabs`, `.gov-nav-tabs`, `.crm-tab-pill-group`, `.settings-tabs`, `.profile-nav-tabs`).
+  3. Collapse multi-column grid cards to 2 columns on tablet (`<=1024px`) and 1 column on mobile (`<=640px`).
+  4. Ensure tables, code blocks, and data views have dedicated horizontal scroll wrappers (`.table-container { overflow-x: auto; }`) so tables never force document-level horizontal blowouts.
+  5. Validate responsiveness programmatically via headless CDP scripts across both mobile (`390x844`) and tablet (`820x1180`) viewports, asserting `scrollWidth <= window.innerWidth` across all routes and nested subtabs.
+
+
 ### [2026-09-25] AI Governance UI/UX Restoration: Sidebar Icon Color Leakage, KPI Text-Wrap Breakdown & Obsidian Aesthetics Preservation
 - **Error/Problem:**
   1. **Global CSS Rule Leaked Color onto Sidebar Icons**: In `Governance.css`, utility classes (`.text-amber-400 { color: #fbbf24 !important; }`, `.text-blue-400 { color: #60a5fa !important; }`) were defined globally without being scoped to `.governance-page`. Because `Sidebar.jsx` contained `color: 'text-amber-400'` on API Keys and `color: 'text-blue-400'` on CRM (which were previously unused inactive fields), the global `!important` rule leaked into the sidebar navigation, tinting those two icons amber and blue instead of maintaining the uniform muted gray.

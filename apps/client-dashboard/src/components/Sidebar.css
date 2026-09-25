@@ -214,22 +214,40 @@
 
 @media (max-width: 1024px) {
   .sidebar {
-    left: -100%;
-    transition: var(--transition);
-    box-shadow: 10px 0 40px rgba(0, 0, 0, 0.3);
+    left: -100% !important;
+    width: min(300px, 85vw);
+    max-width: 85vw;
+    transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 12px 0 48px rgba(0, 0, 0, 0.6);
+    z-index: 1001;
   }
 
   .sidebar.mobile-open {
-    left: 0;
+    left: 0 !important;
   }
 
   .sidebar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
+    padding: 0 1.25rem 1rem;
   }
 
   .mobile-close-btn {
     display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .nav-link {
+    min-height: 44px;
+    margin: 0.35rem 0.75rem;
+    padding: 0.75rem 1.25rem;
   }
 }

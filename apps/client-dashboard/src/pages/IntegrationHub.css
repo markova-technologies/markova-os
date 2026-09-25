@@ -1420,6 +1420,13 @@
 @media (max-width: 768px) {
   .integration-hub {
     flex-direction: column;
+    height: auto;
+    min-height: 100%;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    border-radius: 0.5rem;
   }
   .ih-sidebar {
     width: 100%;
@@ -1429,19 +1436,37 @@
   .ih-categories-list {
     flex-direction: row;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.5rem;
   }
   .ih-header {
     flex-direction: column;
-    align-items: flex-start;
-    padding: 1.25rem 1.5rem;
+    align-items: stretch;
+    padding: 1rem 0.85rem;
+    gap: 0.75rem;
   }
   .ih-search-box {
     width: 100%;
   }
   .ih-scroll-area {
-    padding: 1.25rem;
+    padding: 0.75rem 0.5rem;
+    overflow-x: hidden;
+  }
+  .ih-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.85rem;
+  }
+  .ih-suggested-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.85rem;
+  }
+  .ih-card {
+    width: 100%;
+    box-sizing: border-box;
   }
   .ih-drawer-container {
-    max-width: 100%;
+    width: 100% !important;
+    max-width: 100vw !important;
+    border-radius: 1rem 1rem 0 0 !important;
   }
 }

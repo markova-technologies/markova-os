@@ -666,31 +666,85 @@
   .ac-charts-grid {
     grid-template-columns: 1fr;
   }
+
+  .ac-stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
 }
 
 @media (max-width: 768px) {
   .analytics-center {
-    padding: 1rem;
+    padding: 0.75rem 0.5rem;
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
   }
+
+  .ac-header {
+    padding: 1rem 0.85rem;
+  }
+
+  .ac-title-headline h1 {
+    font-size: 1.4rem;
+  }
+
   .ac-title-row {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.85rem;
   }
+
   .ac-actions {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.65rem;
   }
+
   .ac-date-selector {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
   }
+
   .ac-btn-group {
-    justify-content: flex-end;
+    width: 100%;
+    display: flex;
   }
+
+  .ac-btn-group > * {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .ac-tabs-bar {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+  }
+
+  .ac-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem;
+  }
+
+  .ac-table-card {
+    padding: 1rem 0.85rem;
+  }
+
   .ac-table-header {
     flex-direction: column;
     align-items: stretch;
+    gap: 0.75rem;
   }
+
   .ac-table-search {
+    width: 100%;
+  }
+
+  .ac-table-wrapper {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     width: 100%;
   }
 }

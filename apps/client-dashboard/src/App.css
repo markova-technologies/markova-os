@@ -90,17 +90,23 @@
 @media (max-width: 1024px) {
   .main-content {
     margin-left: 0;
-    margin-top: 0;
+    margin-top: 32px;
   }
 
   .content-wrapper {
     padding: clamp(0.75rem, 3vw, 1.25rem);
+    width: 100%;
+    box-sizing: border-box;
   }
 }
 
 @media (max-width: 768px) {
   .content-wrapper {
-    padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
+    padding: 0.75rem !important;
+    padding-bottom: calc(80px + env(safe-area-inset-bottom, 0px)) !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    box-sizing: border-box !important;
   }
 
   /* Tap Target & Touch Controls */
