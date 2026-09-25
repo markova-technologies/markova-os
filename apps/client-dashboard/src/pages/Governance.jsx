@@ -962,13 +962,22 @@ const Governance = () => {
                 <span className="value text-blue-400">G-Eval v4.2</span>
                 <span className="subtext">Real-time sampling active</span>
               </div>
-              <div className="gov-card audit-stat-box">
+              <div
+                className="gov-card audit-stat-box"
+                onClick={staleDocsCount > 0 && !isReindexing ? handleReindexKnowledge : undefined}
+                style={{ cursor: staleDocsCount > 0 ? 'pointer' : 'default' }}
+                title={staleDocsCount > 0 ? 'Click to trigger pgvector re-indexing' : 'Synchronized with pgvector'}
+              >
                 <span className="label">Stale Document Warnings</span>
                 <span className="value text-amber-400">
-                  {staleDocsCount} {staleDocsCount === 1 ? 'Document' : 'Documents'}
+                  {isReindexing ? 'Syncing...' : `${staleDocsCount} ${staleDocsCount === 1 ? 'Document' : 'Documents'}`}
                 </span>
                 <span className="subtext">
-                  {staleDocsCount > 0 ? 'Requires vector re-indexing' : 'Synchronized with pgvector'}
+                  {isReindexing
+                    ? 'Re-indexing embeddings...'
+                    : staleDocsCount > 0
+                    ? 'Click to trigger pgvector re-index'
+                    : 'Synchronized with pgvector'}
                 </span>
               </div>
             </div>
