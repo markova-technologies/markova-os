@@ -65,6 +65,12 @@ export function proxyTo(
       if (srcReq.headers['x-api-key']) {
         headers['x-api-key'] = srcReq.headers['x-api-key'] as string;
       }
+      if (srcReq.headers['idempotency-key']) {
+        headers['idempotency-key'] = srcReq.headers['idempotency-key'] as string;
+      }
+      if (srcReq.headers['x-idempotency-key']) {
+        headers['x-idempotency-key'] = srcReq.headers['x-idempotency-key'] as string;
+      }
       proxyReqOpts.headers = headers;
       return proxyReqOpts;
     },

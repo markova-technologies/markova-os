@@ -69,7 +69,7 @@ const Environments = () => (
     </p>
 
     <CodeBlock
-      code={`curl -X POST http://localhost:8000/v1/keys \\
+      code={`curl -X POST https://api.markova.tech/v1/keys \\
   -H "Authorization: Bearer YOUR_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{"name": "production", "environment": "live"}'`}

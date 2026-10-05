@@ -114,7 +114,7 @@ except ImportError:
 semantic_cache = None
 from dotenv import load_dotenv
 from fastapi import FastAPI, Form, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 load_dotenv()
@@ -872,66 +872,77 @@ import hashlib
 async def _dispatch_developer_webhook(call_id: str):
     """
     Look up the developer webhook for the company associated with this call and send a signed call.completed event.
+    Supports registered developer_webhooks table as well as per-call webhook_url set during POST /v1/calls.
     """
+    if not db_pool or not call_id:
+        return
     try:
-        # Get the call and company info
         call = await db_pool.fetchrow(
             "SELECT c.company_id, c.status, c.caller_number, c.turn_count, a.environment FROM calls c LEFT JOIN agents a ON c.agent_id = a.id WHERE c.id = $1",
             uuid.UUID(call_id)
         )
         if not call:
             return
-            
+
         env = call["environment"] or "test"
-        
-        # Look up webhook
+        company_id = call["company_id"]
+
         webhook = await db_pool.fetchrow(
             "SELECT webhook_url, secret_key FROM developer_webhooks WHERE company_id = $1 AND environment = $2",
-            call["company_id"], env
+            company_id, env
         )
-        if not webhook:
+
+        target_url = None
+        secret_key = "mk_whsec_default"
+        if webhook and webhook.get("webhook_url"):
+            target_url = webhook["webhook_url"]
+            secret_key = webhook.get("secret_key") or secret_key
+        elif redis_client:
+            explicit_url = await redis_client.get(f"call_webhook:{call_id}")
+            if explicit_url:
+                target_url = explicit_url.decode("utf-8") if isinstance(explicit_url, bytes) else str(explicit_url)
+
+        if not target_url:
             return
-            
-        # Get transcripts
+
         transcripts = await db_pool.fetch(
             "SELECT role, content, created_at FROM transcripts WHERE call_id = $1 ORDER BY created_at ASC",
             uuid.UUID(call_id)
         )
-        
+
         payload = {
             "event": "call.completed",
-            "call_id": call_id,
+            "call_id": str(call_id),
             "status": call["status"],
             "caller_number": call["caller_number"],
             "turn_count": call["turn_count"],
-            "transcript": [dict(t) for t in transcripts]
+            "environment": env,
+            "transcript": [
+                {
+                    "role": t["role"],
+                    "content": t["content"],
+                    "created_at": t["created_at"].isoformat() if t["created_at"] else None,
+                }
+                for t in transcripts
+            ],
+            "timestamp": datetime.utcnow().isoformat() + "Z",
         }
-        
-        # We need custom serialization for datetime
-        import json
-        from datetime import datetime
-        def _json_serial(obj):
-            if isinstance(obj, datetime):
-                return obj.isoformat()
-            raise TypeError("Type %s not serializable" % type(obj))
-            
-        payload_str = json.dumps(payload, default=_json_serial)
-        
-        # Sign payload
-        signature = hmac.new(webhook["secret_key"].encode('utf-8'), payload_str.encode('utf-8'), hashlib.sha256).hexdigest()
-        
+
+        payload_str = json.dumps(payload)
+        signature = hmac.new(secret_key.encode('utf-8'), payload_str.encode('utf-8'), hashlib.sha256).hexdigest()
+
         async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(
-                webhook["webhook_url"],
+            resp = await client.post(
+                target_url,
                 headers={
                     "Content-Type": "application/json",
-                    "X-Markova-Signature": f"sha256={signature}"
+                    "X-Markova-Signature": f"sha256={signature}",
                 },
-                content=payload_str
+                content=payload_str,
             )
-            logger.info("developer_webhook_dispatched", call_id=call_id, url=webhook["webhook_url"])
+            logger.info("developer_webhook_dispatched", call_id=call_id, url=target_url, status_code=resp.status_code)
     except Exception as e:
-        logger.error("developer_webhook_dispatch_failed", call_id=call_id, e=e)
+        logger.error("developer_webhook_dispatch_failed", call_id=call_id, error=str(e))
 
 
 async def end_call_record(call_id: str):
@@ -2031,34 +2042,51 @@ async def _build_agent_gather_twiml(agent: dict, state: dict, request: Request) 
 
 async def verify_twilio_signature(request: Request) -> bool:
     """
-    Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints when configured.
-    NEVER bypass in production — an unconfigured token means any attacker can
-    forge webhooks.
+    Validate Twilio HMAC-SHA1 cryptographic signature on webhook endpoints.
+    Correctly accounts for reverse-proxy headers (X-Forwarded-Proto, X-Forwarded-Host)
+    and PUBLIC_BASE_URL so signature matching succeeds behind Render, Nginx, or Docker bridges.
     """
     auth_token = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
     if not auth_token:
-        logger.error("security_twilio_auth_token")
+        logger.error("security_twilio_auth_token_missing")
         return False
 
-    signature = request.headers.get("X-Twilio-Signature", "")
+    signature = request.headers.get("X-Twilio-Signature", "").strip()
     if not signature:
-        logger.error("security_missing_x_twilio")
+        logger.error("security_missing_x_twilio_signature")
         return False
 
     try:
-        import hmac, base64
-        url = str(request.url)
         form_data = await request.form()
         sorted_params = "".join([f"{k}{v}" for k, v in sorted(form_data.items())])
-        data_to_sign = (url + sorted_params).encode("utf-8")
-        computed = base64.b64encode(hmac.new(auth_token.encode("utf-8"), data_to_sign, hashlib.sha1).digest()).decode()
-        if not hmac.compare_digest(computed, signature):
-            logger.error("twilio_cryptographic_signature_check", url=url)
-            return False
-    except Exception as e:
-        logger.error("error_verifying_twilio_signature", e=e)
+
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme).split(",")[0].strip()
+        host = request.headers.get("x-forwarded-host", request.headers.get("host", request.url.netloc)).split(",")[0].strip()
+        path = request.url.path
+        query = f"?{request.url.query}" if request.url.query else ""
+        forwarded_url = f"{proto}://{host}{path}{query}"
+
+        public_base = os.getenv("PUBLIC_BASE_URL", "").strip().rstrip("/")
+        configured_url = f"{public_base}{path}{query}" if public_base else None
+        direct_url = str(request.url)
+
+        candidate_urls = [forwarded_url]
+        if configured_url and configured_url not in candidate_urls:
+            candidate_urls.append(configured_url)
+        if direct_url not in candidate_urls:
+            candidate_urls.append(direct_url)
+
+        for candidate in candidate_urls:
+            data_to_sign = (candidate + sorted_params).encode("utf-8")
+            computed = base64.b64encode(hmac.new(auth_token.encode("utf-8"), data_to_sign, hashlib.sha1).digest()).decode()
+            if hmac.compare_digest(computed, signature):
+                return True
+
+        logger.error("twilio_cryptographic_signature_mismatch", tested_candidates=candidate_urls)
         return False
-    return True
+    except Exception as e:
+        logger.error("error_verifying_twilio_signature", error=str(e))
+        return False
 
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -2542,7 +2570,27 @@ async def _process_ai_logic(state: dict, session_id: str, user_text: str, compan
         messages = [messages[0]] + messages[-(MAX_HISTORY_TURNS * 2):]
         state["messages"] = messages
         
-    messages_with_rag = messages
+    messages_with_rag = list(messages)
+
+    # Proactive RAG injection: query knowledge base before LLM completion
+    if knowledge_adapter and company_id and len(user_text.strip()) > 3:
+        try:
+            rag_context = await asyncio.wait_for(
+                knowledge_adapter.query(str(company_id), user_text, limit=2),
+                timeout=0.6,
+            )
+            if rag_context and rag_context.strip():
+                logger.info("proactive_rag_context_injected", company_id=str(company_id), chars=len(rag_context))
+                rag_msg = {
+                    "role": "system",
+                    "content": f"[COMPANY KNOWLEDGE BASE CONTEXT]:\n{rag_context}\n\n[INSTRUCTION]: Answer using the facts in the context above if relevant. Keep your response brief, natural, and conversational.",
+                }
+                if len(messages_with_rag) > 1:
+                    messages_with_rag.insert(1, rag_msg)
+                else:
+                    messages_with_rag.append(rag_msg)
+        except Exception as e:
+            logger.info("proactive_rag_check_skipped", reason=str(e))
 
     if state.get("frustration_count", 0) >= 3:
         logger.info("auto_escalating_frustrated_caller", session_id=session_id, count=state.get("frustration_count"))
@@ -3191,7 +3239,15 @@ def _serialize_call(r) -> dict:
 @app.get("/api/calls")
 @app.get("/v1/calls")
 @limiter.limit("60/minute")
-async def list_calls(request: Request, agent_id: Optional[str] = None, status: Optional[str] = None):
+async def list_calls(
+    request: Request,
+    agent_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+):
+    limit = max(1, min(limit, 200))
+    offset = max(0, offset)
     company_id = _tenant_id(request)
     clauses = ["c.company_id = $1"]
     args = [uuid.UUID(company_id)]
@@ -3202,6 +3258,11 @@ async def list_calls(request: Request, agent_id: Optional[str] = None, status: O
         args.append(status)
         clauses.append(f"c.status = ${len(args)}")
 
+    args.append(limit)
+    limit_placeholder = f"${len(args)}"
+    args.append(offset)
+    offset_placeholder = f"${len(args)}"
+
     rows = await db_pool.fetch(
         f"""
         SELECT c.id, c.agent_id, c.caller_number, c.status, c.start_time, c.end_time,
@@ -3210,7 +3271,7 @@ async def list_calls(request: Request, agent_id: Optional[str] = None, status: O
         LEFT JOIN agents a ON a.id = c.agent_id
         WHERE {' AND '.join(clauses)}
         ORDER BY c.start_time DESC
-        LIMIT 50
+        LIMIT {limit_placeholder} OFFSET {offset_placeholder}
         """,
         *args,
     )
@@ -3223,105 +3284,252 @@ async def create_outbound_call(request: Request):
     """
     Place an outbound call (or sandbox simulated call).
     Sandbox (x-markova-env=test or body.sandbox=true): no Twilio spend — records a simulated call.
+    Supports Idempotency-Key header to prevent duplicate calls and double billing.
     """
     company_id = _tenant_id(request)
     body = await request.json()
     agent_id = body.get("agent_id")
-    to_number = body.get("to_number")
+    to_number = body.get("to_number") or body.get("to")
     sandbox = body.get("sandbox") is True or request.headers.get("x-markova-env") == "test"
+    webhook_url = body.get("webhook_url")
 
-    if not agent_id or not to_number:
-        raise HTTPException(status_code=400, detail="agent_id and to_number are required")
-
-    agent = await db_pool.fetchrow(
-        "SELECT id, name FROM agents WHERE id = $1 AND company_id = $2",
-        uuid.UUID(agent_id), uuid.UUID(company_id),
+    idempotency_key = (
+        request.headers.get("idempotency-key")
+        or request.headers.get("x-idempotency-key")
+        or body.get("idempotency_key")
     )
-    if not agent:
-        raise HTTPException(status_code=404, detail="Agent not found")
+    cache_key = f"idempotency:{company_id}:{idempotency_key}" if (idempotency_key and redis_client) else None
 
-    call_id = uuid.uuid4()
-    if sandbox:
+    if cache_key:
+        try:
+            cached = await redis_client.get(cache_key)
+            if cached:
+                cached_str = cached.decode("utf-8") if isinstance(cached, bytes) else str(cached)
+                if cached_str == "PROCESSING":
+                    raise HTTPException(status_code=409, detail="Concurrent request with this Idempotency-Key is already in progress.")
+                try:
+                    cached_data = json.loads(cached_str)
+                    return JSONResponse(content=cached_data, headers={"X-Idempotency-Hit": "true"})
+                except Exception:
+                    pass
+            await redis_client.set(cache_key, "PROCESSING", ex=120)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.warning("idempotency_check_error", error=str(e))
+
+    try:
+        if not agent_id or not to_number:
+            raise HTTPException(status_code=400, detail="agent_id and to_number (or to) are required")
+
+        agent = await db_pool.fetchrow(
+            "SELECT id, name FROM agents WHERE id = $1 AND company_id = $2",
+            uuid.UUID(agent_id), uuid.UUID(company_id),
+        )
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        call_id = uuid.uuid4()
+
+        if webhook_url and redis_client:
+            await redis_client.set(f"call_webhook:{call_id}", str(webhook_url).strip(), ex=86400)
+
+        if sandbox:
+            row = await db_pool.fetchrow(
+                """
+                INSERT INTO calls (id, company_id, agent_id, caller_number, status, turn_count)
+                VALUES ($1, $2, $3, $4, 'completed', 0)
+                RETURNING id, agent_id, caller_number, status, start_time, end_time, turn_count, recording_url
+                """,
+                call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
+            )
+            agent_line = f"Hello — this is a sandbox test from agent {agent['name']}."
+            await db_pool.execute(
+                """
+                INSERT INTO transcripts (call_id, role, content)
+                VALUES ($1, 'system', $2), ($1, 'agent', $3)
+                """,
+                call_id,
+                f"Sandbox test call to {to_number} (no live telephony).",
+                agent_line,
+            )
+            # Meter sandbox activity (visible on /v1/usage; billed=false — no telephony spend)
+            await track_usage(
+                company_id=company_id,
+                call_minutes=1,
+                stt_seconds=2,
+                tts_characters=len(agent_line),
+                llm_tokens=50,
+            )
+
+            # Fire developer webhook for sandbox call
+            asyncio.create_task(_dispatch_developer_webhook(str(call_id)))
+
+            res_payload = {
+                **_serialize_call(dict(row)),
+                "sandbox": True,
+                "billed": False,
+                "agent_name": agent["name"],
+                "message": "Sandbox call recorded; no Twilio spend.",
+                "usage": {
+                    "call_minutes": 1,
+                    "stt_seconds": 2,
+                    "tts_characters": len(agent_line),
+                    "llm_tokens": 50,
+                },
+            }
+
+            if cache_key:
+                try:
+                    await redis_client.set(cache_key, json.dumps(res_payload), ex=86400)
+                except Exception:
+                    pass
+
+            return res_payload
+
+        # Live outbound via Twilio REST if credentials present
+        account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+        auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+        from_number = os.getenv("TWILIO_FROM_NUMBER")
+        public_base = os.getenv("PUBLIC_BASE_URL")
+        if not all([account_sid, auth_token, from_number, public_base]):
+            raise HTTPException(
+                status_code=503,
+                detail="Live outbound not configured (TWILIO_* / PUBLIC_BASE_URL). Use sandbox test key.",
+            )
+
         row = await db_pool.fetchrow(
             """
             INSERT INTO calls (id, company_id, agent_id, caller_number, status, turn_count)
-            VALUES ($1, $2, $3, $4, 'completed', 0)
+            VALUES ($1, $2, $3, $4, 'active', 0)
             RETURNING id, agent_id, caller_number, status, start_time, end_time, turn_count, recording_url
             """,
             call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
         )
-        agent_line = f"Hello — this is a sandbox test from agent {agent['name']}."
+        try:
+            from twilio.rest import Client
+            client = Client(account_sid, auth_token)
+            twilio_call = client.calls.create(
+                to=to_number,
+                from_=from_number,
+                url=f"{public_base}/incoming-call",
+            )
+            live_payload = {
+                **_serialize_call(dict(row)),
+                "sandbox": False,
+                "billed": True,
+                "provider_call_sid": twilio_call.sid,
+                "agent_name": agent["name"],
+            }
+            if cache_key:
+                try:
+                    await redis_client.set(cache_key, json.dumps(live_payload), ex=86400)
+                except Exception:
+                    pass
+            return live_payload
+        except Exception as e:
+            await db_pool.execute(
+                "UPDATE calls SET status = 'failed', end_time = NOW() WHERE id = $1",
+                call_id,
+            )
+            raise HTTPException(status_code=502, detail=f"Twilio outbound failed: {e}")
+    except Exception:
+        if cache_key:
+            try:
+                await redis_client.delete(cache_key)
+            except Exception:
+                pass
+        raise
+
+
+@app.get("/v1/providers")
+@limiter.limit("60/minute")
+async def list_providers(request: Request):
+    """List configured provider integrations with masked credentials for the authenticated tenant."""
+    company_id = _tenant_id(request)
+    if not db_pool:
+        return {"providers": []}
+    rows = await db_pool.fetch(
+        """
+        SELECT provider_type, provider_name, created_at, encrypted_config
+        FROM provider_configs
+        WHERE company_id = $1
+        ORDER BY provider_type ASC, provider_name ASC
+        """,
+        uuid.UUID(company_id),
+    )
+    result = []
+    for r in rows:
+        cfg = r["encrypted_config"]
+        key_preview = ""
+        try:
+            dec = crypto.decrypt(cfg) if isinstance(cfg, str) else cfg
+            data = json.loads(dec) if isinstance(dec, str) else dec
+            api_key = data.get("api_key", "")
+            if api_key:
+                key_preview = f"{api_key[:4]}...{api_key[-4:]}" if len(api_key) > 8 else "***"
+        except Exception:
+            key_preview = "***"
+        result.append({
+            "provider_type": r["provider_type"],
+            "provider_name": r["provider_name"],
+            "configured": True,
+            "key_preview": key_preview,
+            "created_at": r["created_at"].isoformat() if r["created_at"] else None,
+        })
+    return {"providers": result}
+
+
+@app.put("/v1/providers/{provider_type}/{provider_name}")
+@limiter.limit("30/minute")
+async def upsert_provider_config(request: Request, provider_type: str, provider_name: str):
+    """Securely store an encrypted provider credential using AES-256-GCM envelope encryption."""
+    company_id = _tenant_id(request)
+    body = await request.json()
+    if not body or not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid provider config payload")
+
+    encrypted_str = crypto.encrypt(json.dumps(body))
+
+    existing = await db_pool.fetchrow(
+        "SELECT id FROM provider_configs WHERE company_id = $1 AND provider_type = $2 AND provider_name = $3",
+        uuid.UUID(company_id), provider_type, provider_name,
+    )
+    if existing:
         await db_pool.execute(
             """
-            INSERT INTO transcripts (call_id, role, content)
-            VALUES ($1, 'system', $2), ($1, 'agent', $3)
+            UPDATE provider_configs
+            SET encrypted_config = $1, created_at = NOW()
+            WHERE id = $2
             """,
-            call_id,
-            f"Sandbox test call to {to_number} (no live telephony).",
-            agent_line,
+            encrypted_str, existing["id"],
         )
-        # Meter sandbox activity (visible on /v1/usage; billed=false — no telephony spend)
-        await track_usage(
-            company_id=company_id,
-            call_minutes=1,
-            stt_seconds=2,
-            tts_characters=len(agent_line),
-            llm_tokens=50,
-        )
-        return {
-            **_serialize_call(dict(row)),
-            "sandbox": True,
-            "billed": False,
-            "agent_name": agent["name"],
-            "message": "Sandbox call recorded; no Twilio spend.",
-            "usage": {
-                "call_minutes": 1,
-                "stt_seconds": 2,
-                "tts_characters": len(agent_line),
-                "llm_tokens": 50,
-            },
-        }
-
-    # Live outbound via Twilio REST if credentials present
-    account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-    auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-    from_number = os.getenv("TWILIO_FROM_NUMBER")
-    public_base = os.getenv("PUBLIC_BASE_URL")
-    if not all([account_sid, auth_token, from_number, public_base]):
-        raise HTTPException(
-            status_code=503,
-            detail="Live outbound not configured (TWILIO_* / PUBLIC_BASE_URL). Use sandbox test key.",
-        )
-
-    row = await db_pool.fetchrow(
-        """
-        INSERT INTO calls (id, company_id, agent_id, caller_number, status, turn_count)
-        VALUES ($1, $2, $3, $4, 'active', 0)
-        RETURNING id, agent_id, caller_number, status, start_time, end_time, turn_count, recording_url
-        """,
-        call_id, uuid.UUID(company_id), uuid.UUID(agent_id), to_number,
-    )
-    try:
-        from twilio.rest import Client
-        client = Client(account_sid, auth_token)
-        twilio_call = client.calls.create(
-            to=to_number,
-            from_=from_number,
-            url=f"{public_base}/incoming-call",
-        )
-        return {
-            **_serialize_call(dict(row)),
-            "sandbox": False,
-            "billed": True,
-            "provider_call_sid": twilio_call.sid,
-            "agent_name": agent["name"],
-        }
-    except Exception as e:
+    else:
         await db_pool.execute(
-            "UPDATE calls SET status = 'failed', end_time = NOW() WHERE id = $1",
-            call_id,
+            """
+            INSERT INTO provider_configs (company_id, provider_type, provider_name, encrypted_config)
+            VALUES ($1, $2, $3, $4)
+            """,
+            uuid.UUID(company_id), provider_type, provider_name, encrypted_str,
         )
-        raise HTTPException(status_code=502, detail=f"Twilio outbound failed: {e}")
+    return {
+        "status": "success",
+        "message": f"Encrypted credentials for {provider_type}/{provider_name} saved successfully.",
+        "provider_type": provider_type,
+        "provider_name": provider_name,
+    }
+
+
+@app.delete("/v1/providers/{provider_type}/{provider_name}")
+@limiter.limit("30/minute")
+async def delete_provider_config(request: Request, provider_type: str, provider_name: str):
+    """Delete custom provider credentials for the tenant, reverting to platform defaults."""
+    company_id = _tenant_id(request)
+    await db_pool.execute(
+        "DELETE FROM provider_configs WHERE company_id = $1 AND provider_type = $2 AND provider_name = $3",
+        uuid.UUID(company_id), provider_type, provider_name,
+    )
+    return {"status": "success", "message": f"Provider config {provider_type}/{provider_name} deleted."}
 
 
 @app.get("/v1/calls/{call_id}")

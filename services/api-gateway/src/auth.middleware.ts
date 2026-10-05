@@ -316,7 +316,6 @@ export class AuthMiddleware implements NestMiddleware {
     if (tenantContext.subscriptionPlan) req.headers['x-subscription-plan'] = tenantContext.subscriptionPlan;
     // Sandbox vs live — services branch on this header (Phase 2)
     req.headers['x-markova-env'] = tenantContext.environment || 'test';
-    req.headers['x-company-id'] = tenantContext.tenantId;
 
     // Sandbox guard: live-only destructive telephony blocked for test keys
     const env = tenantContext.environment || 'test';

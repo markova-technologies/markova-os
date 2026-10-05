@@ -8,8 +8,8 @@ const Sdks = () => (
     <p className="docs-page-kicker">Reference</p>
     <h1>SDKs</h1>
     <p className="lead">
-      One published client so far: <code>@markova/sdk</code> for Node. It is a thin wrapper over the
-      same HTTP API — nothing is available through the SDK that you can't do with curl.
+      Official client libraries for integrating with Markova: <code>@markova/sdk</code> for Node.js
+      and <code>markova-python-sdk</code> for Python. Both default to production <code>https://api.markova.tech</code>.
     </p>
 
     <h2>Node</h2>
@@ -28,7 +28,7 @@ const Sdks = () => (
       code={`import { Markova } from '@markova/sdk';
 
 const markova = new Markova({
-  baseUrl: 'http://localhost:8000',
+  baseUrl: 'https://api.markova.tech', // Defaults to https://api.markova.tech
   apiKey: process.env.MARKOVA_API_KEY, // mk_test_... or mk_live_...
 });`}
     />
@@ -133,10 +133,40 @@ try {
       </tbody>
     </table>
 
+    <h2>Python</h2>
+    <p>Requires Python 3.9+ with <code>httpx</code> for sync and async execution.</p>
+
+    <CodeBlock language="bash" code={`pip install markova-python-sdk`} />
+
+    <h3>Creating a client</h3>
+    <CodeBlock
+      language="python"
+      code={`from markova import MarkovaClient, AsyncMarkovaClient
+
+# Defaults automatically to https://api.markova.tech
+client = MarkovaClient(api_key="mk_test_YOUR_KEY")
+
+# Create an agent
+agent = client.agents.create(
+    name="Reception",
+    language="am",
+    prompt="You answer for a clinic in Addis."
+)
+
+# Place a sandbox call
+call = client.calls.create(
+    agent_id=agent["id"],
+    to_number="+251911000000",
+    sandbox=True,
+    idempotency_key="unique-req-1234"
+)
+print("Dispatched call:", call["id"])`}
+    />
+
     <Callout kind="note">
       <p>
-        Other languages aren't published yet. Until they are, the API is plain JSON over HTTP with two
-        header-based auth options — any HTTP client will do, and the reference documents every shape.
+        The Python SDK also includes <code>verify_webhook_signature(payload, signature, secret)</code>{' '}
+        using constant-time HMAC-SHA256 comparison for secure webhook handling.
       </p>
     </Callout>
 

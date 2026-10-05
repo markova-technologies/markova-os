@@ -15,11 +15,11 @@ class MarkovaError extends Error {
 class Markova {
   /**
    * @param {object} opts
-   * @param {string} [opts.baseUrl='http://localhost:8000']
+   * @param {string} [opts.baseUrl='https://api.markova.tech']
    * @param {string} [opts.apiKey] - mk_test_* or mk_live_*
    * @param {string} [opts.token] - JWT access token
    */
-  constructor({ baseUrl = 'http://localhost:8000', apiKey, token } = {}) {
+  constructor({ baseUrl = (typeof process !== 'undefined' && process.env && process.env.MARKOVA_API_URL) || 'https://api.markova.tech', apiKey, token } = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
     this.apiKey = apiKey;
     this.token = token;
@@ -141,10 +141,19 @@ class Markova {
     return this.request('GET', `/v1/calls${qs ? `?${qs}` : ''}`);
   }
 
-  createCall({ agent_id, to_number, sandbox }) {
-    return this.request('POST', '/v1/calls', {
-      body: { agent_id, to_number, sandbox },
-    });
+  createCall({ agent_id, to_number, to, sandbox, webhook_url, idempotency_key }) {
+    const headers = {};
+    if (idempotency_key) {
+      headers['Idempotency-Key'] = idempotency_key;
+    }
+    const body = {
+      agent_id,
+      to_number: to_number || to,
+      ...(sandbox !== undefined ? { sandbox } : {}),
+      ...(webhook_url ? { webhook_url } : {}),
+      ...(idempotency_key ? { idempotency_key } : {}),
+    };
+    return this.request('POST', '/v1/calls', { body, headers });
   }
 
   getCall(id) {
@@ -163,6 +172,62 @@ class Markova {
     return this.request('POST', `/v1/calls/${id}/transfer`, {
       body: typeof target === 'string' ? { to: target } : target,
     });
+  }
+
+  // ── Providers (Custom LLM / Telephony Keys with AES-256 Envelope) ─────────
+  listProviders() {
+    return this.request('GET', '/v1/providers');
+  }
+
+  setProvider(providerType, providerName, config) {
+    return this.request('PUT', `/v1/providers/${encodeURIComponent(providerType)}/${encodeURIComponent(providerName)}`, {
+      body: config,
+    });
+  }
+
+  deleteProvider(providerType, providerName) {
+    return this.request('DELETE', `/v1/providers/${encodeURIComponent(providerType)}/${encodeURIComponent(providerName)}`);
+  }
+
+  // ── Webhooks ─────────────────────────────────────────────────────────────
+  listWebhooks() {
+    return this.request('GET', '/v1/webhooks');
+  }
+
+  createWebhook(payload) {
+    return this.request('POST', '/v1/webhooks', { body: payload });
+  }
+
+  deleteWebhook(id) {
+    return this.request('DELETE', `/v1/webhooks/${id}`);
+  }
+
+  // ── Webhook Signature Verification Helper ─────────────────────────────────
+  /**
+   * Verify Markova webhook signature from X-Markova-Signature header.
+   * @param {string|Buffer|object} rawBody - Raw request payload received from webhook
+   * @param {string} signatureHeader - Value of X-Markova-Signature header (sha256=...)
+   * @param {string} secret - Tenant webhook signing secret
+   * @returns {boolean}
+   */
+  static verifyWebhookSignature(rawBody, signatureHeader, secret) {
+    if (!rawBody || !signatureHeader || !secret) return false;
+    try {
+      const crypto = require('crypto');
+      const sig = signatureHeader.replace(/^sha256=/, '').trim();
+      const content = typeof rawBody === 'string'
+        ? rawBody
+        : Buffer.isBuffer(rawBody)
+          ? rawBody.toString('utf8')
+          : JSON.stringify(rawBody);
+      const expected = crypto.createHmac('sha256', secret).update(content).digest('hex');
+      const sigBuf = Buffer.from(sig, 'hex');
+      const expBuf = Buffer.from(expected, 'hex');
+      if (sigBuf.length !== expBuf.length) return false;
+      return crypto.timingSafeEqual(sigBuf, expBuf);
+    } catch {
+      return false;
+    }
   }
 
   // ── Numbers ──────────────────────────────────────────────────────────────
@@ -229,4 +294,8 @@ class Markova {
   }
 }
 
-module.exports = { Markova, MarkovaError };
+function verifyWebhookSignature(rawBody, signatureHeader, secret) {
+  return Markova.verifyWebhookSignature(rawBody, signatureHeader, secret);
+}
+
+module.exports = { Markova, MarkovaError, verifyWebhookSignature };

@@ -23,7 +23,7 @@ const Quickstart = () => (
         {
           label: 'curl',
           code: `# Register (returns a JWT you use to mint API keys)
-curl -X POST http://localhost:8000/v1/auth/register \\
+curl -X POST https://api.markova.tech/v1/auth/register \\
   -H "Content-Type: application/json" \\
   -d '{
     "name": "Selam Bekele",
@@ -33,7 +33,7 @@ curl -X POST http://localhost:8000/v1/auth/register \\
   }'
 
 # Create a sandbox key with the JWT from the response
-curl -X POST http://localhost:8000/v1/keys \\
+curl -X POST https://api.markova.tech/v1/keys \\
   -H "Authorization: Bearer YOUR_JWT" \\
   -H "Content-Type: application/json" \\
   -d '{"name": "local dev", "environment": "test"}'`,
@@ -42,7 +42,7 @@ curl -X POST http://localhost:8000/v1/keys \\
           label: 'node',
           code: `import { Markova } from '@markova/sdk';
 
-const markova = new Markova({ baseUrl: 'http://localhost:8000' });
+const markova = new Markova({ baseUrl: 'https://api.markova.tech' });
 
 const session = await markova.register({
   name: 'Selam Bekele',
@@ -80,7 +80,7 @@ console.log(key.api_key); // mk_test_... shown once`,
     </p>
 
     <CodeBlock
-      code={`curl http://localhost:8000/v1/agents \\
+      code={`curl https://api.markova.tech/v1/agents \\
   -H "x-api-key: mk_test_YOUR_KEY"`}
     />
 
@@ -95,7 +95,7 @@ console.log(key.api_key); // mk_test_... shown once`,
       samples={[
         {
           label: 'curl',
-          code: `curl -X POST http://localhost:8000/v1/agents \\
+          code: `curl -X POST https://api.markova.tech/v1/agents \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -138,7 +138,7 @@ console.log(agent.id);`,
       samples={[
         {
           label: 'curl',
-          code: `curl -X POST http://localhost:8000/v1/agents/AGENT_ID/test-call \\
+          code: `curl -X POST https://api.markova.tech/v1/agents/AGENT_ID/test-call \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"to_number": "+251911000000"}'`,
@@ -163,7 +163,7 @@ console.log(call.id, call.status);`,
       samples={[
         {
           label: 'curl',
-          code: `curl http://localhost:8000/v1/calls/CALL_ID/transcript \\
+          code: `curl https://api.markova.tech/v1/calls/CALL_ID/transcript \\
   -H "x-api-key: mk_test_YOUR_KEY"`,
         },
         {

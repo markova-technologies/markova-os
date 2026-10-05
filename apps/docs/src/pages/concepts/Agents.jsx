@@ -78,7 +78,7 @@ const Agents = () => (
       samples={[
         {
           label: 'curl',
-          code: `curl -X POST http://localhost:8000/v1/agents \\
+          code: `curl -X POST https://api.markova.tech/v1/agents \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -108,11 +108,11 @@ const Agents = () => (
 
     <CodeBlock
       code={`# See the version history
-curl http://localhost:8000/v1/agents/AGENT_ID/versions \\
+curl https://api.markova.tech/v1/agents/AGENT_ID/versions \\
   -H "x-api-key: mk_test_YOUR_KEY"
 
 # Put a previous version back in service
-curl -X POST http://localhost:8000/v1/agents/AGENT_ID/versions/VERSION_ID/rollback \\
+curl -X POST https://api.markova.tech/v1/agents/AGENT_ID/versions/VERSION_ID/rollback \\
   -H "x-api-key: mk_test_YOUR_KEY"`}
     />
 

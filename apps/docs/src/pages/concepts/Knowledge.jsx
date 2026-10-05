@@ -24,13 +24,13 @@ const Knowledge = () => (
         {
           label: 'curl',
           code: `# Create a source
-curl -X POST http://localhost:8000/v1/knowledge/sources \\
+curl -X POST https://api.markova.tech/v1/knowledge/sources \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"name": "Policies", "type": "upload"}'
 
 # Upload a document into it
-curl -X POST http://localhost:8000/v1/knowledge/sources/SOURCE_ID/documents \\
+curl -X POST https://api.markova.tech/v1/knowledge/sources/SOURCE_ID/documents \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -F "file=@refund-policy.pdf"`,
         },
@@ -63,7 +63,7 @@ await fetch(\`\${baseUrl}/v1/knowledge/sources/\${source.id}/documents\`, {
       samples={[
         {
           label: 'curl',
-          code: `curl -X POST http://localhost:8000/v1/knowledge/search \\
+          code: `curl -X POST https://api.markova.tech/v1/knowledge/search \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"query": "ተመላሽ ገንዘብ ፖሊሲ", "limit": 5}'`,

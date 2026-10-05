@@ -244,6 +244,11 @@ export class AppController {
     return proxyTo(this.orchestratorUrl, req, res);
   }
 
+  @All('v1/providers*')
+  proxyProvidersV1(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res);
+  }
+
   @All('v1/campaigns*')
   proxyCampaignsV1(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.orchestratorUrl, req, res);
@@ -399,6 +404,8 @@ export class AppController {
     const candidates = [
       path.join(process.cwd(), 'openapi.yaml'),
       path.join(__dirname, '..', 'openapi.yaml'),
+      path.join(__dirname, '..', '..', 'openapi.yaml'),
+      path.join(process.cwd(), '..', '..', 'openapi.yaml'),
       '/openapi.yaml',
     ];
     for (const p of candidates) {

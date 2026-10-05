@@ -145,7 +145,7 @@ const event = {
 const body = JSON.stringify(event);
 const signature = crypto.createHmac('sha256', secret).update(body).digest('hex');
 
-await fetch('http://localhost:8000/v1/billing/webhooks/telebirr', {
+await fetch('https://api.markova.tech/v1/billing/webhooks/telebirr', {
   method: 'POST',
   headers: {
     'Content-Type': 'application/json',
@@ -176,7 +176,7 @@ body = json.dumps(event)
 signature = hmac.new(secret, body.encode(), hashlib.sha256).hexdigest()
 
 requests.post(
-    "http://localhost:8000/v1/billing/webhooks/telebirr",
+    "https://api.markova.tech/v1/billing/webhooks/telebirr",
     data=body,
     headers={
         "Content-Type": "application/json",

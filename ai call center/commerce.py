@@ -187,18 +187,65 @@ class CommerceRepository:
 
     @contextmanager
     def _connect(self) -> Iterator[Any]:
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
-        import os
         db_url = os.environ.get("DATABASE_URL")
+        is_sqlite = (
+            not db_url
+            or (self.db_path and (self.db_path.endswith(".db") or self.db_path.endswith(".sqlite")))
+        )
+
+        if is_sqlite:
+            import sqlite3
+            Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+            connection = sqlite3.connect(self.db_path, timeout=30.0)
+            connection.row_factory = sqlite3.Row
+
+            class SQLiteWrapper:
+                def __init__(self, conn):
+                    self.conn = conn
+                def _prep(self, query):
+                    q = query.replace("SERIAL PRIMARY KEY", "INTEGER PRIMARY KEY AUTOINCREMENT")
+                    if "%s" in q:
+                        q = q.replace("%s", "?")
+                    return q
+                def execute(self, query, args=None):
+                    q = self._prep(query)
+                    return self.conn.execute(q, args) if args is not None else self.conn.execute(q)
+                def executemany(self, query, args_list=None):
+                    q = self._prep(query)
+                    return self.conn.executemany(q, args_list) if args_list is not None else self.conn.executemany(q)
+                def executescript(self, query):
+                    q = self._prep(query)
+                    return self.conn.executescript(q)
+                def commit(self):
+                    self.conn.commit()
+                def rollback(self):
+                    self.conn.rollback()
+                def close(self):
+                    self.conn.close()
+
+            wrapper = SQLiteWrapper(connection)
+            try:
+                yield wrapper
+                wrapper.commit()
+            except Exception:
+                wrapper.rollback()
+                raise
+            finally:
+                wrapper.close()
+            return
+
+        # PostgreSQL mode via DATABASE_URL
         connection = psycopg2.connect(db_url)
-        # We need a wrapper to allow db.execute() and db.commit() like sqlite3
         class DBWrapper:
             def __init__(self, conn):
                 self.conn = conn
             def _prep(self, query):
                 if query.strip().upper() == "BEGIN IMMEDIATE":
                     return None
-                return query.replace("?", "%s")
+                q = query.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
+                if "?" in q:
+                    q = q.replace("?", "%s")
+                return q
             def execute(self, query, args=None):
                 q = self._prep(query)
                 if not q:
@@ -214,8 +261,9 @@ class CommerceRepository:
                 cursor.executemany(q, args_list)
                 return cursor
             def executescript(self, query):
+                q = self._prep(query)
                 cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-                cursor.execute(query)
+                cursor.execute(q)
                 return cursor
             def commit(self):
                 self.conn.commit()
@@ -223,15 +271,16 @@ class CommerceRepository:
                 self.conn.rollback()
             def close(self):
                 self.conn.close()
-        connection = DBWrapper(connection)
+
+        wrapper = DBWrapper(connection)
         try:
-            yield connection
-            connection.commit()
+            yield wrapper
+            wrapper.commit()
         except Exception:
-            connection.rollback()
+            wrapper.rollback()
             raise
         finally:
-            connection.close()
+            wrapper.close()
 
     def init_schema(self) -> None:
         with self._connect() as db:
@@ -649,7 +698,11 @@ class CommerceRepository:
                     now,
                 ),
             )
-            order_id = int(cursor.fetchone()[0])
+            if hasattr(cursor, "lastrowid") and cursor.lastrowid:
+                order_id = int(cursor.lastrowid)
+            else:
+                row = cursor.fetchone() if hasattr(cursor, "fetchone") else None
+                order_id = int(row[0]) if row else int(db.execute("SELECT last_insert_rowid()").fetchone()[0])
             order_number = self._order_number(order_id)
             db.execute(
                 "UPDATE commerce_orders SET order_number=%s WHERE id=?",

@@ -5,7 +5,8 @@ Minimal Node.js client for the Markova `/v1` API (auth, keys, agents, calls, num
 ```js
 const { Markova } = require('@markova/sdk');
 
-const client = new Markova({ baseUrl: 'http://localhost:8000' });
+// Defaults to https://api.markova.tech (or pass baseUrl: 'http://localhost:8000' for local dev)
+const client = new Markova();
 
 await client.register({
   name: 'Ada',

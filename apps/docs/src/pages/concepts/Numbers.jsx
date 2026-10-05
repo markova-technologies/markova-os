@@ -23,13 +23,13 @@ const Numbers = () => (
         {
           label: 'curl',
           code: `# What's available
-curl -X POST http://localhost:8000/v1/numbers/search \\
+curl -X POST https://api.markova.tech/v1/numbers/search \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"country": "ET", "area_code": "11"}'
 
 # Claim one and point it at an agent
-curl -X POST http://localhost:8000/v1/numbers \\
+curl -X POST https://api.markova.tech/v1/numbers \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -105,7 +105,7 @@ const number = await markova.createNumber({
     </p>
 
     <CodeBlock
-      code={`curl -X POST http://localhost:8000/v1/numbers/NUMBER_ID/routing-rules \\
+      code={`curl -X POST https://api.markova.tech/v1/numbers/NUMBER_ID/routing-rules \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

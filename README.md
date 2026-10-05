@@ -41,22 +41,22 @@ The voice orchestrator is the production runtime; an earlier single-tenant playg
 
 ```bash
 # Register (returns a JWT you use to mint API keys)
-curl -X POST http://localhost:8000/v1/auth/register \
+curl -X POST https://api.markova.tech/v1/auth/register \
   -H "Content-Type: application/json" \
   -d '{"name": "Selam Bekele", "companyName": "Bekele Dental", "email": "selam@example.com", "password": "a-long-passphrase"}'
 
 # Create a sandbox key with the JWT from the response
-curl -X POST http://localhost:8000/v1/keys \
+curl -X POST https://api.markova.tech/v1/keys \
   -H "Authorization: Bearer YOUR_JWT" -H "Content-Type: application/json" \
   -d '{"name": "local dev", "environment": "test"}'
 
 # Create an agent
-curl -X POST http://localhost:8000/v1/agents \
+curl -X POST https://api.markova.tech/v1/agents \
   -H "x-api-key: mk_test_YOUR_KEY" -H "Content-Type: application/json" \
   -d '{"name": "Reception", "language": "am", "prompt": "You answer the phone for Bekele Dental..."}'
 
-# Place a sandbox test call — nothing billed
-curl -X POST http://localhost:8000/v1/agents/AGENT_ID/test-call \
+# Place a sandbox test call — nothing billed (for local dev, use http://localhost:8000)
+curl -X POST https://api.markova.tech/v1/agents/AGENT_ID/test-call \
   -H "x-api-key: mk_test_YOUR_KEY" -H "Content-Type: application/json" \
   -d '{"to_number": "+251911000000"}'
 ```

@@ -35,7 +35,7 @@ const Home = () => (
         {
           label: 'curl',
           code: `# 1. Create an agent
-curl -X POST http://localhost:8000/v1/agents \\
+curl -X POST https://api.markova.tech/v1/agents \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -45,7 +45,7 @@ curl -X POST http://localhost:8000/v1/agents \\
   }'
 
 # 2. Call your own phone from the agent (sandbox, unbilled)
-curl -X POST http://localhost:8000/v1/agents/AGENT_ID/test-call \\
+curl -X POST https://api.markova.tech/v1/agents/AGENT_ID/test-call \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{"to_number": "+251911000000"}'`,
@@ -55,7 +55,7 @@ curl -X POST http://localhost:8000/v1/agents/AGENT_ID/test-call \\
           code: `import { Markova } from '@markova/sdk';
 
 const markova = new Markova({
-  baseUrl: 'http://localhost:8000',
+  baseUrl: 'https://api.markova.tech',
   apiKey: 'mk_test_YOUR_KEY',
 });
 

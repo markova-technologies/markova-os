@@ -25,7 +25,7 @@ const Calls = () => (
       samples={[
         {
           label: 'curl',
-          code: `curl -X POST http://localhost:8000/v1/calls \\
+          code: `curl -X POST https://api.markova.tech/v1/calls \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -70,8 +70,8 @@ const Calls = () => (
     </p>
 
     <CodeBlock
-      code={`curl http://localhost:8000/v1/calls/CALL_ID/transcript -H "x-api-key: mk_test_YOUR_KEY"
-curl http://localhost:8000/v1/calls/CALL_ID/recording  -H "x-api-key: mk_test_YOUR_KEY"`}
+      code={`curl https://api.markova.tech/v1/calls/CALL_ID/transcript -H "x-api-key: mk_test_YOUR_KEY"
+curl https://api.markova.tech/v1/calls/CALL_ID/recording  -H "x-api-key: mk_test_YOUR_KEY"`}
     />
 
     <h2>Handing a call to a person</h2>
@@ -84,7 +84,7 @@ curl http://localhost:8000/v1/calls/CALL_ID/recording  -H "x-api-key: mk_test_YO
       samples={[
         {
           label: 'curl',
-          code: `curl -X POST http://localhost:8000/v1/calls/CALL_ID/transfer \\
+          code: `curl -X POST https://api.markova.tech/v1/calls/CALL_ID/transfer \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

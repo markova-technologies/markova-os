@@ -10,8 +10,12 @@ info:
 
     '
 servers:
+- url: https://api.markova.tech
+  description: Production API Gateway (Cloudflare Edge)
+- url: https://markova-api-gateway.onrender.com
+  description: Direct Render Gateway
 - url: http://localhost:8000
-  description: Local API gateway
+  description: Local Development Gateway
 tags:
 - name: Auth
 - name: Keys
@@ -25,6 +29,7 @@ tags:
 - name: Connectors
 - name: Webhooks
 - name: Campaigns
+- name: Providers
 security:
 - bearerAuth: []
 - apiKeyAuth: []
@@ -353,6 +358,13 @@ paths:
       tags:
       - Calls
       summary: Place outbound call (sandbox or live)
+      parameters:
+      - in: header
+        name: Idempotency-Key
+        required: false
+        schema:
+          type: string
+        description: Unique key to prevent duplicate calls and double billing on network retry
       requestBody:
         required: true
         content:
@@ -361,15 +373,20 @@ paths:
               type: object
               required:
               - agent_id
-              - to_number
               properties:
                 agent_id:
                   type: string
                   format: uuid
                 to_number:
                   type: string
+                to:
+                  type: string
                 sandbox:
                   type: boolean
+                webhook_url:
+                  type: string
+                  format: uri
+                  description: Optional per-call webhook URL to receive call.completed events
       responses:
         '200':
           description: Call created
@@ -921,6 +938,64 @@ paths:
       responses:
         '200':
           description: Webhook deleted
+  /v1/providers:
+    get:
+      tags:
+      - Providers
+      summary: List configured provider integrations with masked credentials
+      responses:
+        '200':
+          description: OK
+  /v1/providers/{provider_type}/{provider_name}:
+    put:
+      tags:
+      - Providers
+      summary: Store encrypted custom provider credentials (AES-256-GCM)
+      parameters:
+      - in: path
+        name: provider_type
+        required: true
+        schema:
+          type: string
+          example: llm
+      - in: path
+        name: provider_name
+        required: true
+        schema:
+          type: string
+          example: groq
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - api_key
+              properties:
+                api_key:
+                  type: string
+      responses:
+        '200':
+          description: Encrypted credentials saved successfully
+    delete:
+      tags:
+      - Providers
+      summary: Delete custom provider credentials, reverting to platform defaults
+      parameters:
+      - in: path
+        name: provider_type
+        required: true
+        schema:
+          type: string
+      - in: path
+        name: provider_name
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Provider credentials deleted
   /v1/campaigns:
     post:
       tags:

@@ -39,16 +39,33 @@ export declare class Markova {
   rollbackAgent(id: string, versionId: string): Promise<any>;
   testCall(agentId: string, payload: { to_number: string }): Promise<any>;
 
-  listCalls(query?: Record<string, string>): Promise<any>;
+  listCalls(query?: Record<string, string | number>): Promise<any>;
   createCall(payload: {
     agent_id: string;
-    to_number: string;
+    to_number?: string;
+    to?: string;
     sandbox?: boolean;
+    webhook_url?: string;
+    idempotency_key?: string;
   }): Promise<any>;
   getCall(id: string): Promise<any>;
   getTranscript(id: string): Promise<any>;
   getRecording(id: string): Promise<any>;
   transferCall(id: string, target: string | Record<string, string>): Promise<any>;
+
+  listProviders(): Promise<{ providers: Array<{ provider_type: string; provider_name: string; key_preview?: string }> }>;
+  setProvider(providerType: string, providerName: string, config: Record<string, any>): Promise<any>;
+  deleteProvider(providerType: string, providerName: string): Promise<any>;
+
+  listWebhooks(): Promise<any>;
+  createWebhook(payload: { url: string; events?: string[]; description?: string }): Promise<any>;
+  deleteWebhook(id: string): Promise<any>;
+
+  static verifyWebhookSignature(
+    rawBody: string | Buffer | Record<string, any>,
+    signatureHeader: string,
+    secret: string
+  ): boolean;
 
   searchNumbers(body?: Record<string, unknown>): Promise<any>;
   listNumbers(): Promise<any>;
@@ -69,3 +86,9 @@ export declare class Markova {
   getWorkflowSettings(): Promise<any>;
   updateWorkflowSettings(settings: Record<string, unknown>): Promise<any>;
 }
+
+export declare function verifyWebhookSignature(
+  rawBody: string | Buffer | Record<string, any>,
+  signatureHeader: string,
+  secret: string
+): boolean;

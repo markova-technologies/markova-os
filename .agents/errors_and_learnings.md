@@ -4,6 +4,114 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-05] Production Domain Transition: Documentation Overhaul, OpenAPI Edge Servers & Cloudflare api.markova.tech Live Verification
+- **Error/Problem:**
+  1. Documentation across `apps/docs` (Home, Quickstart, SDKs, Webhooks, Core Concepts) and `app.markova.tech/docs/api` displayed `http://localhost:8000/v1/...` for all curl and SDK snippets, which failed when executed by external developers in production.
+  2. `openapi.yaml` in root and public directories only listed `http://localhost:8000` in the `servers:` array, causing the interactive Redoc API reference (`/docs/api`) to target localhost by default.
+  3. `apps/client-dashboard/.env` was pointing `VITE_API_URL` directly to the raw Render backend (`markova-api-gateway.onrender.com`) rather than the edge-proxied custom domain `api.markova.tech`.
+  4. In `packages/markova-python-sdk/tests/test_sdk.py`, the async client test was decorated with `@pytest.mark.asyncio`, failing in environments without the optional `pytest-asyncio` plugin installed.
+- **How it Happened:**
+  - Initial documentation and OpenAPI scaffolding were generated during local development before production DNS and Cloudflare edge routing were established.
+  - The client dashboard `.env` was configured with initial Render deploy targets and was never flipped to the custom domain.
+  - Pytest async tests were written assuming global `pytest-asyncio` plugin availability instead of using Python's standard `asyncio.run()`.
+- **Lesson Learned:**
+  1. Production documentation must always default code examples to the canonical public production domain (`https://api.markova.tech/v1`), adding explicit comments for local development (`http://localhost:8000`).
+  2. OpenAPI specs must define multi-server tiers in the `servers:` array (`Production API Gateway`, `Direct Render Gateway`, `Local Development Gateway`) so interactive docs (Redoc/Swagger) let developers switch environments with one click.
+  3. Keep SDK test suites lean by wrapping async tests in native `asyncio.run(_run())` to guarantee 100% test portability across environments without plugin prerequisites.
+
+
+### [2026-10-02] Phase 6 Enterprise Infrastructure Hardening: Commerce Dual-Database Dialects, Gateway Header Forwarding & Complete Test Verification
+- **Error/Problem:**
+  1. `CommerceRepository._connect` in `ai call center/commerce.py` hardcoded `psycopg2.connect(db_url)` and attempted PostgreSQL connections to `localhost:5432` during local development and test runs (`ai call center/test_commerce.py`), failing with `psycopg2.OperationalError: Connection refused`.
+  2. Even when SQLite was used, raw PostgreSQL DDL (`id SERIAL PRIMARY KEY`) and PostgreSQL placeholders (`%s`) caused syntax errors in SQLite (`near "%": syntax error`).
+  3. `create_order` expected `cursor.fetchone()[0]` after `INSERT INTO commerce_orders`, which returned `None` in SQLite because SQLite `INSERT` statements without `RETURNING` clauses do not populate cursor fetch buffers.
+  4. In `services/api-gateway/src/proxy.util.ts`, `proxyReqOptDecorator` did not explicitly list `idempotency-key` and `x-idempotency-key` in forwarded request headers, creating a risk of stripping client idempotency keys during proxy forwarding.
+- **How it Happened:**
+  - `commerce.py` was originally ported from SQLite to PostgreSQL by inserting psycopg2 calls without retaining compatibility for local SQLite testing.
+  - SQLite auto-increment IDs are exposed via `cursor.lastrowid` rather than `cursor.fetchone()`.
+  - The gateway proxy utility decorator explicitly enumerated specific tenant headers but had not added the newly introduced idempotency header names.
+- **Lesson Learned:**
+  1. Implement dialect wrappers (`SQLiteWrapper` and `DBWrapper`) in data repository layers that detect the connection string and automatically translate DDL (`SERIAL PRIMARY KEY` <-> `INTEGER PRIMARY KEY AUTOINCREMENT`) and parameter tokens (`%s` <-> `?`).
+  2. When retrieving primary keys after an `INSERT`, inspect `cursor.lastrowid` first, falling back to `cursor.fetchone()` or `last_insert_rowid()`.
+  3. All custom enterprise HTTP headers (`idempotency-key`, `x-idempotency-key`, `x-markova-env`) must be explicitly preserved in API Gateway proxy decorators to guarantee end-to-end delivery across microservices.
+
+### [2026-10-02] Phase 4 & 5 Verification & Tooling: Python SDK Build, Node SDK Expansion, Gateway HMAC Test Suite & Webhook Verification
+- **Error/Problem:**
+  1. Direct orchestrator endpoint integration tests failed with `401 Unauthorized` on `/v1/calls` and `/v1/providers` because `_tenant_id()` strictly demands either `Bearer demo-token`, direct Supabase JWT verification (`SUPABASE_JWT_SECRET`), or internal API Gateway HMAC cryptographic signatures (`SERVICE_AUTH_SECRET` with `x-gateway-sig`, `x-gateway-timestamp`, `x-company-id`, `x-user-id`).
+  2. No official Python SDK existed for client developers integrating with Python backend systems (Django, FastAPI, Flask, Celery) to automate outbound calling, configure custom providers, or verify incoming webhooks with constant-time HMAC comparison.
+  3. `@markova/sdk` lacked provider CRUD endpoints, per-call `webhook_url` and `Idempotency-Key` passing, and static webhook signature verification helper functions.
+  4. Client developers had no clear end-to-end integration code samples demonstrating raw-buffer webhook signature verification in Express and FastAPI.
+- **How it Happened:**
+  - Fast gateway-to-orchestrator security hardening implemented zero-trust service auth, but integration tests were executing against orchestrator endpoints without including either demo mode authorization headers or simulated gateway signatures.
+  - Client SDK development had previously prioritized the Node dashboard client (`packages/sdk`) without parity for Python backend services.
+  - Standard JSON middleware in web frameworks (`express.json()`) parses and reformats raw request bodies, causing naive HMAC-SHA256 signature verifications to fail due to altered byte representations.
+- **Lesson Learned:**
+  1. Internal service authentication tests must test the entire auth hierarchy: sandbox/demo authorization tokens, valid gateway HMAC signatures, forged signature rejection (403), and expired timestamp rejection (401 after 300 seconds).
+  2. Build and publish dual-language SDK parity (`@markova/sdk` for TypeScript/Node, `packages/markova-python-sdk` for Python), exposing both synchronous and asynchronous clients with full exception hierarchies (`AuthenticationError`, `ConflictError`, `NotFoundError`, `RateLimitError`).
+  3. Provide official constant-time cryptographic verification utilities (`verifyWebhookSignature` in Node, `verify_webhook_signature` in Python) using `crypto.timingSafeEqual` and `hmac.compare_digest` to prevent timing attacks.
+  4. Provide explicit Express and FastAPI code recipes showing how to preserve raw request bytes (`express.json({ verify: (req, res, buf) => { req.rawBody = buf; } })`) so client organizations can verify webhooks reliably without parsing errors.
+
+### [2026-10-02] Phase 2 & 3 Enterprise Completion: Idempotency Keys, Webhook Dispatching, AES-256 Provider Management & Automated Test Suite
+- **Error/Problem:**
+  1. No idempotency mechanism existed on `POST /v1/calls`. When network blips caused client organizations or automated workflows to retry API calls, multiple duplicate calls were dispatched, risking duplicate billing and caller spam.
+  2. Outbound calls created with explicit `webhook_url` parameters had their webhook URLs dropped because only the global `developer_webhooks` table was checked upon completion.
+  3. Sandbox test calls (`sandbox=true` or `x-markova-env=test`) never fired developer webhooks, preventing organizations from verifying their webhook receivers in sandbox mode.
+  4. Client organizations had no programmatic CRUD endpoints (`/v1/providers`) to securely store and rotate custom LLM (Groq, OpenAI) or telephony (Twilio) provider API keys with AES-256-GCM envelope encryption.
+- **How it Happened:**
+  - Idempotency was planned as an architectural standard but had not yet been wired into Redis state locks.
+  - The webhook dispatcher was built strictly around tenant-level static webhooks, without an ephemeral per-call storage channel for one-off automated calls.
+  - Encryption was implemented as a backend library (`crypto.py`) but had not been exposed via REST endpoints.
+- **Lesson Learned:**
+  1. Implement distributed Redis locking (`idempotency:{company}:{key}`) with two-phase state: `PROCESSING` during dispatch (rejecting concurrent requests with 409 Conflict) and 24-hour response caching on completion (`X-Idempotency-Hit: true`).
+  2. Per-call webhook parameters must be saved to Redis with a matching 24-hour TTL (`call_webhook:{call_id}`) and evaluated as a fallback if no global company webhook is registered.
+  3. Sandbox calls must dispatch signed webhooks (`X-Markova-Signature: sha256=...`) just like live calls, so developer testing can be 100% automated in CI/CD without telecom costs.
+  4. Expose dedicated `/v1/providers` endpoints that automatically apply AES-256-GCM envelope encryption on write and return masked credential previews on read.
+
+
+### [2026-10-02] Phase 1 Core API & Gateway Remediation: OpenAPI Resolution, Connector /v1 Desync, Webhook Reverse-Proxy HMAC & Pagination
+- **Error/Problem:**
+  1. `openapi.yaml` existed in repo root but was absent from `services/api-gateway/`, causing Docker container builds and runtime to fail with 404 on `/openapi.yaml` and `/docs`.
+  2. `client.js` in client-dashboard had duplicate `/v1` prefix across all connector integration routes (`/v1/connectors`), generating `/v1/v1/connectors` 404 errors.
+  3. `createKey()` in `client.js` minted local fake API keys in `localStorage` upon backend failure, creating false positives that later failed authentication against real gateway routes.
+  4. Duplicate `x-company-id` header assignment in `services/api-gateway/src/auth.middleware.ts` lines 309 and 319.
+  5. `verify_twilio_signature()` in `services/orchestrator/main.py` verified HMAC against internal `request.url` rather than accounting for `X-Forwarded-Proto`, `X-Forwarded-Host`, and `PUBLIC_BASE_URL`, rejecting valid Twilio signatures behind reverse proxies.
+  6. `list_calls` (`GET /v1/calls`) had hardcoded `LIMIT 50` and ignored user-specified `limit` and `offset` query parameters.
+- **How it Happened:**
+  - Files were built across multiple services without unified build validation checks.
+  - Base URL refactoring in Axios client (`/v1` prefix added to `baseURL`) was not followed by a sweep across all endpoint calls.
+  - Webhook verification was written assuming direct IP access without accounting for container reverse-proxy headers.
+- **Lesson Learned:**
+  1. Synchronize OpenAPI specs across root and gateway service directories, with multi-path defensive fallbacks in `app.controller.ts`.
+  2. Never mint client credentials locally when remote generation fails; fail loudly with actionable error messages.
+  3. Reverse-proxy-facing webhook HMAC validators must evaluate reconstructed public URLs (`x-forwarded-proto` + `x-forwarded-host` + `PUBLIC_BASE_URL`) alongside raw request URLs.
+  4. Ensure all list endpoints support standard bounded pagination (`limit` capped to 200, `offset` >= 0).
+
+
+### [2026-10-01] Full API System Audit: 6 Critical Bugs & 10 Missing Features Identified Across Gateway, Orchestrator & Client SDK
+- **Error/Problem:**
+  1. **OpenAPI spec file does not exist** (`GET /openapi.yaml` → 404). The gateway controller searches 3 file paths for `openapi.yaml` but no file exists in the repository. Every developer who visits `/docs` sees a broken Swagger UI. Zero API documentation is available to client organizations.
+  2. **Connector URL has double `/v1` prefix** in `client.js` lines 666, 687, 710, 726, 744. The Axios instance `baseURL` already includes `/v1`, but `listConnectors()` and `createConnector()` call `/v1/connectors` instead of `/connectors`, producing `/v1/v1/connectors` → 404. The Integration Hub is broken in production.
+  3. **RAG Knowledge Base not wired into the orchestrator**. The knowledge-service is fully functional (upload, chunk, embed, search), but `services/orchestrator/main.py` never calls it during LLM turns. Knowledge Center uploads have zero effect on AI call responses.
+  4. **Twilio webhook endpoints have no signature validation**. `/incoming-call` and `/handle-input` are public (correct — Twilio can't authenticate), but no `X-Twilio-Signature` HMAC check is performed. Any external actor can POST to these endpoints and trigger billing, transcript writes, and AI responses.
+  5. **`x-company-id` header set twice** in `auth.middleware.ts` lines 309 and 319 (duplicate assignment, no functional harm but reflects missing code review).
+  6. **`createKey()` in client.js mints fake API keys locally** when the gateway is offline. These keys are saved to localStorage and shown as "created" to the user, but they are never persisted in the database and will be rejected on every real API call.
+  7. **`POST /v1/calls` (outbound calling) is routed but not implemented** in the orchestrator. Clients cannot initiate outbound calls via API.
+  8. **`/v1/campaigns` and `/v1/webhooks` are routed but not implemented** in their upstream services.
+  9. **Provider configs stored as plain text JSONB** — Groq, Twilio, OpenAI API keys for all tenants are unencrypted in the database.
+  10. **No pagination** enforced on `GET /v1/calls`, `GET /v1/agents`, `GET /v1/knowledge/sources` — high-volume tenants will receive unbounded large JSON payloads.
+- **How it Happened:**
+  - The `openapi.yaml` was planned but never created; the gateway controller was scaffolded with the serving route but the file was never written.
+  - The connector URL double-prefix bug was introduced when the API base URL was changed to include `/v1` but connector-specific call sites were not updated.
+  - RAG wiring requires cross-service integration (orchestrator → knowledge-service HTTP call) which was deferred per the "promote from playground when stable" rule.
+  - Twilio signature validation was skipped during early Twilio integration and never added.
+  - The resilient API key minting fallback was a well-intentioned UX improvement that creates a trust-breaking false positive.
+- **Lesson Learned:**
+  1. Always create the OpenAPI spec file before shipping the `/docs` route. The docs route should fail loudly (500 error with a clear message) if the spec file is missing, not silently serve a broken UI.
+  2. When changing a shared axios baseURL to include a path prefix, run a grep across all API call sites for the old prefix pattern to find remaining duplicates.
+  3. Every "planned" integration that is deferred must have a failing integration test that documents the gap — so dashboard features that depend on it show a clear "not yet connected" state rather than silently returning no data.
+  4. Twilio webhook signature validation is a mandatory security control, not optional. Add it as a linting/CI check: if a Twilio proxy route exists without signature validation middleware, CI fails.
+  5. Never silently mint locally-persisted tokens as fallbacks for remote key creation. If the backend is offline, show an honest error: "API Key creation requires a live connection to the gateway. Try again when the service is available." Local fallbacks are appropriate for READ-only data (usage history, call lists), never for WRITE operations that create credentials.
+
 ### [2026-09-25] Comprehensive Mobile-First & Tablet Responsive Overhaul: 26 Routes & All Nested Subtabs with Zero Horizontal Overflow
 - **Error/Problem:**
   1. **Global App Shell & Content Width Overflow on Mobile (`390px`)**:

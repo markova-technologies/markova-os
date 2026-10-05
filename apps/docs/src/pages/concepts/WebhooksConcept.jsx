@@ -19,7 +19,7 @@ const WebhooksConcept = () => (
     </p>
 
     <CodeBlock
-      code={`curl -X POST http://localhost:8000/v1/tools \\
+      code={`curl -X POST https://api.markova.tech/v1/tools \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -38,7 +38,7 @@ const WebhooksConcept = () => (
     </p>
 
     <CodeBlock
-      code={`curl -X PUT http://localhost:8000/v1/workflow-settings \\
+      code={`curl -X PUT https://api.markova.tech/v1/workflow-settings \\
   -H "x-api-key: mk_test_YOUR_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

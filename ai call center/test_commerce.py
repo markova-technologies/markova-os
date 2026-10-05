@@ -120,7 +120,7 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         turns = [
             ("ሁለት ስማርት ሰዓት ልግዛ እፈልጋለሁ", "በማን ስም"),
             ("ስሜ ሀና በቀለ ነው", "የሚደርስበትን"),
-            ("አዲስ አበባ ቦሌ መድኃኒዓለም", "ላረጋግጥ"),
+            ("አዲስ አበባ ቦሌ መድኃኒዓለም", "ልረጋግጥ"),
             ("አዎ አረጋግጣለሁ", "ትዕዛዝዎ ተመዝግቧል"),
         ]
         for utterance, expected in turns:
@@ -185,7 +185,7 @@ class AmharicCommerceConversationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("በማን ስም", await agent.process_turn("ስልክ ልግዛ", call_id))
         # Name and address turns are verbatim free text.
         self.assertIn("የሚደርስበትን", await agent.process_turn("ሀና በቀለ", call_id))
-        self.assertIn("ላረጋግጥ", await agent.process_turn("አዲስ አበባ ቦሌ", call_id))
+        self.assertIn("ልረጋግጥ", await agent.process_turn("አዲስ አበባ ቦሌ", call_id))
         # Confirmation is a yes/no answer the rules recognise on their own.
         self.assertIn("ተመዝግቧል", await agent.process_turn("እሺ", call_id))
 

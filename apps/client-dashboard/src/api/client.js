@@ -332,24 +332,12 @@ export const createKey = async (name, environment = 'test') => {
     if (res?.data?.api_key || res?.data?.id) {
       return res;
     }
+    throw new Error('API Gateway did not return a valid key object');
   } catch (err) {
-    console.warn('[API Key Create Warning] Remote endpoint unavailable, falling back to resilient local credential minting:', err);
+    const message = err.response?.data?.error || err.response?.data?.message || err.message || 'Gateway connection error';
+    console.error('[API Key Create Error] Remote creation failed:', message);
+    throw new Error(`Failed to create API Key: ${message}`);
   }
-
-  // Resilient fallback: mint and persist locally so UI is never blocked
-  const rawToken = `mk_${environment}_` + Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
-  const fallbackKey = {
-    id: 'key-' + Date.now(),
-    name: finalName,
-    environment,
-    status: 'active',
-    key_prefix: rawToken.substring(0, 14),
-    api_key: rawToken,
-    created_at: new Date().toISOString()
-  };
-  const saved = JSON.parse(localStorage.getItem('demo_api_keys') || '[]');
-  localStorage.setItem('demo_api_keys', JSON.stringify([fallbackKey, ...saved]));
-  return { data: fallbackKey };
 };
 
 export const revokeKey = async (id) => {
@@ -663,7 +651,7 @@ export const executeTool = (id, data) => api.post(`/tools/${id}/execute`, data);
 // ---------- Connectors ----------
 export const listConnectors = async () => {
   try {
-    const res = await api.get('/v1/connectors');
+    const res = await api.get('/connectors');
     if (res.data && Array.isArray(res.data) && res.data.length > 0) {
       localStorage.setItem('markova_connectors', JSON.stringify(res.data));
     }
@@ -684,7 +672,7 @@ export const listConnectors = async () => {
 export const createConnector = async (typeOrData, name, config = {}) => {
   const payload = typeof typeOrData === 'object' ? typeOrData : { type: typeOrData, name, config };
   try {
-    const res = await api.post('/v1/connectors', payload);
+    const res = await api.post('/connectors', payload);
     const saved = JSON.parse(localStorage.getItem('markova_connectors') || '[]');
     const next = [res.data, ...saved.filter(item => item.id !== res.data.id && item.type !== payload.type)];
     localStorage.setItem('markova_connectors', JSON.stringify(next));
@@ -707,7 +695,7 @@ export const createConnector = async (typeOrData, name, config = {}) => {
 
 export const testConnector = async (type, config = {}) => {
   try {
-    const res = await api.post('/v1/connectors/test', { type, config });
+    const res = await api.post('/connectors/test', { type, config });
     return res.data;
   } catch (err) {
     const startTime = Date.now();
@@ -723,7 +711,7 @@ export const testConnector = async (type, config = {}) => {
 
 export const retestConnector = async (integrationId) => {
   try {
-    const res = await api.post(`/v1/connectors/${integrationId}/test`);
+    const res = await api.post(`/connectors/${integrationId}/test`);
     return res.data;
   } catch (err) {
     const startTime = Date.now();
@@ -741,7 +729,7 @@ export const retestConnector = async (integrationId) => {
 export const disconnectConnector = async (integrationId, type) => {
   try {
     if (integrationId) {
-      await api.delete(`/v1/connectors/${integrationId}`);
+      await api.delete(`/connectors/${integrationId}`);
     }
   } catch (err) {
     // Safe catch
