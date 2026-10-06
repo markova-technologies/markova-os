@@ -4,6 +4,23 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-06] Client Dashboard Responsive Auth Overhaul: Unstyled Input Rectangles, Route CSS Isolation & Tablet/Mobile Viewport Adaptation
+- **Error/Problem:**
+  1. On `/signup` (and shared auth screens `/forgot-password`, `/reset-password`), input fields rendered as unstyled browser-default white boxes with clipped widths, misaligned icons, and harsh contrast against the dark background.
+  2. On tablet viewports (768px – 1024px), the authentication pages maintained desktop two-column layouts, horizontally compressing form inputs, brand badges, and action buttons into cramped, unusable columns.
+  3. In `PublicHeader`, desktop navigation links and buttons ("Home", "Pricing", "Documentation", "Sign In", "Get Started") overflowed on tablet screens, truncating text ("Documenta...", "gn In") because the mobile hamburger breakpoint was set too low at `768px`.
+  4. On mobile screens (<= 640px), `.form-row` forced a 2-column grid (`1fr 1fr`), squeezing dual inputs into narrow vertical strips, and large outer padding consumed excessive screen real estate.
+- **How it Happened:**
+  - In Vite production builds, CSS is code-split and loaded per route chunk. Form component rules (`.form-group`, `.input-wrapper`, `.input-icon`, `.input-wrapper input`, `.feature-icon`) were previously defined only in `Login.css` and omitted in `Signup.css`. When users navigated directly to `/signup`, `Login.css` was not bundled, leaving inputs to default to unstyled browser elements.
+  - Breakpoints across `Login.css` and `PublicHeader.css` used arbitrary legacy values (`868px` and `768px`) that failed to account for modern tablets (768px–1024px) and mobile touch targets.
+- **Lesson Learned:**
+  1. Never rely on sibling route stylesheets for common styling. In code-split Vite SPAs, all routes must have self-contained styles or reference shared global design tokens.
+  2. Standardize tablet breakpoints to `1024px` for multi-column split cards so tablets automatically fold into elegant single-column centered layouts.
+  3. Set mobile navbar hamburger toggles to `< 992px` whenever the desktop header contains more than 3 links and 2 action buttons to prevent horizontal overflow and text clipping.
+  4. Always collapse form grids (`.form-row`) to `grid-template-columns: 1fr` on screens `<= 640px` and enforce 46–48px touch targets for inputs and action buttons.
+
+
+
 ### [2026-10-05] Production Domain Transition: Documentation Overhaul, OpenAPI Edge Servers & Cloudflare api.markova.tech Live Verification
 - **Error/Problem:**
   1. Documentation across `apps/docs` (Home, Quickstart, SDKs, Webhooks, Core Concepts) and `app.markova.tech/docs/api` displayed `http://localhost:8000/v1/...` for all curl and SDK snippets, which failed when executed by external developers in production.
