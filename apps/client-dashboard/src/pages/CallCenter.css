@@ -1341,21 +1341,39 @@
 }
 
 @media (max-width: 1024px) {
+  .cc-sidebar {
+    width: 290px;
+  }
+
+  .cc-sidebar-header {
+    padding: 1.15rem 1.25rem;
+  }
+
+  .call-item {
+    padding: 0.95rem 1.25rem;
+  }
+
+  .details-header {
+    padding: 1.15rem 1.25rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
   .details-content {
     grid-template-columns: 1fr !important;
     padding: 1.25rem;
+    gap: 1.25rem;
   }
 }
 
-@media (max-width: 768px) {
+@media (max-width: 860px) {
   .call-center {
     flex-direction: column;
     height: auto;
-    min-height: calc(100vh - 70px);
+    min-height: calc(100vh - 75px);
     overflow: visible;
     overflow-x: hidden;
-    border-radius: 0;
-    border: none;
+    border-radius: 0.75rem;
     width: 100%;
     max-width: 100vw;
     box-sizing: border-box;
@@ -1379,6 +1397,7 @@
 
   .cc-sidebar-header {
     padding: 0.85rem 1rem;
+    gap: 0.75rem;
   }
 
   .cc-brand-row {
@@ -1390,11 +1409,36 @@
   .cc-btn-test-agent {
     justify-content: center;
     width: 100%;
+    min-height: 42px;
+  }
+
+  .cc-search-input {
+    min-height: 42px;
+    font-size: 0.84rem;
   }
 
   .cc-filter-tabs {
     padding: 0.5rem 0.75rem;
+    overflow-x: auto;
+    white-space: nowrap;
     -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 0.35rem;
+  }
+
+  .cc-filter-tabs::-webkit-scrollbar {
+    display: none;
+  }
+
+  .cc-ftab {
+    min-height: 38px;
+    flex-shrink: 0;
+    padding: 0.45rem 0.85rem;
+    font-size: 0.78rem;
+  }
+
+  .call-item {
+    padding: 0.95rem 1rem;
   }
 
   .cc-details {
@@ -1404,42 +1448,140 @@
     overflow-x: hidden;
   }
 
+  .cc-mobile-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    background: rgba(255, 255, 255, 0.09);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #ffffff;
+    padding: 0.55rem 1rem;
+    border-radius: 0.6rem;
+    font-size: 0.84rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0.85rem 1rem 0 1rem;
+    align-self: flex-start;
+    min-height: 44px;
+    transition: all 0.15s ease;
+  }
+
+  .cc-mobile-back:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
+
   .details-header {
     padding: 0.85rem 1rem;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 0.75rem;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .dh-info h1 {
+    font-size: 1.35rem;
+    letter-spacing: -0.01em;
+  }
+
+  .dh-badges {
+    gap: 0.45rem;
+  }
+
+  .dh-badge {
+    font-size: 0.74rem;
+    padding: 0.25rem 0.6rem;
   }
 
   .dh-actions {
     width: 100%;
+    display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
   }
 
   .dh-actions .cc-btn-action {
-    flex: 1;
-    min-width: 120px;
+    flex: 1 1 calc(50% - 0.25rem);
+    min-height: 44px;
     justify-content: center;
+    font-size: 0.8rem;
+    padding: 0.55rem 0.75rem;
   }
 
-  .cc-mobile-back {
-    display: inline-flex;
+  /* Supervisor Banners on Mobile */
+  .cc-barge-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .cc-barge-mic-controls {
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
-    background: rgba(255, 255, 255, 0.08);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-    color: #ffffff;
-    padding: 0.5rem 0.95rem;
-    border-radius: 0.55rem;
-    font-size: 0.82rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin: 0.75rem 1rem 0 1rem;
-    align-self: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    width: 100%;
   }
 
+  .cc-btn-mic-toggle,
+  .cc-btn-release {
+    min-height: 38px;
+  }
+
+  .cc-listen-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .cc-listen-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    gap: 0.75rem;
+  }
+
+  .cc-conflict-banner {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.75rem 1rem;
+    gap: 0.65rem;
+  }
+
+  /* Main Details Content */
   .details-content {
     padding: 0.85rem 1rem !important;
+    gap: 1rem;
+  }
+
+  .transcript-box {
+    padding: 1.15rem 1rem;
+    min-height: 220px;
+  }
+
+  .message-bubble {
+    font-size: 0.84rem;
+    max-width: 90%;
+  }
+
+  .audio-player {
+    height: 40px;
+  }
+
+  /* Test Modal Bottom Sheet */
+  .cc-test-modal {
+    width: 100% !important;
+    max-width: 100vw !important;
+    border-radius: 1.25rem 1.25rem 0 0 !important;
+    margin: 0 !important;
+    padding: 1.25rem 1rem 1.75rem 1rem !important;
+    max-height: 90vh !important;
+    overflow-y: auto !important;
+  }
+
+  .cc-test-option-card {
+    padding: 1rem;
   }
 }

@@ -152,7 +152,17 @@ const CallCenter = () => {
   const analyserRef = useRef(null)
   const animFrameRef = useRef(null)
 
-  const isMobile = () => window.innerWidth <= 768
+  const isMobile = () => window.innerWidth <= 860
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth > 860) {
+        setIsMobileDetailView(false)
+      }
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const fetchCalls = useCallback(async () => {
     try {

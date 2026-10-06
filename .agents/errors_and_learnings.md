@@ -4,6 +4,19 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-06] Mobile-First Overhaul: Developer API Keys, Integration Hub & Call Center Operations
+- **Error/Problem:**
+  1. In `Keys.css`, the developer keys table contains 6 columns (`Key Name`, `Prefix & Token`, `Environment`, `Status`, `Created`, `Actions`) but lacked `min-width: 660px` in its scroll card, causing table cells to squish into 40px vertical strips and mangling action buttons on phones. On mobile, `.keys-stats-grid` stacked 4 cards vertically, consuming over 400px of vertical space before reaching the key generation form. Tabs lacked horizontal swipe styling.
+  2. In `IntegrationHub.css`, `.ih-categories-list` switched to `flex-direction: row` on mobile, but `.ih-cat-heading` ("CATEGORIES") rendered inside the flex row as an unstyled first child, and `.ih-cat-item` retained desktop `width: 100%`, causing category items to stretch or wrap erratically. On tablets (768px–1024px), a rigid 270px sidebar left insufficient space for the 315px cards grid. Modal footers crammed 3 action buttons into one line.
+  3. In `CallCenter.jsx`, `isMobile()` was hardcoded to `window.innerWidth <= 768`, excluding modern tablets in portrait orientation (768px–840px), and lacked window resize listeners to maintain state consistency across device rotation. In `CallCenter.css`, tablet view kept a rigid 370px sidebar, leaving only ~400px for audio waveforms, live supervisor takeover controls, and transcripts. Supervisor takeover banners lacked vertical stacking on narrow viewports.
+- **How it Happened:**
+  - Complex operator and developer dashboard pages were originally styled around wide desktop monitors.
+  - Multi-column tables and master-detail splits were not adapted into touch-friendly horizontal pill bars and sliding detail views for tablet/mobile.
+- **Lesson Learned:**
+  1. HTML tables with 5+ metadata columns must always have an explicit `min-width` (e.g. `min-width: 660px`) accompanied by `-webkit-overflow-scrolling: touch` inside an `overflow-x: auto` card.
+  2. For sidebar categories switching to a mobile horizontal strip, always hide vertical headers (`.ih-cat-heading { display: none !important }`) and sidebar footnotes, and set `.cat-item` to `width: auto; flex-shrink: 0; white-space: nowrap; border-radius: 9999px; min-height: 38px`.
+  3. Expand mobile master-detail breakpoints to `860px` so that tablet portrait devices receive the full-width list -> detail transition with an intuitive `Back to Call List` button. Shrink desktop sidebars on tablet landscape (768px–1024px) to 290px to protect main workspace real estate.
+
 ### [2026-10-06] Mobile-First Overhaul: Agents (Agent Studio, Knowledge Center, Governance) & Phone Channels Responsive Refactor
 - **Error/Problem:**
   1. In `AgentStudio.css`, zero `@media` queries existed. On tablets and mobile viewports, the desktop `.teams-sidebar` was fixed at `260px` in a horizontal flex layout, squeezing the agent grid and builder panel into an unusable ~115px sliver on phones.
