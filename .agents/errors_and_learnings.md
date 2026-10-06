@@ -4,6 +4,24 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-06] Mobile-First Overhaul: Agents (Agent Studio, Knowledge Center, Governance) & Phone Channels Responsive Refactor
+- **Error/Problem:**
+  1. In `AgentStudio.css`, zero `@media` queries existed. On tablets and mobile viewports, the desktop `.teams-sidebar` was fixed at `260px` in a horizontal flex layout, squeezing the agent grid and builder panel into an unusable ~115px sliver on phones.
+  2. Inside the Agent Studio builder header, 5 action buttons ("Visual Flow", "Delete", "Test Voice", "Save", "Deploy") were locked in a single non-wrapping flex row, overflowing screen boundaries on mobile devices.
+  3. Modals across `AgentStudio` (Voice Sandbox Simulator, Version Diff, Create Team) had fixed inline width styles (e.g. `width: '520px'`, `width: '600px'`), extending past small mobile viewports.
+  4. In `Sidebar.jsx`, the "Agents" dropdown menu started collapsed on page load even when the user was currently on one of its subtabs (`/app/agent-studio`, `/app/knowledge`, `/app/governance`), hiding sub-navigation state, and clicking sub-items on mobile did not auto-dismiss the mobile navigation drawer.
+  5. In `Governance.css`, metric cards on mobile stacked into a tall 4-row single column that pushed the emergency controls and approval tabs far below the fold.
+- **How it Happened:**
+  - `AgentStudio` was built as a desktop-first workstation view assuming large monitors with dedicated team navigation sidebars.
+  - Submenu state in `Sidebar.jsx` was previously initialized to `null` without checking `location.pathname` against dropdown sub-item routes.
+- **Lesson Learned:**
+  1. For complex workstation layouts with nested team/folder sidebars, convert the sidebar on `< 1024px` to a horizontal-scrolling pill bar (`flex-direction: row; overflow-x: auto`) rather than squishing the main grid.
+  2. In multi-action header toolbars, use responsive grid wrapping (`grid-template-columns: repeat(auto-fit, minmax(110px, 1fr))`) so touch targets maintain minimum 44px hit-areas on mobile without overflowing.
+  3. All dashboard modals must include `max-width: calc(100vw - 2rem) !important` in their stylesheets to protect against inline component pixel widths.
+  4. Parent sidebar dropdowns must auto-expand if any active route matches a sub-item, and sub-item clicks on mobile must explicitly trigger the drawer close callback.
+
+
+
 ### [2026-10-06] Client Dashboard Responsive Auth Overhaul: Unstyled Input Rectangles, Route CSS Isolation & Tablet/Mobile Viewport Adaptation
 - **Error/Problem:**
   1. On `/signup` (and shared auth screens `/forgot-password`, `/reset-password`), input fields rendered as unstyled browser-default white boxes with clipped widths, misaligned icons, and harsh contrast against the dark background.

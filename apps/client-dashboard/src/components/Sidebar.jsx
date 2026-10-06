@@ -32,7 +32,12 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
   const { can } = useAuth()
 
   const [theme, setTheme] = useState('dark'); // Default to dark theme
-  const [openDropdown, setOpenDropdown] = useState(null);
+  const [openDropdown, setOpenDropdown] = useState(() => {
+    const isAgentsActive = [ROUTES.agentStudio, ROUTES.knowledge, ROUTES.governance].some(
+      p => location.pathname === p || (p !== ROUTES.app && location.pathname.startsWith(p + '/'))
+    );
+    return isAgentsActive ? 'Agents' : null;
+  });
 
   const toggleTheme = () => {
     const newTheme = theme === 'dark' ? 'light' : 'dark';
@@ -47,6 +52,16 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
   }, []);
+
+  // Keep dropdown open when navigating within active parent sections
+  useEffect(() => {
+    const isAgentsActive = [ROUTES.agentStudio, ROUTES.knowledge, ROUTES.governance].some(
+      p => location.pathname === p || (p !== ROUTES.app && location.pathname.startsWith(p + '/'))
+    );
+    if (isAgentsActive) {
+      setOpenDropdown('Agents');
+    }
+  }, [location.pathname]);
 
   // Navigation menu items with granular RBAC permission assignments
   const rawMenuItems = [
@@ -200,14 +215,19 @@ const Sidebar = ({ onLogout, isOpen, toggleMenu }) => {
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
-                        style={{ overflow: 'hidden', paddingLeft: '2.5rem', listStyle: 'none', margin: 0 }}
+                        style={{ overflow: 'hidden', paddingLeft: '1.75rem', listStyle: 'none', margin: 0 }}
                       >
                         {item.subItems.map(sub => {
                           const SubIcon = sub.icon
                           const isSubActive = location.pathname === sub.path || (sub.path !== ROUTES.app && location.pathname.startsWith(sub.path + '/'))
                           return (
                             <li key={sub.path} style={{ marginTop: '0.25rem' }}>
-                              <Link to={sub.path} className={`nav-link ${isSubActive ? 'active' : ''}`} style={{ padding: '0.5rem 1rem' }}>
+                              <Link 
+                                to={sub.path} 
+                                className={`nav-link ${isSubActive ? 'active' : ''}`} 
+                                onClick={() => { if (isOpen && toggleMenu) toggleMenu(); }}
+                                style={{ padding: '0.5rem 1rem' }}
+                              >
                                 <SubIcon className="nav-icon" size={18} />
                                 <span className="nav-text" style={{ fontSize: '0.9em' }}>{sub.title}</span>
                               </Link>
