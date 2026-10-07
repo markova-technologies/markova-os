@@ -1514,3 +1514,21 @@ ame, prompt, and 	eam_id, completely omitting the  oice_provider,  oice_id, mode
 - **Lessons Learned:**
   1. Avoid using native browser `alert()` or `prompt()` anywhere in client-facing SaaS interfaces; all user interactions must utilize integrated toast notifications and non-blocking modals.
   2. In CRM directory modules, provide immediate interactive actions (quick-copy, click-to-dial, email compose, status toggles, note logging) directly within the detail drawer to streamline agent and supervisor workflows.
+
+---
+
+### [2026-10-08] Mobile Header: Duplicate Menu Removal & Official Markova OS Logo Parity
+- **Problems Observed:**
+  1. **Duplicate Menu Triggers on Mobile Viewports**: On mobile devices (`<= 768px`), users were presented with two simultaneous menu buttons: a top-left hamburger menu button in the header and a bottom navigation bar with a dedicated "Menu" button.
+  2. **Mobile Header Text Branding vs Official Logo**: The mobile header rendered plain text `<span className="logo-text">MARKOVA</span>` rather than the official Markova OS logo mark (`Bot` icon in a rounded square + `MARKOVA` typography + `OS` badge) seen in desktop and tablet viewports.
+- **Root Causes:**
+  1. `Header.css` enabled `.mobile-menu-btn` at `@media (max-width: 1024px)` without suppressing it when `MobileBottomBar` became active at `@media (max-width: 768px)`.
+  2. `Header.jsx` used a legacy fallback span (`.logo-text`) that had not been updated during the Markova OS branding overhaul.
+- **Fixes Applied:**
+  1. In `Header.css`, added `@media (max-width: 768px) { .mobile-menu-btn { display: none !important; } }` so only the bottom navigation bar menu button is rendered on mobile viewports, eliminating the duplicate trigger while preserving the hamburger button for tablet portrait mode (769px–1024px) where the bottom nav is not displayed.
+  2. Replaced the text span in `Header.jsx` with a semantic `<Link to={ROUTES.app} className="mobile-header-logo">` component featuring the official `Bot` icon in a styled container, `MARKOVA` brand text, and the `OS` pill badge matching desktop and tablet views.
+  3. Added full responsive and dark/light theme styling for `.mobile-header-logo`, `.mobile-brand-icon`, `.brand-name`, and `.brand-badge` with smooth hover interactions.
+- **Lessons Learned:**
+  1. When introducing persistent mobile bottom navigation bars (`MobileBottomBar`), audit the top header for conflicting or duplicate global action triggers to keep mobile header real estate clean and prevent redundant navigation routes.
+  2. Ensure brand typography, iconography, and badges remain 100% consistent across all viewport breakpoints and color themes.
+

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Bell,
@@ -11,7 +11,8 @@ import {
   CreditCard,
   Menu,
   Check,
-  CheckCheck
+  CheckCheck,
+  Bot
 } from 'lucide-react'
 import './Header.css'
 import { ROUTES } from '../config/site'
@@ -119,9 +120,15 @@ const Header = ({ user, onLogout, toggleMobileMenu }) => {
         </div>
       </div>
 
-      <div className="mobile-header-logo">
-        <span className="logo-text">MARKOVA</span>
-      </div>
+      <Link to={ROUTES.app} className="mobile-header-logo" aria-label="Markova OS Dashboard">
+        <div className="mobile-brand-icon">
+          <Bot size={19} className="brand-bot-icon" />
+        </div>
+        <div className="mobile-brand-text">
+          <span className="brand-name">MARKOVA</span>
+          <span className="brand-badge">OS</span>
+        </div>
+      </Link>
 
       <div className="header-right">
         <div className="header-actions">
