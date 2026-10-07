@@ -21,6 +21,7 @@ import {
   Copy,
   Check,
   ExternalLink,
+  ChevronLeft,
   ChevronRight,
   Clock,
   CheckCircle2,
@@ -212,7 +213,7 @@ const CRM = () => {
     }
   })
 
-  const [selectedContact, setSelectedContact] = useState(INITIAL_CONTACTS[0])
+  const [selectedContact, setSelectedContact] = useState(() => typeof window !== 'undefined' && window.innerWidth > 1024 ? INITIAL_CONTACTS[0] : null)
   const [selectedCompany, setSelectedCompany] = useState(null)
   const [selectedOpportunity, setSelectedOpportunity] = useState(null)
   const [selectedAppointment, setSelectedAppointment] = useState(null)
@@ -696,7 +697,7 @@ const CRM = () => {
                   setActiveTab(tab.id)
                   setSearchQuery('')
                   setStatusFilter('all')
-                  if (tab.id === 'contacts' && !selectedContact && contacts.length > 0) {
+                  if (tab.id === 'contacts' && !selectedContact && contacts.length > 0 && typeof window !== 'undefined' && window.innerWidth > 1024) {
                     setSelectedContact(contacts[0])
                   }
                 }}
@@ -1072,6 +1073,10 @@ const CRM = () => {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             >
               <div className="cd-header">
+                <button className="cd-back-btn" onClick={() => setSelectedContact(null)} title="Back to Contacts list">
+                  <ChevronLeft size={16} />
+                  <span>Back</span>
+                </button>
                 <div className="cd-profile">
                   <div className="cd-avatar">{selectedContact.name.charAt(0)}</div>
                   <div className="cd-info">
@@ -1219,6 +1224,10 @@ const CRM = () => {
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
             >
               <div className="cd-header">
+                <button className="cd-back-btn" onClick={() => setSelectedCompany(null)} title="Back to Companies list">
+                  <ChevronLeft size={16} />
+                  <span>Back</span>
+                </button>
                 <div className="cd-profile">
                   <div className="cd-avatar comp-avatar">
                     <Building2 size={24} />

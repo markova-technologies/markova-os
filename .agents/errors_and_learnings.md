@@ -4,6 +4,22 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-07] Mobile-First Overhaul: Team Management, Usage & Telemetry, Analytics Center, and Customers & CRM
+- **Error/Problem:**
+  1. In `TeamManagement.css`, on mobile `<= 768px`, `.roles-grid` used `minmax(320px, 1fr)` which broke layouts on smaller mobile screens (< 360px), and modal permission assignment grids overflowed viewport bounds. Stat cards lacked compact touch geometry.
+  2. In `UsageCenter.css`, the recent metered calls table had 9 metadata columns (`Started`, `Agent`, `Caller`, `Duration`, `STT/TTS`, `Tokens`, `Est. Cost`, `Status`, `Actions`) with no explicit `min-width`, squishing all columns into illegible 35px vertical strips on phones. On mobile `<= 768px`, `.usage-metric-grid` forced a 1-column stack of 5 large cards, pushing the telemetry charts and recent calls far down the page. Modals retained desktop styles with class mismatch (`.usage-drawer-content` instead of `.usage-modal-content`).
+  3. In `Analytics.css`, the granular telemetry breakdown table contained 7 columns without a `min-width`, crushing columns on mobile screens. `.ac-stats-grid` collapsed into a single column (`1fr !important`), pushing the line charts and donut distribution down the viewport. Date selector and tabs bar lacked horizontal swipe affordances.
+  4. In `CRM.jsx`, `selectedContact` was unconditionally initialized to `INITIAL_CONTACTS[0]`, which caused the fixed/100vw detail drawer on mobile to immediately cover the entire screen upon initial page load, completely concealing the contacts list, KPI cards, and search controls. Furthermore, clicking the "Contacts & Leads" tab repeatedly forced `setSelectedContact(contacts[0])` even on mobile. In `CRM.css`, the modal responsive override was targeting a non-existent class (`.crm-modal-container` instead of `.crm-modal-dialog`), preventing the "Add Record" modal from converting into a mobile bottom sheet. Tables in all 4 tabs lacked `min-width`, and the drawer header had no mobile back button.
+- **How it Happened:**
+  - Administrative and operational dashboard screens were conceived desktop-first with assumptions of large monitor displays.
+  - In `CRM.jsx`, auto-selecting the first contact item was desktop-oriented master-detail behavior that broke mobile ergonomics when adapted to a full-screen drawer.
+  - Selector typos in media queries (`.crm-modal-container`) went unnoticed because desktop modals were centered.
+- **Lesson Learned:**
+  1. For master-detail views on mobile (`<= 1024px`), never auto-select the first item on initial load; let the user see the primary list/table first, and provide explicit back buttons (`.cd-back-btn` with `ChevronLeft`) to return to the list smoothly.
+  2. Multi-column tables (6 to 9 columns) in data-heavy screens (`UsageCenter`, `AnalyticsCenter`, `CRM`, `TeamManagement`) must always specify explicit `min-width` (640px to 780px) inside an `overflow-x: auto; -webkit-overflow-scrolling: touch;` container.
+  3. Metric cards on mobile should form a balanced 2x2 grid (or 2x2 + 1 spanning card) rather than a tall single-column stack, preserving above-the-fold visibility for charts and tables.
+  4. Always audit modal class selectors between JSX and CSS to prevent mismatched responsive override rules.
+
 ### [2026-10-06] Mobile-First Overhaul: Developer API Keys, Integration Hub & Call Center Operations
 - **Error/Problem:**
   1. In `Keys.css`, the developer keys table contains 6 columns (`Key Name`, `Prefix & Token`, `Environment`, `Status`, `Created`, `Actions`) but lacked `min-width: 660px` in its scroll card, causing table cells to squish into 40px vertical strips and mangling action buttons on phones. On mobile, `.keys-stats-grid` stacked 4 cards vertically, consuming over 400px of vertical space before reaching the key generation form. Tabs lacked horizontal swipe styling.
