@@ -36,8 +36,8 @@ import {
 } from 'lucide-react'
 import api, { listCRMContacts } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
-import { useEnvironment } from '../contexts/EnvironmentContext'
 import './CRM.css'
+import Skeleton, { TableSkeleton } from '../components/Skeleton'
 
 // Default enterprise seed data for realistic Markova CRM operations
 const INITIAL_COMPANIES = [
@@ -219,6 +219,7 @@ const CRM = () => {
   const [selectedAppointment, setSelectedAppointment] = useState(null)
 
   const [isLoading, setIsLoading] = useState(false)
+  const [tabLoading, setTabLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
@@ -694,11 +695,15 @@ const CRM = () => {
                 aria-selected={isActive}
                 className={`crm-tab-pill ${isActive ? 'is-active' : ''}`}
                 onClick={() => {
-                  setActiveTab(tab.id)
-                  setSearchQuery('')
-                  setStatusFilter('all')
-                  if (tab.id === 'contacts' && !selectedContact && contacts.length > 0 && typeof window !== 'undefined' && window.innerWidth > 1024) {
-                    setSelectedContact(contacts[0])
+                  if (tab.id !== activeTab) {
+                    setTabLoading(true)
+                    setActiveTab(tab.id)
+                    setSearchQuery('')
+                    setStatusFilter('all')
+                    if (tab.id === 'contacts' && !selectedContact && contacts.length > 0 && typeof window !== 'undefined' && window.innerWidth > 1024) {
+                      setSelectedContact(contacts[0])
+                    }
+                    setTimeout(() => setTabLoading(false), 240)
                   }
                 }}
               >
@@ -849,6 +854,10 @@ const CRM = () => {
 
           {/* Table Container */}
           <div className="crm-table-container">
+            {tabLoading ? (
+              <TableSkeleton rows={6} cols={6} />
+            ) : (
+              <>
             {/* Contacts Table */}
             {activeTab === 'contacts' && (
               <table className="crm-table">
@@ -1058,6 +1067,8 @@ const CRM = () => {
                   )}
                 </tbody>
               </table>
+            )}
+            </>
             )}
           </div>
         </div>

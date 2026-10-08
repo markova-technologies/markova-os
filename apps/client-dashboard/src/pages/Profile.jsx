@@ -43,6 +43,7 @@ import {
   uploadAvatarToSupabase
 } from '../api/client';
 import './Profile.css';
+import Skeleton, { TabNavSkeleton } from '../components/Skeleton';
 
 // Role metadata with display styles and clearance descriptions
 const ROLE_METADATA = {
@@ -505,8 +506,26 @@ export default function Profile() {
       </div>
 
       {/* Hero Card */}
-      <motion.div
-        className="profile-hero-card"
+      {loading ? (
+        <div className="profile-skeleton-wrapper" style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div className="profile-hero-card" style={{ display: 'flex', gap: '20px', alignItems: 'center', padding: '1.5rem' }}>
+            <Skeleton variant="circular" width="80px" height="80px" />
+            <div style={{ flex: 1 }}>
+              <Skeleton variant="text" width="220px" height="26px" style={{ marginBottom: '8px' }} />
+              <Skeleton variant="text" width="320px" height="16px" style={{ marginBottom: '8px' }} />
+              <Skeleton variant="pill" width="140px" height="24px" />
+            </div>
+          </div>
+          <TabNavSkeleton count={4} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.25rem' }}>
+            <Skeleton variant="card" height="260px" />
+            <Skeleton variant="card" height="260px" />
+          </div>
+        </div>
+      ) : (
+        <>
+          <motion.div
+            className="profile-hero-card"
         initial={{ opacity: 0, y: 15 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
@@ -1145,6 +1164,8 @@ export default function Profile() {
           </motion.div>
         )}
       </div>
+        </>
+      )}
     </div>
   );
 }

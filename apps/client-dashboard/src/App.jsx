@@ -47,40 +47,11 @@ import SystemHealthBar from './components/SystemHealthBar'
 import ImpersonationBanner from './components/ImpersonationBanner'
 import MobileBottomBar from './components/MobileBottomBar'
 import ErrorBoundary from './components/ErrorBoundary'
+import { PageSkeleton } from './components/Skeleton'
 import './App.css'
 
 const PageLoadingFallback = () => (
-  <div style={{
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1.5rem',
-    padding: '2rem',
-    width: '100%',
-    boxSizing: 'border-box'
-  }}>
-    <div style={{
-      height: '34px',
-      width: '260px',
-      background: 'rgba(255, 255, 255, 0.08)',
-      borderRadius: '8px',
-      animation: 'pulse 1.5s infinite ease-in-out'
-    }} />
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
-      gap: '1.25rem'
-    }}>
-      {[1, 2, 3, 4].map(k => (
-        <div key={k} style={{
-          height: '160px',
-          background: 'rgba(255, 255, 255, 0.04)',
-          borderRadius: '14px',
-          border: '1px solid rgba(255, 255, 255, 0.06)',
-          animation: 'pulse 1.5s infinite ease-in-out'
-        }} />
-      ))}
-    </div>
-  </div>
+  <PageSkeleton hasKpis={true} kpiCount={4} hasTabs={true} tabCount={4} layout="table" />
 )
 
 function App() {

@@ -46,6 +46,7 @@ import {
 import { useToast } from '../contexts/ToastContext'
 import { useAuth } from '../contexts/AuthContext'
 import './Settings.css'
+import Skeleton from '../components/Skeleton'
 import api, { updateWorkspaceSlug, updateWorkspaceLogo, checkEmailConfig, sendTestEmail, isDemoMode } from '../api/client'
 
 const DEFAULT_SETTINGS = {
@@ -99,6 +100,7 @@ const Settings = () => {
   const { user, isOwner, isAdmin } = useAuth()
   
   const [activeTab, setActiveTab] = useState(location.state?.tab || 'profile')
+  const [tabLoading, setTabLoading] = useState(false)
   
   useEffect(() => {
     if (location.state?.tab) {
@@ -2038,7 +2040,13 @@ const Settings = () => {
                 <button
                   key={tab.id}
                   className={`tab-button ${isActive ? 'active' : ''}`}
-                  onClick={() => setActiveTab(tab.id)}
+                  onClick={() => {
+                    if (tab.id !== activeTab) {
+                      setTabLoading(true)
+                      setActiveTab(tab.id)
+                      setTimeout(() => setTabLoading(false), 180)
+                    }
+                  }}
                 >
                   <div className="tab-button-content">
                     <Icon size={18} style={{ color: isActive ? '#fbbf24' : '#94a3b8' }} />
@@ -2060,7 +2068,14 @@ const Settings = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          {renderTabContent()}
+          {tabLoading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', padding: '1rem' }}>
+              <Skeleton variant="card" height="180px" />
+              <Skeleton variant="card" height="240px" />
+            </div>
+          ) : (
+            renderTabContent()
+          )}
         </motion.div>
       </div>
     </div>

@@ -27,6 +27,7 @@ import {
   isDemoMode,
 } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
+import Skeleton from '../components/Skeleton'
 import './KnowledgeCenter.css'
 
 // Guided intake categories (Brief §5) — a business fills these in, not a blank upload box.
@@ -560,7 +561,10 @@ const KnowledgeCenter = () => {
               </div>
 
               {loading ? (
-                <div className="kc-skeleton" />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '1rem', flex: 1 }}>
+                  <Skeleton variant="card" height="40px" />
+                  <Skeleton variant="card" height="40px" />
+                </div>
               ) : items.length === 0 ? (
                 <div className="kc-category-empty-box">
                   <p className="kc-category-empty">Nothing here yet — add material to train your agent on {category.name.toLowerCase()}.</p>
@@ -618,7 +622,12 @@ const KnowledgeCenter = () => {
           </button>
         </form>
 
-        {searchResults !== null && (
+        {searching ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '1rem' }}>
+            <Skeleton variant="card" height="68px" />
+            <Skeleton variant="card" height="68px" />
+          </div>
+        ) : searchResults !== null && (
           searchResults.length === 0 ? (
             <p className="kc-test-empty">
               {totalDocs === 0

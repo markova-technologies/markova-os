@@ -22,6 +22,7 @@ import {
 import { listKeys, createKey, deleteKey, revokeKey, verifyApiKey } from '../api/client'
 import { useEnvironment } from '../contexts/EnvironmentContext'
 import { useToast } from '../contexts/ToastContext'
+import { TableSkeleton } from '../components/Skeleton'
 import './Keys.css'
 
 const Keys = () => {
@@ -480,10 +481,7 @@ fetchAgents();`
 
       {/* Keys Table / List */}
       {loading ? (
-        <div className="keys-loading-state">
-          <div className="loading-spinner" />
-          <span>Loading cryptographic keys…</span>
-        </div>
+        <TableSkeleton rows={4} cols={5} hasToolbar={false} />
       ) : filteredKeys.length === 0 ? (
         <div className="keys-empty-card">
           <div className="empty-icon-wrap">

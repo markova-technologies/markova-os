@@ -60,6 +60,7 @@ import { VOICE_PROVIDERS, MODEL_PROVIDERS, STT_PROVIDERS } from '../constants/vo
 import { generatePromptSuggestions } from '../utils/promptSuggester'
 import { useToast } from '../contexts/ToastContext'
 import { useAgentTestSession } from '../hooks/useAgentTestSession'
+import Skeleton, { CardGridSkeleton } from '../components/Skeleton'
 import './AgentStudio.css'
 
 const AgentStudio = () => {
@@ -578,23 +579,31 @@ const AgentStudio = () => {
         </button>
       </div>
       <div className="teams-list">
-        {teams.map(team => {
-          const Icon = team.icon;
-          const isActive = activeTeam === team.id;
-          return (
-            <div 
-              key={team.id}
-              className={`team-item ${isActive ? 'active' : ''} ${team.isCommander ? 'commander' : ''}`}
-              onClick={() => setActiveTeam(team.id)}
-            >
-              <div className="team-item-left">
-                <Icon size={18} />
-                <span>{team.name}</span>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', padding: '6px' }}>
+            <Skeleton variant="pill" height="36px" />
+            <Skeleton variant="pill" height="36px" />
+            <Skeleton variant="pill" height="36px" />
+          </div>
+        ) : (
+          teams.map(team => {
+            const Icon = team.icon;
+            const isActive = activeTeam === team.id;
+            return (
+              <div 
+                key={team.id}
+                className={`team-item ${isActive ? 'active' : ''} ${team.isCommander ? 'commander' : ''}`}
+                onClick={() => setActiveTeam(team.id)}
+              >
+                <div className="team-item-left">
+                  <Icon size={18} />
+                  <span>{team.name}</span>
+                </div>
+                <span className="team-count">{team.count}</span>
               </div>
-              <span className="team-count">{team.count}</span>
-            </div>
-          )
-        })}
+            )
+          })
+        )}
       </div>
     </div>
   );
@@ -637,21 +646,18 @@ const AgentStudio = () => {
 
           {/* Existing Agent Cards or Skeleton Placeholders */}
           {loading ? (
-            [...Array(3)].map((_, idx) => (
-              <div 
-                key={`skel-${idx}`}
-                className="agent-card" 
-                style={{ opacity: 0.65, pointerEvents: 'none', borderStyle: 'dashed' }}
-              >
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                  <div style={{ width: '42px', height: '42px', borderRadius: '50%', background: 'rgba(255,255,255,0.08)', animation: 'pulse 1.5s infinite ease-in-out' }} />
+            [0, 1, 2].map((idx) => (
+              <div key={`skel-${idx}`} className="agent-card" style={{ padding: '1.25rem', pointerEvents: 'none' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1rem' }}>
+                  <Skeleton variant="circular" width="42px" height="42px" />
                   <div style={{ flex: 1 }}>
-                    <div style={{ width: '55%', height: '14px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', marginBottom: '8px', animation: 'pulse 1.5s infinite ease-in-out' }} />
-                    <div style={{ width: '35%', height: '10px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                    <Skeleton variant="text" width="60%" height="16px" style={{ marginBottom: '6px' }} />
+                    <Skeleton variant="text" width="40%" height="12px" />
                   </div>
                 </div>
-                <div style={{ width: '90%', height: '12px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', marginBottom: '6px', animation: 'pulse 1.5s infinite ease-in-out' }} />
-                <div style={{ width: '70%', height: '12px', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', animation: 'pulse 1.5s infinite ease-in-out' }} />
+                <Skeleton variant="text" width="95%" height="12px" style={{ marginBottom: '6px' }} />
+                <Skeleton variant="text" width="75%" height="12px" style={{ marginBottom: '12px' }} />
+                <Skeleton variant="pill" width="100px" height="28px" style={{ marginLeft: 'auto' }} />
               </div>
             ))
           ) : (

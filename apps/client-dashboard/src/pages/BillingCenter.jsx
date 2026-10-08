@@ -41,6 +41,7 @@ import {
   getMe
 } from '../api/client'
 import './BillingCenter.css'
+import { PageSkeleton } from '../components/Skeleton'
 
 const EXCHANGE_RATE = 120.0
 
@@ -365,20 +366,7 @@ const BillingCenter = () => {
   if (loading) {
     return (
       <div className="billing-center">
-        <header className="page-header">
-          <div className="header-titles">
-            <span className="page-category-tag">ENTERPRISE TELEPHONY & VOICE AI</span>
-            <h1>Billing & Subscriptions</h1>
-            <p>Manage subscription tiers, voice credit reserves, payment rails, and official tax statements.</p>
-          </div>
-        </header>
-        <div className="billing-skeletons">
-          <div className="billing-skeleton" />
-          <div className="billing-skeleton" />
-          <div className="billing-skeleton" />
-          <div className="billing-skeleton" />
-          <div className="billing-skeleton wide" />
-        </div>
+        <PageSkeleton hasKpis={true} kpiCount={4} hasTabs={true} tabCount={4} layout="card-grid" />
       </div>
     )
   }

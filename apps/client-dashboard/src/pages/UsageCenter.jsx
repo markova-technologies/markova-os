@@ -40,6 +40,7 @@ import {
 import { useEnvironment } from '../contexts/EnvironmentContext'
 import { useToast } from '../contexts/ToastContext'
 import Waveform from '../components/Waveform'
+import Skeleton, { MetricCardsSkeleton, ChartSkeleton, TableSkeleton } from '../components/Skeleton'
 import './UsageCenter.css'
 
 const METRICS = [
@@ -434,8 +435,20 @@ const UsageCenter = () => {
         </div>
       </header>
 
-      {/* Spend Estimation & Tier Allowance Hero Card */}
-      <section className="usage-hero-card">
+      {loading ? (
+        <div className="usage-skeleton-content" style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem' }}>
+            <Skeleton variant="card" height="130px" />
+            <Skeleton variant="card" height="130px" />
+          </div>
+          <MetricCardsSkeleton count={5} />
+          <ChartSkeleton height={280} />
+          <TableSkeleton rows={6} cols={5} />
+        </div>
+      ) : (
+        <>
+          {/* Spend Estimation & Tier Allowance Hero Card */}
+          <section className="usage-hero-card">
         <div className="usage-hero-spend">
           <div className="usage-hero-spend-top">
             <span className="usage-hero-label">
@@ -869,6 +882,8 @@ const UsageCenter = () => {
           </>
         )}
       </section>
+        </>
+      )}
 
       {/* Call Telemetry & Transcript Modal */}
       {selectedCall && (

@@ -33,9 +33,9 @@ import {
   AlertTriangle
 } from 'lucide-react'
 import api from '../api/client'
-import realTimeService from '../services/realTimeService'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
+import { CallCenterSkeleton } from '../components/Skeleton'
 import './CallCenter.css'
 
 const fallbackCalls = [
@@ -549,12 +549,7 @@ const CallCenter = () => {
   }
 
   if (loading) {
-    return (
-      <div className="cc-loading-screen">
-        <Loader2 className="spinner" size={42} />
-        <span>Loading Contact Center Operations...</span>
-      </div>
-    )
+    return <CallCenterSkeleton />
   }
 
   return (

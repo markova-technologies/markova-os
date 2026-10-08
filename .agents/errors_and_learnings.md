@@ -4,6 +4,19 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-08] Unified Obsidian Glass Skeleton Loading System Across All Dashboard Routes, Pages, and Tabs
+- **Error/Problem:**
+  1. Previously, `apps/client-dashboard` lacked a unified skeleton loading design system. Pages and routes had fragmented loading states: generic text ("Loading..."), spinning icons, hardcoded plain HTML blocks, or blank un-rendered screens while waiting for network requests or during React Suspense route chunks loading.
+  2. The existing `Skeleton.jsx` contained uncompiled Tailwind CSS classes (`bg-gray-200 dark:bg-gray-700/50`) without an associated CSS file, rendering as unstyled inline elements without animations or theme awareness.
+  3. During code consolidation, minor import syntax issues (omitted closing braces `} from '../api/client'` and `} from 'lucide-react'`) and an unclosed modal wrapper `div` in `UsageCenter.jsx` occurred, which were caught and surfaced during `npm run build` verification.
+- **How it Happened:**
+  - Independent dashboard pages (`CallCenter`, `CRM`, `UsageCenter`, `AnalyticsCenter`, `TeamManagement`, `Governance`, `Settings`, `Profile`, `Keys`, `IntegrationHub`, `KnowledgeCenter`) were created incrementally over time, each using local ad-hoc loading states or spinners rather than a shared design token component.
+  - Multi-line imports and complex nested JSX structures require strict AST parity when wrapping content in loading conditionals.
+- **Lesson Learned:**
+  1. Build a centralized, reusable Skeleton component system (`Skeleton.css` and `Skeleton.jsx`) based on obsidian glass tokens (`linear-gradient(90deg, rgba(255,255,255,0.03) 25%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.03) 75%)`) with automatic light theme adaptation (`[data-theme='light']`) and dedicated composite presets (`PageSkeleton`, `MetricCardsSkeleton`, `TableSkeleton`, `CardGridSkeleton`, `ChartSkeleton`, `TabNavSkeleton`, `CallCenterSkeleton`, `IntegrationGridSkeleton`).
+  2. Implement skeleton loading at both the route level (React `Suspense` fallback in `App.jsx`) and the page/tab level (instant skeleton transitions when switching sub-tabs or awaiting data).
+  3. Always run the production build (`npm run build`) to validate JSX syntax and import statements before committing code changes.
+
 ### [2026-10-07] Mobile-First Overhaul: Team Management, Usage & Telemetry, Analytics Center, and Customers & CRM
 - **Error/Problem:**
   1. In `TeamManagement.css`, on mobile `<= 768px`, `.roles-grid` used `minmax(320px, 1fr)` which broke layouts on smaller mobile screens (< 360px), and modal permission assignment grids overflowed viewport bounds. Stat cards lacked compact touch geometry.

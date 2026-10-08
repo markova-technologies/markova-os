@@ -31,6 +31,7 @@ const FaTelegramPlane = (props) => <Send {...props} style={{...props.style, colo
 const SiTwilio = (props) => <PhoneCall {...props} style={{...props.style, color: '#F22F46'}} />
 const SiGmail = (props) => <Mail {...props} style={{...props.style, color: '#EA4335'}} />
 import { useToast } from '../contexts/ToastContext'
+import { MetricCardsSkeleton, CardGridSkeleton } from '../components/Skeleton'
 import './PhoneChannels.css'
 
 const PhoneChannels = () => {
@@ -877,12 +878,19 @@ const PhoneChannels = () => {
       </div>
 
       <div className="pc-main">
-        <AnimatePresence mode="wait">
-          {activeTab === 'overview' && renderOverview()}
-          {activeTab === 'voice' && renderVoice()}
-          {activeTab === 'messaging' && renderMessaging()}
-          {activeTab === 'routing' && renderRouting()}
-        </AnimatePresence>
+        {loading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+            <MetricCardsSkeleton count={3} />
+            <CardGridSkeleton count={4} />
+          </div>
+        ) : (
+          <AnimatePresence mode="wait">
+            {activeTab === 'overview' && renderOverview()}
+            {activeTab === 'voice' && renderVoice()}
+            {activeTab === 'messaging' && renderMessaging()}
+            {activeTab === 'routing' && renderRouting()}
+          </AnimatePresence>
+        )}
       </div>
 
       <AnimatePresence>

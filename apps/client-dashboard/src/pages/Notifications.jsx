@@ -13,6 +13,7 @@ import {
   Check
 } from 'lucide-react'
 import { ROUTES } from '../config/site'
+import Skeleton from '../components/Skeleton'
 import './Notifications.css'
 
 const initialNotifications = [
@@ -93,6 +94,14 @@ const Notifications = () => {
   const [notifications, setNotifications] = useState(initialNotifications)
   const [activeCategory, setActiveCategory] = useState('All')
   const [searchQuery, setSearchQuery] = useState('')
+  const [tabLoading, setTabLoading] = useState(false)
+
+  const handleCategoryChange = (cat) => {
+    if (cat === activeCategory) return
+    setTabLoading(true)
+    setActiveCategory(cat)
+    setTimeout(() => setTabLoading(false), 160)
+  }
 
   const categories = ['All', 'Unread', 'Calls & AI', 'Governance', 'Security', 'System']
 
@@ -188,7 +197,7 @@ const Notifications = () => {
             <button
               key={cat}
               className={`filter-tab ${activeCategory === cat ? 'active' : ''}`}
-              onClick={() => setActiveCategory(cat)}
+              onClick={() => handleCategoryChange(cat)}
             >
               {cat}
               {cat === 'Unread' && unreadCount > 0 && (
@@ -201,7 +210,13 @@ const Notifications = () => {
 
       {/* Notifications List */}
       <div className="notifications-container">
-        {filteredNotifications.length === 0 ? (
+        {tabLoading ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <Skeleton variant="card" height="78px" />
+            <Skeleton variant="card" height="78px" />
+            <Skeleton variant="card" height="78px" />
+          </div>
+        ) : filteredNotifications.length === 0 ? (
           <div className="empty-notifications-state">
             <Bell size={48} className="empty-icon" />
             <h3>No Notifications Found</h3>

@@ -35,6 +35,7 @@ import {
 } from '../api/client'
 import api from '../api/client'
 import { useToast } from '../contexts/ToastContext'
+import { IntegrationGridSkeleton } from '../components/Skeleton'
 import './IntegrationHub.css'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -664,12 +665,7 @@ const IntegrationHub = () => {
   // MAIN VIEW
   // ─────────────────────────────────────────────────────────────────────────────
   if (loading) {
-    return (
-      <div className="ih-loading-screen">
-        <Loader2 className="spinner" size={40} />
-        <span>Loading integrations hub...</span>
-      </div>
-    )
+    return <IntegrationGridSkeleton />
   }
 
   return (

@@ -37,6 +37,7 @@ import {
 import { getGovernanceSummary } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
 import './Governance.css'
+import Skeleton, { TableSkeleton } from '../components/Skeleton'
 
 // Default baseline data
 const DEFAULT_QUEUE = [
@@ -230,6 +231,14 @@ const Governance = () => {
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState('approvals')
+  const [tabLoading, setTabLoading] = useState(false)
+
+  const handleTabSwitch = (tabId) => {
+    if (tabId === activeTab) return
+    setTabLoading(true)
+    setActiveTab(tabId)
+    setTimeout(() => setTabLoading(false), 200)
+  }
 
   // Storage-backed state: Queue
   const [queue, setQueue] = useState(() => {
@@ -703,7 +712,7 @@ const Governance = () => {
       <div className="gov-metrics-grid">
         <div
           className="gov-metric-card amber"
-          onClick={() => setActiveTab('approvals')}
+          onClick={() => handleTabSwitch('approvals')}
           title="Click to view Human Approvals"
         >
           <div className="metric-icon-wrap">
@@ -717,7 +726,7 @@ const Governance = () => {
 
         <div
           className="gov-metric-card blue"
-          onClick={() => setActiveTab('guardrails')}
+          onClick={() => handleTabSwitch('guardrails')}
           title="Click to view Safety Guardrails"
         >
           <div className="metric-icon-wrap">
@@ -733,7 +742,7 @@ const Governance = () => {
 
         <div
           className="gov-metric-card green"
-          onClick={() => setActiveTab('audits')}
+          onClick={() => handleTabSwitch('audits')}
           title="Click to view Knowledge Grounding Audits"
         >
           <div className="metric-icon-wrap">
@@ -747,7 +756,7 @@ const Governance = () => {
 
         <div
           className="gov-metric-card purple"
-          onClick={() => setActiveTab('slas')}
+          onClick={() => handleTabSwitch('slas')}
           title="Click to view Service SLAs & Operational Risk"
         >
           <div className="metric-icon-wrap">
@@ -764,7 +773,7 @@ const Governance = () => {
       <div className="gov-tabs-container">
         <button
           className={`gov-tab ${activeTab === 'approvals' ? 'active' : ''}`}
-          onClick={() => setActiveTab('approvals')}
+          onClick={() => handleTabSwitch('approvals')}
         >
           <Shield size={16} /> Human Approvals
           {pendingApprovalsCount > 0 && <span className="gov-badge-count">{pendingApprovalsCount}</span>}
@@ -772,21 +781,21 @@ const Governance = () => {
 
         <button
           className={`gov-tab ${activeTab === 'guardrails' ? 'active' : ''}`}
-          onClick={() => setActiveTab('guardrails')}
+          onClick={() => handleTabSwitch('guardrails')}
         >
           <Lock size={16} /> Guardrails & Safety
         </button>
 
         <button
           className={`gov-tab ${activeTab === 'audits' ? 'active' : ''}`}
-          onClick={() => setActiveTab('audits')}
+          onClick={() => handleTabSwitch('audits')}
         >
           <FileCheck size={16} /> Hallucination & Audits
         </button>
 
         <button
           className={`gov-tab ${activeTab === 'slas' ? 'active' : ''}`}
-          onClick={() => setActiveTab('slas')}
+          onClick={() => handleTabSwitch('slas')}
         >
           <Activity size={16} /> Service SLAs & Risk
         </button>
@@ -794,6 +803,10 @@ const Governance = () => {
 
       {/* Tab Content Wrapper */}
       <div className="gov-content-wrapper">
+        {tabLoading ? (
+          <TableSkeleton rows={5} cols={5} />
+        ) : (
+          <>
         {/* ================================================================= */}
         {/* Tab 1: Human Approvals Queue - Minimalist Obsidian Cards matching Image 2 */}
         {/* ================================================================= */}
@@ -1111,6 +1124,8 @@ const Governance = () => {
             </div>
           </div>
         )}
+        </>
+      )}
       </div>
 
       {/* =================================================================== */}

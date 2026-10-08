@@ -40,8 +40,8 @@ import {
 } from 'lucide-react'
 import api from '../api/client'
 import { useToast } from '../contexts/ToastContext'
-import { useEnvironment } from '../contexts/EnvironmentContext'
 import './Analytics.css'
+import Skeleton, { MetricCardsSkeleton, ChartSkeleton, TableSkeleton } from '../components/Skeleton'
 
 // Comprehensive Analytics Data Models for all 6 tabs
 const ANALYTICS_DATA = {
@@ -458,8 +458,12 @@ const AnalyticsCenter = () => {
                 aria-selected={isActive}
                 className={`ac-tab-pill ${isActive ? 'is-active' : ''}`}
                 onClick={() => {
-                  setActiveTab(tab.id)
-                  setSearchQuery('')
+                  if (tab.id !== activeTab) {
+                    setLoading(true)
+                    setActiveTab(tab.id)
+                    setSearchQuery('')
+                    setTimeout(() => setLoading(false), 220)
+                  }
                 }}
               >
                 <Icon size={16} className="ac-tab-icon" />
@@ -473,6 +477,16 @@ const AnalyticsCenter = () => {
 
       {/* Main Content Area */}
       <main className="ac-main">
+        {refreshing || loading ? (
+          <div className="ac-tab-skeleton" style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', width: '100%' }}>
+            <MetricCardsSkeleton count={4} />
+            <div className="ac-charts-grid">
+              <ChartSkeleton height={290} />
+              <Skeleton variant="card" height="340px" />
+            </div>
+            <TableSkeleton rows={4} cols={7} />
+          </div>
+        ) : (
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -690,6 +704,7 @@ const AnalyticsCenter = () => {
             </div>
           </motion.div>
         </AnimatePresence>
+        )}
       </main>
 
       {/* Footer Info */}

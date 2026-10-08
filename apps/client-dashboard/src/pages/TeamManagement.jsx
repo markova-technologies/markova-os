@@ -52,6 +52,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import './TeamManagement.css';
+import Skeleton, { MetricCardsSkeleton, TableSkeleton, CardGridSkeleton } from '../components/Skeleton';
 
 const DEFAULT_SYSTEM_ROLES = [
   { id: 'role-admin', name: 'admin', display_name: 'Administrator', is_system: true, description: 'Manage agents, team members & operational settings' },
@@ -493,52 +494,61 @@ const TeamManagement = () => {
       </div>
 
       {/* Stat Cards */}
-      <div className="team-stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>
-            <Users size={22} />
+      {loading ? (
+        <>
+          <MetricCardsSkeleton count={4} />
+          <div style={{ marginTop: '1.5rem' }}>
+            <TableSkeleton rows={6} cols={5} />
           </div>
-          <div className="stat-info">
-            <span className="stat-label">Total Members</span>
-            <span className="stat-value">{users.length}</span>
-          </div>
-        </div>
+        </>
+      ) : (
+        <>
+          <div className="team-stats-grid">
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}>
+                <Users size={22} />
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Total Members</span>
+                <span className="stat-value">{users.length}</span>
+              </div>
+            </div>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
-            <Clock size={22} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Pending Invites</span>
-            <span className="stat-value">{invitations.length}</span>
-          </div>
-        </div>
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
+                <Clock size={22} />
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Pending Invites</span>
+                <span className="stat-value">{invitations.length}</span>
+              </div>
+            </div>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc' }}>
-            <Shield size={22} />
-          </div>
-          <div className="stat-info">
-            <span className="stat-label">Configured Roles</span>
-            <span className="stat-value">{roles.length}</span>
-          </div>
-        </div>
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc' }}>
+                <Shield size={22} />
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Configured Roles</span>
+                <span className="stat-value">{roles.length}</span>
+              </div>
+            </div>
 
-        <div className="stat-card">
-          <div className="stat-icon-wrapper" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
-            <Building size={22} />
+            <div className="stat-card">
+              <div className="stat-icon-wrapper" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#34d399' }}>
+                <Building size={22} />
+              </div>
+              <div className="stat-info">
+                <span className="stat-label">Departments</span>
+                <span className="stat-value">{departments.length}</span>
+              </div>
+            </div>
           </div>
-          <div className="stat-info">
-            <span className="stat-label">Departments</span>
-            <span className="stat-value">{departments.length}</span>
-          </div>
-        </div>
-      </div>
 
-      {/* =================================================================== */}
-      {/* TAB 1: MEMBERS LIST (With Department Grouping & Flat List Toggle)   */}
-      {/* =================================================================== */}
-      {activeTab === 'members' && (
+          {/* =================================================================== */}
+          {/* TAB 1: MEMBERS LIST (With Department Grouping & Flat List Toggle)   */}
+          {/* =================================================================== */}
+          {activeTab === 'members' && (
         <div>
           {/* Controls Bar */}
           <div className="team-controls-bar">
@@ -1180,6 +1190,8 @@ const TeamManagement = () => {
             </table>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* =================================================================== */}
