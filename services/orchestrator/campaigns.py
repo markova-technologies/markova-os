@@ -15,11 +15,16 @@ def get_db_pool(request: Request):
     return request.app.state.db_pool
 
 def get_tenant_id(request: Request) -> str:
-    # Similar to main.py _tenant_id, normally extracted from JWT or headers
-    company_id = request.headers.get("X-Company-ID")
+    # Parity with main.py: resolve either x-company-id or x-tenant-id
+    company_id = (
+        request.headers.get("x-company-id") or
+        request.headers.get("x-tenant-id") or
+        request.headers.get("X-Company-ID") or
+        request.headers.get("X-Tenant-ID")
+    )
     if not company_id:
-        raise HTTPException(status_code=401, detail="Unauthorized: Missing X-Company-ID")
-    return company_id
+        raise HTTPException(status_code=401, detail="Unauthorized: Missing X-Company-ID or X-Tenant-ID")
+    return company_id.strip()
 
 class CampaignCreate(BaseModel):
     name: str

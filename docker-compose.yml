@@ -300,6 +300,11 @@ services:
       postgres:
         condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5009/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   planner-service:
     build:
@@ -316,8 +321,13 @@ services:
       postgres:
         condition: service_healthy
       capability-registry:
-        condition: service_started
+        condition: service_healthy
     restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5011/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   voice-runtime:
     build:

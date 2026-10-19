@@ -93,6 +93,16 @@ initializeServices();
 const tenantDb = new TenantDb(pool);
 const internalGuard = serviceAuth.guard.bind(serviceAuth);
 
+// Unauthenticated health check for orchestration and cloud probes
+app.get(['/health', '/api/health', '/v1/health', '/api/tenant/health'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'tenant-service',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 // The /verify endpoint is called by API Gateway internally
 app.post('/api/tenant/keys/verify', internalGuard, async (req, res) => {
   const { apiKey } = req.body;
@@ -255,16 +265,75 @@ app.post('/api/tenant/billing/webhooks/:provider', async (req, res) => {
   res.json({ received: true, provider, type: eventType, verified: true });
 });
 
-// Admin Authorization Guard
+// Admin Authorization Guard with Cryptographic Verification
 const ADMIN_ROLES = new Set(['admin', 'superadmin', 'SUPER_ADMIN', 'PLATFORM_ADMIN', 'BILLING_ADMIN', 'SUPPORT_ADMIN', 'DEVELOPER']);
 
 function adminGuard(req, res, next) {
-  const role = (req.headers['x-role'] || '').trim();
-  if (!role || !ADMIN_ROLES.has(role)) {
-    console.warn(`[adminGuard] Rejected: role='${role}' not in allowed set.`);
-    return res.status(403).json({ error: 'Forbidden: Admin access required' });
+  const secret = process.env.SERVICE_AUTH_SECRET || (process.env.NODE_ENV !== 'production' ? 'markova-service-auth-secret-change-in-prod' : null);
+
+  // 1. Check Service Auth header (inter-service authentication)
+  const serviceHeader = req.headers['x-service-auth'];
+  if (serviceHeader && serviceHeader.startsWith('Service ')) {
+    return serviceAuth.guard(req, res, () => {
+      const role = (req.headers['x-role'] || req.headers['x-admin-role'] || 'admin').trim();
+      if (!ADMIN_ROLES.has(role)) {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+      }
+      return next();
+    });
   }
-  next();
+
+  // 2. Check Gateway Signed Headers
+  const sig = req.headers['x-gateway-sig'];
+  const ts = req.headers['x-gateway-timestamp'];
+  const tenantId = req.headers['x-tenant-id'] || req.headers['x-company-id'] || '00000000-0000-0000-0000-000000000000';
+  const userId = req.headers['x-user-id'] || 'api-key-auth';
+
+  if (sig && ts && secret) {
+    if (Math.abs(Date.now() - parseInt(ts, 10)) > 300_000) {
+      return res.status(401).json({ error: 'Gateway signature expired' });
+    }
+    const expectedPayload = `${tenantId}:${userId}:${ts}`;
+    const expectedSig = crypto.createHmac('sha256', secret).update(expectedPayload).digest('hex');
+    const sigBuf = Buffer.from(sig, 'utf8');
+    const expBuf = Buffer.from(expectedSig, 'utf8');
+    if (sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf)) {
+      const role = (req.headers['x-role'] || req.headers['x-admin-role'] || '').trim();
+      if (!role || !ADMIN_ROLES.has(role)) {
+        return res.status(403).json({ error: 'Forbidden: Admin access required' });
+      }
+      return next();
+    }
+  }
+
+  // 3. Check Direct Admin JWT
+  const authHeader = req.headers['authorization'];
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    const token = authHeader.split(' ')[1];
+    const jwtSecret = process.env.SUPABASE_JWT_SECRET || process.env.JWT_SECRET;
+    if (jwtSecret) {
+      try {
+        const decoded = require('jsonwebtoken').verify(token, jwtSecret, { algorithms: ['HS256'] });
+        const userRole = (decoded.role || decoded.app_metadata?.role || req.headers['x-role'] || '').trim();
+        if (decoded.aud === 'admin' || ADMIN_ROLES.has(userRole)) {
+          return next();
+        }
+      } catch (e) {
+        // Fall through to unauthorized
+      }
+    }
+  }
+
+  // 4. Non-production sandbox fallback
+  if (process.env.NODE_ENV !== 'production') {
+    const devRole = (req.headers['x-role'] || req.headers['x-admin-role'] || '').trim();
+    if (devRole && ADMIN_ROLES.has(devRole)) {
+      console.warn(`[adminGuard] DEV ONLY: allowing unauthenticated admin request with role '${devRole}'`);
+      return next();
+    }
+  }
+
+  return res.status(403).json({ error: 'Forbidden: Cryptographically verified Admin credentials required' });
 }
 
 // ── Admin Endpoints ──────────────────────────────────────────────────────────
@@ -483,18 +552,28 @@ app.get('/api/tenant/company', async (req, res) => {
   }
 });
 
-// Update Company Info/Limits
+// Update Company Info (Locked down: plan and max_agents cannot be self-modified by tenants)
 app.put('/api/tenant/company', async (req, res) => {
   const { name, plan, max_agents } = req.body;
+
+  if (plan !== undefined || max_agents !== undefined) {
+    return res.status(400).json({
+      error: 'Plan tier and agent limits can only be modified via checkout or platform administration.'
+    });
+  }
+
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Valid company name is required' });
+  }
 
   try {
     const ctx = req.securityContext;
     const result = await tenantDb.query(ctx, 
       `UPDATE companies 
-       SET name = COALESCE($1, name), plan = COALESCE($2, plan), max_agents = COALESCE($3, max_agents), updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4 
+       SET name = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2 
        RETURNING id, name, plan, status, max_agents`,
-      [name, plan, max_agents, ctx.tenantId]
+      [name.trim(), ctx.tenantId]
     );
 
     if (result.rows.length === 0) {

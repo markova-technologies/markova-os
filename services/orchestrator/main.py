@@ -479,13 +479,28 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Markova Orchestrator", version="2.0.0", lifespan=lifespan)
 
 from fastapi.middleware.cors import CORSMiddleware
+default_orchestrator_origins = [
+    "https://app.markova.tech",
+    "https://markova.tech",
+    "https://admin.markova.tech",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8000",
+]
+env_orch_origins = os.getenv("ALLOWED_ORIGINS", "")
+allowed_orch_origins = [o.strip() for o in env_orch_origins.split(",") if o.strip()] if env_orch_origins else default_orchestrator_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://.*",
+    allow_origins=allowed_orch_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type", "Authorization", "x-company-id", "x-tenant-id",
+        "x-markova-env", "x-service-auth", "x-request-id", "Accept", "Origin",
+        "Idempotency-Key", "X-Twilio-Signature"
+    ],
+    expose_headers=["x-request-id", "Idempotency-Key"],
 )
 
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -2227,7 +2242,7 @@ async def handle_inbound_call(
     )
 
     if ivr_enabled:
-        prompt = _ivr_prompt_from_settings(settings, routing_rules)
+        prompt = _xml_escape(_ivr_prompt_from_settings(settings, routing_rules))
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
     <Gather numDigits="1" action="/twilio/ivr" method="POST" timeout="5">

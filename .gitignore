@@ -25,3 +25,9 @@ __pycache__/
 # Large research archives
 research-repos/*.zip
 research-repos/crewAI-main/
+
+# Audio scratch and local artifacts
+audio/
+audit_findings_clean.json
+audit_findings_raw.json
+

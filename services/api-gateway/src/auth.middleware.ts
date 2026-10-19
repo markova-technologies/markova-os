@@ -152,6 +152,17 @@ export class AuthMiddleware implements NestMiddleware {
       return next();
     }
 
+    // Security: Strip dangerous client-supplied internal and privilege headers
+    delete req.headers['x-gateway-sig'];
+    delete req.headers['x-gateway-timestamp'];
+    delete req.headers['x-role'];
+    delete req.headers['x-admin-role'];
+    delete req.headers['x-permissions'];
+    delete req.headers['x-subscription-plan'];
+    delete req.headers['x-service-auth'];
+    delete req.headers['x-tenant-id'];
+    delete req.headers['x-company-id'];
+
     let tenantContext: any = {};
 
     const authHeader = req.headers['authorization'];
@@ -163,8 +174,10 @@ export class AuthMiddleware implements NestMiddleware {
     const apiKey = (req.headers['x-api-key'] as string) || (bearerToken && bearerToken.startsWith('mk_') ? bearerToken : null);
 
     // 1. Authenticate via Tenant API Key (x-api-key Header or Authorization: Bearer mk_...)
+    const isProduction = process.env.NODE_ENV === 'production';
+
     if (apiKey) {
-      if (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4') {
+      if (!isProduction && (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4')) {
         const companyId = (req.headers['x-company-id'] as string) || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000000';
         tenantContext = {
           tenantId: companyId,
@@ -184,28 +197,29 @@ export class AuthMiddleware implements NestMiddleware {
                 'x-service-auth': generateServiceAuthHeader('api-gateway'),
                 'content-type': 'application/json',
               },
+              timeout: 4000,
             },
           );
-          if (response.data.valid) {
+          if (response.data && response.data.valid) {
             tenantContext = {
               tenantId: response.data.companyId,
               userId: 'api-key-auth',
               role: 'api',
-              permissions: ['*'],
+              permissions: response.data.permissions || ['*'],
               subscriptionPlan: response.data.plan || 'starter',
               environment: response.data.environment || (apiKey.startsWith('mk_live_') ? 'live' : 'test'),
             };
           } else {
-            return res.status(HttpStatus.FORBIDDEN).json({ error: 'Invalid API Key' });
+            return res.status(HttpStatus.FORBIDDEN).json({ error: 'Invalid or revoked API Key' });
           }
-        } catch (err) {
-          console.error('Failed to communicate with tenant-service for API key validation:', err.message);
-          return res.status(HttpStatus.INTERNAL_SERVER_ERROR).json({ error: 'Authentication service unavailable' });
+        } catch (err: any) {
+          console.error('Failed to communicate with tenant-service for API key validation:', err?.message || err);
+          return res.status(HttpStatus.SERVICE_UNAVAILABLE).json({ error: 'Authentication service unavailable' });
         }
       }
     } else if (bearerToken) {
       // 2. Authenticate via JWT (Authorization: Bearer <jwt>)
-      if (bearerToken === 'demo-token') {
+      if (!isProduction && bearerToken === 'demo-token') {
         const companyId = (req.headers['x-company-id'] as string) || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000000';
         tenantContext = {
           tenantId: companyId,

@@ -26,13 +26,28 @@ MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MB hard limit
 
 app = FastAPI(title="Markova Knowledge Service")
 
+default_knowledge_origins = [
+    "https://app.markova.tech",
+    "https://markova.tech",
+    "https://admin.markova.tech",
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "http://localhost:8000",
+]
+env_know_origins = os.getenv("ALLOWED_ORIGINS", "")
+allowed_know_origins = [o.strip() for o in env_know_origins.split(",") if o.strip()] if env_know_origins else default_knowledge_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://.*",
+    allow_origins=allowed_know_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type", "Authorization", "x-company-id", "x-tenant-id",
+        "x-markova-env", "x-service-auth", "x-request-id", "Accept", "Origin",
+        "Idempotency-Key"
+    ],
+    expose_headers=["x-request-id", "Idempotency-Key"],
 )
 
 DATABASE_URL = os.getenv("DATABASE_URL")

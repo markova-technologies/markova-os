@@ -11,9 +11,9 @@ export interface DecodedToken {
 /**
  * Verify a JWT token and return the decoded payload
  */
-export function verifyToken(token: string, secret: string): DecodedToken | null {
+export function verifyToken(token: string, secret: string, algorithms: jwt.Algorithm[] = ['HS256', 'RS256']): DecodedToken | null {
   try {
-    return jwt.verify(token, secret) as DecodedToken;
+    return jwt.verify(token, secret, { algorithms }) as DecodedToken;
   } catch (error) {
     return null;
   }

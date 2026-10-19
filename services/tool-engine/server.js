@@ -24,6 +24,16 @@ const pool = new Pool({
 });
 const tenantDb = new TenantDb(pool);
 
+// Unauthenticated health check for orchestration and cloud probes
+app.get(['/health', '/api/health', '/v1/health'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'tool-engine',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 app.use('/api', TenantGuard);
 
 // Redis client for retry queue
@@ -76,9 +86,50 @@ async function initialize() {
 
 initialize();
 
+function isSafeWebhookUrl(urlString) {
+  try {
+    const parsed = new URL(urlString);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname === '169.254.169.254' ||
+      hostname === 'metadata.google.internal'
+    ) {
+      return false;
+    }
+    const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (match) {
+      const p1 = parseInt(match[1], 10);
+      const p2 = parseInt(match[2], 10);
+      if (
+        p1 === 10 ||
+        p1 === 127 ||
+        (p1 === 172 && p2 >= 16 && p2 <= 31) ||
+        (p1 === 192 && p2 === 168) ||
+        (p1 === 169 && p2 === 254)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // Unified Plugin Execution Interface
 class WebhookPlugin {
   async execute(tool, payload) {
+    if (!isSafeWebhookUrl(tool.webhook_url)) {
+      throw new Error(`SSRF Blocked: Webhook target URL ${tool.webhook_url} is not permitted.`);
+    }
+
     const config = {
       method: tool.method || 'POST',
       url: tool.webhook_url,
@@ -518,11 +569,26 @@ app.delete('/api/tools/:id', async (req, res) => {
   }
 });
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'OK', service: 'tool-engine' });
-});
-
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Tool Engine Service listening on port ${PORT}`);
 });
+
+const gracefulShutdown = async (signal) => {
+  console.log(`Received ${signal}. Shutting down gracefully...`);
+  server.close(async () => {
+    try {
+      await pool.end();
+      if (redisClient?.isOpen) {
+        await redisClient.quit();
+      }
+      console.log('Tool Engine Service closed all connections cleanly.');
+      process.exit(0);
+    } catch (err) {
+      console.error('Error during shutdown:', err);
+      process.exit(1);
+    }
+  });
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

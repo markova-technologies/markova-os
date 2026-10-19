@@ -16,5 +16,8 @@
     "build:admin": "npm run build --workspace=apps/admin-dashboard",
     "build:client": "npm run build --workspace=apps/client-dashboard",
     "warmup": "node scripts/warmup-render.js"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0"
   }
 }

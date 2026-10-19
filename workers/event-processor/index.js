@@ -58,9 +58,9 @@ async function connectRedis() {
   await redis.connect();
   console.log('✅ Event Processor connected to Redis');
 
-  // Create consumer group if it doesn't exist
+  // Create consumer group if it doesn't exist, reading from beginning of stream ('0')
   try {
-    await redis.xGroupCreate(STREAM_KEY, GROUP_NAME, '$', { MKSTREAM: true });
+    await redis.xGroupCreate(STREAM_KEY, GROUP_NAME, '0', { MKSTREAM: true });
     console.log(`✅ Consumer group '${GROUP_NAME}' created`);
   } catch (err) {
     if (!err.message.includes('BUSYGROUP')) {

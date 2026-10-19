@@ -21,6 +21,16 @@ const pool = new Pool({
 
 const tenantDb = new TenantDb(pool);
 
+// Unauthenticated health check for orchestration and cloud probes
+app.get(['/health', '/api/health', '/v1/health'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'agent-builder',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 app.use('/api', TenantGuard);
 
 async function connectDb() {

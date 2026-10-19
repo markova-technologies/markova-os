@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 class SecurityContext {
   constructor({
     tenantId,
+    companyId,
     organizationId,
     userId,
     role,
@@ -16,7 +17,7 @@ class SecurityContext {
     departmentId,
     isServiceAccount = false
   }) {
-    this.tenantId = tenantId;
+    this.tenantId = tenantId || companyId;
     this.organizationId = organizationId; // For Phase 2 (Departments)
     this.userId = userId;
     this.role = role;
@@ -66,6 +67,7 @@ class SecurityContext {
   toHeaders() {
     const headers = {
       'x-tenant-id': this.tenantId || '',
+      'x-company-id': this.tenantId || '',
       'x-user-id': this.userId || '',
       'x-session-id': this.sessionId || '',
       'x-role': this.role || '',

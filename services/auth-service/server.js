@@ -719,7 +719,7 @@ app.post(
       const secret = process.env.SUPABASE_JWT_SECRET;
       if (!secret) return res.status(500).json({ error: 'Missing secret' });
       
-      const decoded = jwt.verify(token, secret);
+      const decoded = jwt.verify(token, secret, { algorithms: ['HS256'] });
       if (decoded.aud !== 'admin') {
         return res.status(403).json({ error: 'Admin token required' });
       }
@@ -1350,7 +1350,7 @@ async function authenticateUser(req, res, next) {
     // 2. Try HS256 with SUPABASE_JWT_SECRET
     if (process.env.SUPABASE_JWT_SECRET) {
       try {
-        const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET);
+        const decoded = jwt.verify(token, process.env.SUPABASE_JWT_SECRET, { algorithms: ['HS256'] });
         const userId = decoded.sub || decoded.userId;
         
         // Lookup user in DB to retrieve company and permissions
@@ -1383,8 +1383,8 @@ async function authenticateUser(req, res, next) {
       } catch (hsErr) {}
     }
 
-    // 3. Fallback for sandbox/demo header tokens in development
-    if (token.startsWith('demo-token') || token.startsWith('test-token')) {
+    // 3. Fallback for sandbox/demo header tokens in non-production development
+    if (process.env.NODE_ENV !== 'production' && (token.startsWith('demo-token') || token.startsWith('test-token'))) {
       const headerCompanyId = req.headers['x-company-id'] || req.headers['x-tenant-id'];
       if (headerCompanyId) {
         req.user = {

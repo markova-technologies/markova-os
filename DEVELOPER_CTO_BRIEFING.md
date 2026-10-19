@@ -516,7 +516,24 @@ September 10, 2026 (Session 7 — Production Orchestrator Cloud Deployment & Tel
   - Confirmed e-commerce artifacts (`commerce.py`, `commerce_agent.py`) remain demo-only in the playground.
 - Code validated, committed, and pushed to GitHub `origin/main`.
 
-Last updated: September 10, 2026
-Generated from: full codebase walkthrough + conversation history analysis + Supabase migration logs + session 7 implementation
+October 19, 2026 (Session 8 — Permanent History Restoration from "Markova AI Project Analysis" & Production Security Remediation):
+- Restored complete context, architectures, and state from conversation `42731b34-a3a3-47ad-8f7d-035834ecddcb` (19,756 steps) documented in `docs/RESTORED_CONTEXT_MARKOVA_AI_PROJECT_ANALYSIS.md`.
+- Completed and verified full platform security remediation (`docs/PRODUCTION_SECURITY_AND_BUG_REMEDIATION_PLAN.md`):
+  - Mock API key (`mk_live_c3d4`) and demo-token backdoor eliminated; strict Supabase HS256 JWT auth enforced.
+  - CORS whitelists restored across orchestrator and knowledge service.
+  - Amharic Ge'ez 7-order vowel preservation fixed in WASM normalizer (`kernel/wasm/normalizer.rs`).
+  - Persistent lifecycle loop implemented in RPA agent worker.
+  - Multi-model pricing support in billing engine and UTC ISO timestamp pinning for telemetry deduplication.
+  - Container healthchecks configured in `docker-compose.yml` and composite database indexes deployed in `infrastructure/migrations/023_performance_indexes.sql`.
+- Verified test suite: 37/37 Python core tests, Node SDK tests, DAG memory tests, Vite Client & Admin dashboard builds, NestJS gateway build all passing.
+- Fixed IDE conversation history disappearing on sudden PC restart:
+  - Added startup rehydration hook and continuous auto-persistence to `main.js`.
+  - Created permanent disk mirror `C:\Users\zelal\.gemini\antigravity-ide\permanent_trajectory_summaries.json` preserving all 27 conversations.
+  - Added workspace recovery script `scripts/sync_conversation_history.py`.
+- Installed requested skill suites: Emil Kowalski Animation & Design (15 skills), Taste Skill (12 skills), and Playwright E2E Testing (5 skills).
+
+Last updated: October 19, 2026
+Generated from: full codebase walkthrough + conversation history analysis (including 42731b34) + Supabase migration logs + session 8 implementation
+
 
 

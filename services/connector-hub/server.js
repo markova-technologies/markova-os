@@ -55,6 +55,16 @@ const pool = new Pool({
 });
 const tenantDb = new TenantDb(pool);
 
+// Unauthenticated health check for orchestration and cloud probes
+app.get(['/health', '/api/health', '/v1/health', '/api/connector-hub/health'], (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'connector-hub',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
 app.use('/api/connector-hub', (req, res, next) => {
   if (req.path.includes('/webhook/')) return next();
   if (req.path.includes('/types')) return next();
@@ -275,7 +285,11 @@ const CONNECTOR_TYPES = {
 // HELPER: Safe table name from connector id
 // ─────────────────────────────────────────────────────────────────────────────
 function safeTableName(connectorId) {
-  return `conn_${connectorId.replace(/-/g, '_')}`;
+  const sanitized = String(connectorId).replace(/[^a-zA-Z0-9_]/g, '');
+  if (!sanitized) {
+    throw new Error('Invalid connector ID for table name');
+  }
+  return `conn_${sanitized}`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

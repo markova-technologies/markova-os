@@ -24,6 +24,43 @@ function getTenantId(req: Request): string {
   return tenantId;
 }
 
+function isSafeWebhookUrl(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    if (!['http:', 'https:'].includes(parsed.protocol)) return false;
+    const hostname = parsed.hostname.toLowerCase();
+    if (
+      hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '::1' ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.internal') ||
+      hostname === '169.254.169.254' ||
+      hostname === 'metadata.google.internal'
+    ) {
+      return false;
+    }
+    const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (match) {
+      const p1 = parseInt(match[1], 10);
+      const p2 = parseInt(match[2], 10);
+      if (
+        p1 === 10 ||
+        p1 === 127 ||
+        (p1 === 172 && p2 >= 16 && p2 <= 31) ||
+        (p1 === 192 && p2 === 168) ||
+        (p1 === 169 && p2 === 254)
+      ) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CAPABILITY REGISTRY ENDPOINTS
 // ─────────────────────────────────────────────────────────────────────────────
@@ -142,6 +179,10 @@ app.post('/v1/capabilities/:id/execute', async (req: Request, res: Response) => 
     }
 
     const { webhook_url, method } = toolRes.rows[0];
+
+    if (!isSafeWebhookUrl(webhook_url)) {
+      return res.status(400).json({ error: `SSRF Blocked: Destination URL ${webhook_url} is not permitted.` });
+    }
 
     // Proxy execution call
     const response = await axios({

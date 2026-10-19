@@ -19,13 +19,35 @@ async function bootstrap() {
     expressApp.set('trust proxy', 1);
   }
 
-  // CORS configuration for dashboard, local dev, and Vercel deployments
+  // CORS configuration: whitelist dashboard and production domains with ALLOWED_ORIGINS env
+  const defaultOrigins = [
+    'https://app.markova.tech',
+    'https://markova.tech',
+    'https://admin.markova.tech',
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:8000',
+  ];
+  const envOrigins = process.env.ALLOWED_ORIGINS
+    ? process.env.ALLOWED_ORIGINS.split(',').map((s) => s.trim())
+    : defaultOrigins;
+
   app.enableCors({
-    origin: true,
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        envOrigins.includes(origin) ||
+        (process.env.NODE_ENV !== 'production' && (origin.includes('localhost') || origin.includes('127.0.0.1')))
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-company-id', 'x-tenant-id', 'x-markova-env', 'Accept', 'Origin'],
-    exposedHeaders: ['*'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-company-id', 'x-tenant-id', 'x-markova-env', 'Accept', 'Origin', 'Idempotency-Key', 'x-api-key'],
+    exposedHeaders: ['x-request-id', 'Idempotency-Key'],
   });
   
   // Rate limiting middleware

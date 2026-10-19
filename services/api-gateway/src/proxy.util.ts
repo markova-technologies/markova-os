@@ -25,42 +25,28 @@ export function proxyTo(
     },
     proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
       const headers = (proxyReqOpts.headers || {}) as Record<string, string>;
-      const tenantId =
-        (srcReq.headers['x-tenant-id'] as string) ||
-        (srcReq.headers['x-company-id'] as string);
-      if (tenantId) {
-        headers['x-tenant-id'] = tenantId;
-        headers['x-company-id'] = tenantId;
+
+      // Security: Strip all untrusted internal/identity headers that might have been supplied by the client
+      const internalHeaders = [
+        'x-tenant-id',
+        'x-company-id',
+        'x-user-id',
+        'x-role',
+        'x-admin-role',
+        'x-permissions',
+        'x-subscription-plan',
+        'x-gateway-sig',
+        'x-gateway-timestamp',
+        'x-service-auth',
+        'x-markova-env',
+      ];
+      for (const h of internalHeaders) {
+        delete headers[h];
       }
-      if (srcReq.headers['x-user-id']) {
-        headers['x-user-id'] = srcReq.headers['x-user-id'] as string;
-      }
-      if (srcReq.headers['x-markova-env']) {
-        headers['x-markova-env'] = srcReq.headers['x-markova-env'] as string;
-      }
+
+      // Forward pass-through client headers
       if (srcReq.headers['authorization']) {
         headers['authorization'] = srcReq.headers['authorization'] as string;
-      }
-      if (srcReq.headers['x-gateway-timestamp']) {
-        headers['x-gateway-timestamp'] = srcReq.headers['x-gateway-timestamp'] as string;
-      }
-      if (srcReq.headers['x-gateway-sig']) {
-        headers['x-gateway-sig'] = srcReq.headers['x-gateway-sig'] as string;
-      }
-      if (srcReq.headers['x-role']) {
-        headers['x-role'] = srcReq.headers['x-role'] as string;
-      }
-      if (srcReq.headers['x-permissions']) {
-        headers['x-permissions'] = srcReq.headers['x-permissions'] as string;
-      }
-      if (srcReq.headers['x-subscription-plan']) {
-        headers['x-subscription-plan'] = srcReq.headers['x-subscription-plan'] as string;
-      }
-      if (srcReq.headers['x-session-id']) {
-        headers['x-session-id'] = srcReq.headers['x-session-id'] as string;
-      }
-      if (srcReq.headers['x-admin-role']) {
-        headers['x-admin-role'] = srcReq.headers['x-admin-role'] as string;
       }
       if (srcReq.headers['x-api-key']) {
         headers['x-api-key'] = srcReq.headers['x-api-key'] as string;
@@ -71,6 +57,42 @@ export function proxyTo(
       if (srcReq.headers['x-idempotency-key']) {
         headers['x-idempotency-key'] = srcReq.headers['x-idempotency-key'] as string;
       }
+
+      // Only forward identity headers if cryptographically signed by AuthMiddleware
+      const gwSig = srcReq.headers['x-gateway-sig'] as string;
+      const gwTs = srcReq.headers['x-gateway-timestamp'] as string;
+      const tenantId =
+        (srcReq.headers['x-tenant-id'] as string) ||
+        (srcReq.headers['x-company-id'] as string);
+
+      if (gwSig && gwTs && tenantId) {
+        headers['x-gateway-sig'] = gwSig;
+        headers['x-gateway-timestamp'] = gwTs;
+        headers['x-tenant-id'] = tenantId;
+        headers['x-company-id'] = tenantId;
+        if (srcReq.headers['x-user-id']) {
+          headers['x-user-id'] = srcReq.headers['x-user-id'] as string;
+        }
+        if (srcReq.headers['x-markova-env']) {
+          headers['x-markova-env'] = srcReq.headers['x-markova-env'] as string;
+        }
+        if (srcReq.headers['x-role']) {
+          headers['x-role'] = srcReq.headers['x-role'] as string;
+        }
+        if (srcReq.headers['x-admin-role']) {
+          headers['x-admin-role'] = srcReq.headers['x-admin-role'] as string;
+        }
+        if (srcReq.headers['x-permissions']) {
+          headers['x-permissions'] = srcReq.headers['x-permissions'] as string;
+        }
+        if (srcReq.headers['x-subscription-plan']) {
+          headers['x-subscription-plan'] = srcReq.headers['x-subscription-plan'] as string;
+        }
+        if (srcReq.headers['x-session-id']) {
+          headers['x-session-id'] = srcReq.headers['x-session-id'] as string;
+        }
+      }
+
       proxyReqOpts.headers = headers;
       return proxyReqOpts;
     },

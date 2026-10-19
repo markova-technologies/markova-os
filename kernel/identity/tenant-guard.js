@@ -23,12 +23,19 @@ async function TenantGuard(req, res, next) {
     let context = null;
 
     // 1. Check for signed internal headers from API Gateway first
-    if (req.headers['x-tenant-id'] && req.headers['x-gateway-sig']) {
-      const tenantId   = req.headers['x-tenant-id'];
+    const headerTenantId = req.headers['x-tenant-id'] || req.headers['x-company-id'];
+    const sig = req.headers['x-gateway-sig'];
+
+    if (headerTenantId && sig) {
+      const tenantId   = headerTenantId;
       const userId     = req.headers['x-user-id'] || 'api-key-auth';
       const ts         = req.headers['x-gateway-timestamp'];
-      const sig        = req.headers['x-gateway-sig'];
-      const secret     = process.env.SERVICE_AUTH_SECRET || process.env.JWT_SECRET || 'markova-service-auth-secret-change-in-prod';
+      const secret = process.env.SERVICE_AUTH_SECRET || process.env.JWT_SECRET || (process.env.NODE_ENV !== 'production' ? 'markova-service-auth-secret-change-in-prod' : null);
+
+      if (!secret) {
+        console.error('TenantGuard: SERVICE_AUTH_SECRET must be set in production');
+        return res.status(500).json({ error: 'Internal Server Error: Missing service secret configuration' });
+      }
 
       if (!ts || !sig) {
         return res.status(401).json({ error: 'Missing gateway authentication signature' });
@@ -65,8 +72,9 @@ async function TenantGuard(req, res, next) {
     // 2. Direct Bearer token authentication (legacy or direct microservice calls)
     else if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      if (token === 'demo-token') {
-        const tenantId = req.headers['x-tenant-id'] || req.headers['x-company-id'] || '00000000-0000-0000-0000-000000000000';
+      const isProduction = process.env.NODE_ENV === 'production';
+      if (!isProduction && token === 'demo-token') {
+        const tenantId = headerTenantId || '00000000-0000-0000-0000-000000000000';
         context = new SecurityContext({
           tenantId,
           userId: 'demo-user',
@@ -85,8 +93,8 @@ async function TenantGuard(req, res, next) {
       }
     }
     // 3. Fallback for internal developer sandbox / test tenant header
-    else if (req.headers['x-tenant-id'] && process.env.NODE_ENV !== 'production') {
-      const tenantId = req.headers['x-tenant-id'];
+    else if (headerTenantId && process.env.NODE_ENV !== 'production') {
+      const tenantId = headerTenantId;
       context = new SecurityContext({
         tenantId,
         userId: req.headers['x-user-id'] || 'dev-user',

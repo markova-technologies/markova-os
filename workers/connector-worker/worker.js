@@ -318,7 +318,11 @@ async function upsertConnectorData(connectorId, companyId, data) {
     k.toLowerCase().replace(/[^a-z0-9_]/g, '_')
   );
 
-  const tableName = `conn_${connectorId.replace(/-/g, '_')}`;
+  const sanitizedId = String(connectorId).replace(/[^a-zA-Z0-9_]/g, '');
+  if (!sanitizedId) {
+    throw new Error('Invalid connector ID for table name');
+  }
+  const tableName = `conn_${sanitizedId}`;
 
   // Create table if not exists
   const colDefs = columns.map((c) => `"${c}" TEXT`).join(', ');

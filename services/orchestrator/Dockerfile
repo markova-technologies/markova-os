@@ -12,6 +12,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy service code from monorepo path
 COPY services/orchestrator/ ./
 
+# Pre-download Silero VAD ONNX model to eliminate cold-start latency and network failure on first turn
+RUN curl -L -s --retry 3 -o /app/silero_vad.onnx https://github.com/snakers4/silero-vad/raw/master/files/silero_vad.onnx || true
+
 # Copy migrations directly from infrastructure/migrations
 COPY infrastructure/migrations/ ./migrations_sql/
 

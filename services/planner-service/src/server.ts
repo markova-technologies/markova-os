@@ -93,12 +93,16 @@ app.post('/v1/plan', async (req: Request, res: Response) => {
 // 2. Execute Task Graph — load from DB, run tasks, persist results
 app.post('/v1/plan/:planId/execute', async (req: Request, res: Response) => {
   const { planId } = req.params;
+  const companyId = (req.headers['x-company-id'] || req.headers['x-tenant-id']) as string;
+  if (!companyId) {
+    return res.status(401).json({ error: 'Tenant context (x-company-id or x-tenant-id) required' });
+  }
 
   let plan: any;
   try {
-    const result = await pool.query('SELECT * FROM agent_plans WHERE id = $1', [planId]);
+    const result = await pool.query('SELECT * FROM agent_plans WHERE id = $1 AND company_id = $2', [planId, companyId]);
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Plan not found' });
+      return res.status(404).json({ error: 'Plan not found or unauthorized' });
     }
     plan = result.rows[0];
     plan.tasks = typeof plan.tasks === 'string' ? JSON.parse(plan.tasks) : plan.tasks;
@@ -107,7 +111,7 @@ app.post('/v1/plan/:planId/execute', async (req: Request, res: Response) => {
   }
 
   try {
-    await pool.query(`UPDATE agent_plans SET status = $1 WHERE id = $2`, [ExecutionStatus.RUNNING, planId]);
+    await pool.query(`UPDATE agent_plans SET status = $1 WHERE id = $2 AND company_id = $3`, [ExecutionStatus.RUNNING, planId, companyId]);
 
     for (const task of plan.tasks) {
       task.status = ExecutionStatus.RUNNING;
@@ -133,22 +137,27 @@ app.post('/v1/plan/:planId/execute', async (req: Request, res: Response) => {
     }
 
     await pool.query(
-      `UPDATE agent_plans SET status = $1, tasks = $2, completed_at = NOW() WHERE id = $3`,
-      [ExecutionStatus.COMPLETED, JSON.stringify(plan.tasks), planId]
+      `UPDATE agent_plans SET status = $1, tasks = $2, completed_at = NOW() WHERE id = $3 AND company_id = $4`,
+      [ExecutionStatus.COMPLETED, JSON.stringify(plan.tasks), planId, companyId]
     );
 
     res.json({ success: true, plan: { ...plan, tasks: plan.tasks, status: ExecutionStatus.COMPLETED } });
   } catch (err: any) {
-    await pool.query(`UPDATE agent_plans SET status = $1 WHERE id = $2`, [ExecutionStatus.FAILED, planId]);
+    await pool.query(`UPDATE agent_plans SET status = $1 WHERE id = $2 AND company_id = $3`, [ExecutionStatus.FAILED, planId, companyId]);
     res.status(500).json({ error: 'Planner execution failed', details: err.message });
   }
 });
 
 // 3. Get Plan Status from DB
 app.get('/v1/plan/:planId', async (req: Request, res: Response) => {
+  const companyId = (req.headers['x-company-id'] || req.headers['x-tenant-id']) as string;
+  if (!companyId) {
+    return res.status(401).json({ error: 'Tenant context (x-company-id or x-tenant-id) required' });
+  }
+
   try {
-    const result = await pool.query('SELECT * FROM agent_plans WHERE id = $1', [req.params.planId]);
-    if (result.rows.length === 0) return res.status(404).json({ error: 'Plan not found' });
+    const result = await pool.query('SELECT * FROM agent_plans WHERE id = $1 AND company_id = $2', [req.params.planId, companyId]);
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Plan not found or unauthorized' });
     const plan = result.rows[0];
     plan.tasks = typeof plan.tasks === 'string' ? JSON.parse(plan.tasks) : plan.tasks;
     res.json({ success: true, plan });
