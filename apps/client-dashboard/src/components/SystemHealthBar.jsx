@@ -12,8 +12,11 @@ const SystemHealthBar = () => {
 
   const fetchHealth = async () => {
     try {
-      const orchestratorUrl = import.meta.env.VITE_ORCHESTRATOR_URL || 'http://localhost:6000'
-      const response = await fetch(`${orchestratorUrl}/health/detailed`)
+      const baseUrl = import.meta.env.VITE_ORCHESTRATOR_URL || import.meta.env.VITE_API_URL || ''
+      if (!baseUrl) {
+        return
+      }
+      const response = await fetch(`${baseUrl}/health/detailed`)
       if (response.ok) {
         const data = await response.json()
         setHealthData(data)

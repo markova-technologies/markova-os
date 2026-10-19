@@ -40,6 +40,7 @@ import {
 } from 'lucide-react'
 import api from '../api/client'
 import { useToast } from '../contexts/ToastContext'
+import { useEnvironment } from '../contexts/EnvironmentContext'
 import './Analytics.css'
 import Skeleton, { MetricCardsSkeleton, ChartSkeleton, TableSkeleton } from '../components/Skeleton'
 

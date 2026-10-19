@@ -35,6 +35,7 @@ import {
 import api from '../api/client'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useToast } from '../contexts/ToastContext'
+import realTimeService from '../services/realTimeService'
 import { CallCenterSkeleton } from '../components/Skeleton'
 import './CallCenter.css'
 

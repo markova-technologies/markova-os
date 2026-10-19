@@ -36,6 +36,7 @@ import {
 } from 'lucide-react'
 import api, { listCRMContacts } from '../api/client'
 import { useToast } from '../contexts/ToastContext'
+import { useEnvironment } from '../contexts/EnvironmentContext'
 import './CRM.css'
 import Skeleton, { TableSkeleton } from '../components/Skeleton'
 
