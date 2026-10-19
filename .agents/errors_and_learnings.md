@@ -4,6 +4,17 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-10-19] GitHub Push Protection Secret Interception & OAuth Token Redaction in Memory Ledger
+- **Error/Problem:**
+  - `git push origin main` was rejected with GitHub error `GH013: Repository rule violations found for refs/heads/main. Push cannot contain secrets (Google OAuth Access Token at .agents/skills/Memory/memory.md:1265)`.
+- **How it Happened:**
+  - A historical conversation transcript from Turn 15 contained a user-pasted callback URL containing a temporary Google OAuth access token (`ya29...`).
+  - When the historical logs were consolidated into `memory.md`, GitHub's automated secret scanning rejected the push to GitHub Enterprise/remote repository.
+- **Lesson Learned:**
+  1. Ran automated regex scans across `memory.md` to identify and redact sensitive tokens (`ya29.[a-zA-Z0-9_-]+` -> `[REDACTED_GOOGLE_OAUTH_TOKEN]`).
+  2. Amended the staged git commit (`git commit --amend --no-edit`) to purge the secret from the commit history entirely.
+  3. Successfully pushed branch `main` to `origin/main` (`8c2aa06..2d0fa0b`) with zero policy rejections.
+
 ### [2026-10-19] Dashboard Client Route Snag Crashes: Missing Imports in Call Center, Analytics Center, and CRM
 - **Error/Problem:**
   1. Navigating to the **Call Center** (`/call-center`) route triggered React Error Boundary (`This page hit a snag`) displaying `ReferenceError: realTimeService is not defined`.

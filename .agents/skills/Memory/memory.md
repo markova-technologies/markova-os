@@ -12982,3 +12982,32 @@ Each page failed at runtime inside its React render lifecycle due to missing mod
 - Executed `npm run build` in `apps/client-dashboard/` (Vite 6.4.3). All 3 page chunks (`CallCenter-Dm5WjecJ.js`, `AnalyticsCenter-RtsbQKAU.js`, `CRM-B18zKEIA.js`) compiled cleanly with zero syntax or bundling errors.
 - Documented root causes and prevention in `.agents/errors_and_learnings.md`.
 ---
+
+
+### Turn 149
+#### 👤 User Prompt:
+Okay push it if you haven't
+
+#### 🤖 Agent Response:
+All changes have been successfully committed and pushed to the remote repository `origin/main`!
+
+### 📦 Commits Pushed to `origin/main`:
+1. **`90a8d37`**: `fix(client-dashboard): resolve runtime ReferenceErrors in Call Center, Analytics, and CRM`
+   - Added `import realTimeService from '../services/realTimeService'` to [CallCenter.jsx](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/apps/client-dashboard/src/pages/CallCenter.jsx).
+   - Added `import { useEnvironment } from '../contexts/EnvironmentContext'` to [AnalyticsCenter.jsx](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/apps/client-dashboard/src/pages/AnalyticsCenter.jsx).
+   - Added `import { useEnvironment } from '../contexts/EnvironmentContext'` to [CRM.jsx](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/apps/client-dashboard/src/pages/CRM.jsx).
+   - Guarded [SystemHealthBar.jsx](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/apps/client-dashboard/src/components/SystemHealthBar.jsx) against null/empty API URLs.
+   - Verified 100% clean production Vite bundle compilation (`npm run build`).
+
+2. **`2d0fa0b`**: `feat(core): production security remediations, performance indexes, and skill suites`
+   - Hardened services, Docker healthchecks, and internal gateway HMAC security context.
+   - Added database performance indexes migration [023_performance_indexes.sql](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/infrastructure/migrations/023_performance_indexes.sql).
+   - Integrated full suites for Emil Kowalski animation design, Taste UI skills, and Playwright E2E testing.
+   - Enacted perpetual conversation memory tracking rules in [.agents/AGENTS.md](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/.agents/AGENTS.md).
+   - Cleaned historical tokens to satisfy GitHub Push Protection rules.
+
+### 🚀 Remote Status:
+- **Repository**: `https://github.com/markova-technologies/markova-os.git`
+- **Branch**: `main` (up to date with `origin/main`, commit `2d0fa0b`)
+- **Working Tree**: Clean (`nothing to commit, working tree clean`)
+---
