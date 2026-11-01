@@ -30,7 +30,8 @@ import {
   Info,
   Clock,
   Radio,
-  Edit3
+  Edit3,
+  Loader2
 } from 'lucide-react'
 import { 
   getStudioData,
@@ -49,6 +50,7 @@ import {
   connectKnowledgeToAgent,
   disconnectKnowledgeFromAgent,
   listTools, 
+  createTool,
   getAgentTools,
   connectToolToAgent,
   disconnectToolFromAgent,
@@ -88,6 +90,14 @@ const AgentStudio = () => {
   const [connectedKnowledge, setConnectedKnowledge] = useState([])
   const [companyTools, setCompanyTools] = useState([])
   const [connectedTools, setConnectedTools] = useState([])
+  const [isAddToolModalOpen, setIsAddToolModalOpen] = useState(false)
+  const [newToolForm, setNewToolForm] = useState({
+    name: '',
+    description: '',
+    webhook_url: '',
+    method: 'POST'
+  })
+  const [isCreatingTool, setIsCreatingTool] = useState(false)
 
   // Prompt Suggester UI state
   const [showSuggestions, setShowSuggestions] = useState(false)
@@ -543,6 +553,45 @@ const AgentStudio = () => {
     } catch (e) {
       console.error("Tool toggle error:", e);
       showError("Failed to update tool connection.");
+    }
+  };
+
+  const handleCreateCustomTool = async (e) => {
+    if (e) e.preventDefault();
+    if (!newToolForm.name.trim()) {
+      showError("Please enter a tool function name.");
+      return;
+    }
+    if (!newToolForm.webhook_url.trim()) {
+      showError("Please enter a target webhook URL.");
+      return;
+    }
+
+    setIsCreatingTool(true);
+    try {
+      const res = await createTool({
+        name: newToolForm.name.trim(),
+        description: newToolForm.description.trim(),
+        webhook_url: newToolForm.webhook_url.trim(),
+        method: newToolForm.method || 'POST'
+      });
+
+      const created = res.data;
+      if (created) {
+        setCompanyTools(prev => [created, ...prev.filter(t => t.id !== created.id)]);
+        if (editingAgent?.id) {
+          await connectToolToAgent(editingAgent.id, created.id);
+          setConnectedTools(prev => [created, ...prev.filter(t => t.id !== created.id)]);
+        }
+        success(`Webhook tool "${created.name}" created and connected!`);
+        setIsAddToolModalOpen(false);
+        setNewToolForm({ name: '', description: '', webhook_url: '', method: 'POST' });
+      }
+    } catch (err) {
+      console.error("Create tool error:", err);
+      showError("Failed to create webhook tool.");
+    } finally {
+      setIsCreatingTool(false);
     }
   };
 
@@ -1195,35 +1244,55 @@ const AgentStudio = () => {
             {/* ── Sub-Tab 5: Integrations ─────────────────────────────────── */}
             {builderTab === 'integrations' && (
               <motion.div className="panel-group" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
                   <div>
                     <h3 style={{ margin: 0, color: 'var(--text-main)', fontSize: '1.1rem' }}>Connected Webhook Tools</h3>
                     <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.82rem', color: '#71717a' }}>
                       Grant this agent authority to trigger external systems (SMS, CRM, ERP, Order Status) during calls.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => navigate('/app/tools')}
-                    style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-                  >
-                    <Plug size={14} /> Integration Hub <ExternalLink size={12} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      onClick={() => setIsAddToolModalOpen(true)}
+                      style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
+                      <Plus size={14} /> Add Webhook Tool
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => navigate('/app/integrations')}
+                      style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
+                      <Plug size={14} /> Integration Hub <ExternalLink size={12} />
+                    </button>
+                  </div>
                 </div>
 
                 {companyTools.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '2rem 1rem', background: 'rgba(255,255,255,0.02)', borderRadius: '0.75rem', border: '1px dashed var(--border-main)' }}>
                     <Plug size={32} style={{ color: '#71717a', marginBottom: '0.5rem' }} />
                     <p style={{ margin: 0, color: '#a1a1aa' }}>No tools registered in this organization.</p>
-                    <button 
-                      type="button" 
-                      className="btn btn-primary" 
-                      onClick={() => navigate('/app/tools')}
-                      style={{ marginTop: '0.75rem', fontSize: '0.82rem' }}
-                    >
-                      Add Webhook Tool
-                    </button>
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '0.75rem', marginTop: '0.75rem' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-primary" 
+                        onClick={() => setIsAddToolModalOpen(true)}
+                        style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                      >
+                        <Plus size={14} /> Add Webhook Tool
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary" 
+                        onClick={() => navigate('/app/integrations')}
+                        style={{ fontSize: '0.82rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                      >
+                        <Plug size={14} /> Browse Integration Hub
+                      </button>
+                    </div>
                   </div>
                 ) : (
                   <div className="bridge-list">
@@ -1386,6 +1455,206 @@ const AgentStudio = () => {
       ) : (
         renderBuilder()
       )}
+
+      {/* ── Add Webhook Tool Modal ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {isAddToolModalOpen && (
+          <motion.div
+            className="modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0,0,0,0.75)',
+              backdropFilter: 'blur(8px)',
+              zIndex: 1200,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}
+          >
+            <motion.div
+              className="modal-content"
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              style={{
+                background: 'var(--bg-card, #111b15)',
+                padding: '2rem',
+                borderRadius: '1.25rem',
+                width: '560px',
+                maxWidth: '92vw',
+                maxHeight: '90vh',
+                overflowY: 'auto',
+                border: '1px solid var(--border-main, #1f3b2b)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.25rem',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                  <div style={{ background: '#10b981', color: '#111b15', padding: '0.45rem', borderRadius: '0.5rem', display: 'flex' }}>
+                    <Plug size={18} />
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, color: 'var(--text-main, white)', fontSize: '1.15rem' }}>
+                      Add Webhook Tool
+                    </h3>
+                    <p style={{ margin: 0, fontSize: '0.78rem', color: '#71717a' }}>
+                      Grant this agent live API execution capabilities during calls
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsAddToolModalOpen(false)}
+                  style={{ background: 'none', border: 'none', color: '#888', fontSize: '1.5rem', cursor: 'pointer' }}
+                >
+                  &times;
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateCustomTool} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', color: '#a1a1aa', marginBottom: '0.35rem', fontWeight: 500 }}>
+                    Tool Function Name <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. create_lead or check_account_status"
+                    value={newToolForm.name}
+                    onChange={e => setNewToolForm({ ...newToolForm, name: e.target.value.trim().replace(/\s+/g, '_') })}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '0.5rem',
+                      background: 'var(--bg-main, #090e0b)',
+                      border: '1px solid var(--border-main, #1f3b2b)',
+                      color: 'var(--text-main, white)',
+                      fontSize: '0.88rem'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#71717a', marginTop: '0.2rem', display: 'block' }}>
+                    The function name the LLM invokes (alphanumeric and underscores only).
+                  </span>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.82rem', color: '#a1a1aa', marginBottom: '0.35rem', fontWeight: 500 }}>
+                    Description for AI Agent <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <textarea
+                    rows={3}
+                    placeholder="e.g. Captures customer name, phone number, and requested loan amount to create a lead in Awash Bank CRM."
+                    value={newToolForm.description}
+                    onChange={e => setNewToolForm({ ...newToolForm, description: e.target.value })}
+                    required
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '0.5rem',
+                      background: 'var(--bg-main, #090e0b)',
+                      border: '1px solid var(--border-main, #1f3b2b)',
+                      color: 'var(--text-main, white)',
+                      fontSize: '0.85rem',
+                      resize: 'vertical'
+                    }}
+                  />
+                  <span style={{ fontSize: '0.72rem', color: '#71717a', marginTop: '0.2rem', display: 'block' }}>
+                    Instructions telling the agent WHEN and WHY to call this tool.
+                  </span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '0.75rem' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', color: '#a1a1aa', marginBottom: '0.35rem', fontWeight: 500 }}>
+                      Method
+                    </label>
+                    <select
+                      value={newToolForm.method}
+                      onChange={e => setNewToolForm({ ...newToolForm, method: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 0.5rem',
+                        borderRadius: '0.5rem',
+                        background: 'var(--bg-main, #090e0b)',
+                        border: '1px solid var(--border-main, #1f3b2b)',
+                        color: 'var(--text-main, white)',
+                        fontSize: '0.88rem'
+                      }}
+                    >
+                      <option value="POST">POST</option>
+                      <option value="GET">GET</option>
+                      <option value="PUT">PUT</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.82rem', color: '#a1a1aa', marginBottom: '0.35rem', fontWeight: 500 }}>
+                      Webhook Target URL <span style={{ color: '#ef4444' }}>*</span>
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://api.yourbank.et/v1/leads or webhook URL"
+                      value={newToolForm.webhook_url}
+                      onChange={e => setNewToolForm({ ...newToolForm, webhook_url: e.target.value })}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem 1rem',
+                        borderRadius: '0.5rem',
+                        background: 'var(--bg-main, #090e0b)',
+                        border: '1px solid var(--border-main, #1f3b2b)',
+                        color: 'var(--text-main, white)',
+                        fontSize: '0.88rem'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem', paddingTop: '1rem', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      setIsAddToolModalOpen(false);
+                      navigate('/app/integrations');
+                    }}
+                    style={{ fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  >
+                    <ExternalLink size={12} /> Explore Integration Hub
+                  </button>
+
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      onClick={() => setIsAddToolModalOpen(false)}
+                      disabled={isCreatingTool}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="btn btn-primary"
+                      disabled={isCreatingTool}
+                      style={{ background: '#10b981', borderColor: '#10b981', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                    >
+                      {isCreatingTool ? <Loader2 size={14} className="spin" /> : <Check size={14} />}
+                      Save & Connect Tool
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Version Prompt Preview Modal ─────────────────────────────────── */}
       <AnimatePresence>

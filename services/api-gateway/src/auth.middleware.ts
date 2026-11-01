@@ -176,16 +176,19 @@ export class AuthMiddleware implements NestMiddleware {
     // 1. Authenticate via Tenant API Key (x-api-key Header or Authorization: Bearer mk_...)
     const isProduction = process.env.NODE_ENV === 'production';
 
+    const allowDemoAuth = process.env.ENABLE_DEMO_AUTH === 'true' && process.env.NODE_ENV !== 'production';
+
     if (apiKey) {
-      if (!isProduction && (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4')) {
-        const companyId = (req.headers['x-company-id'] as string) || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000000';
+      if (allowDemoAuth && (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4')) {
+        // SECURITY: Pin strictly to isolated sandbox tenant — prevent arbitrary bank ID spoofing via client headers
+        const companyId = '00000000-0000-0000-0000-000000000000';
         tenantContext = {
           tenantId: companyId,
           userId: 'api-key-auth',
           role: 'api',
           permissions: ['*'],
           subscriptionPlan: 'enterprise',
-          environment: apiKey.startsWith('mk_live_') ? 'live' : 'test',
+          environment: 'test',
         };
       } else {
         try {
@@ -219,15 +222,16 @@ export class AuthMiddleware implements NestMiddleware {
       }
     } else if (bearerToken) {
       // 2. Authenticate via JWT (Authorization: Bearer <jwt>)
-      if (!isProduction && bearerToken === 'demo-token') {
-        const companyId = (req.headers['x-company-id'] as string) || (req.headers['x-tenant-id'] as string) || '00000000-0000-0000-0000-000000000000';
+      if (allowDemoAuth && bearerToken === 'demo-token') {
+        // SECURITY: Pin strictly to isolated sandbox tenant — prevent arbitrary bank ID spoofing via client headers
+        const companyId = '00000000-0000-0000-0000-000000000000';
         tenantContext = {
           tenantId: companyId,
           userId: 'demo-user',
           role: 'owner',
           permissions: ['*'],
           subscriptionPlan: 'enterprise',
-          environment: (req.headers['x-markova-env'] as string) === 'live' ? 'live' : 'test',
+          environment: 'test',
           aud: 'authenticated',
         };
       } else {
@@ -246,10 +250,15 @@ export class AuthMiddleware implements NestMiddleware {
             return res.status(HttpStatus.FORBIDDEN).json({ error: 'Forbidden: Cannot use admin token for client routes' });
           }
 
+          const alg = unverifiedDecoded?.header?.alg;
+          if (alg !== 'RS256' && alg !== 'HS256') {
+            return res.status(HttpStatus.UNAUTHORIZED).json({ error: 'Unauthorized: Unsupported or invalid JWT algorithm' });
+          }
+
           let decoded: any;
           let userId: string;
 
-          if (unverifiedDecoded?.header?.alg === 'RS256') {
+          if (alg === 'RS256') {
             const pubKey = await this.getAuthPublicKey();
             decoded = jwt.verify(bearerToken, pubKey, { algorithms: ['RS256'] }) as any;
             userId = decoded.userId || decoded.sub;

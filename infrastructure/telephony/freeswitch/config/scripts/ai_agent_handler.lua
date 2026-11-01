@@ -4,9 +4,11 @@
 
 session:answer()
 
-local backend_url = "https://markova-ai-backend-us.onrender.com"
+local backend_url = os.getenv("ORCHESTRATOR_URL") or os.getenv("BACKEND_URL") or "https://markova-ai-backend-us.onrender.com"
 local uuid = session:get_uuid()
 local caller_id = session:getVariable("caller_id_number") or "sip-user"
+local destination_number = session:getVariable("destination_number") or "8888"
+local INTERNAL_SECRET = os.getenv("GATEWAY_SECRET") or os.getenv("WEBHOOK_SECRET") or "mk_whsec_default"
 
 -- Windows-compatible temp directory
 local temp_dir = os.getenv("TEMP") or "C:\\Temp"
@@ -52,8 +54,8 @@ function http_post(endpoint, post_data)
     freeswitch.consoleLog("info", "[AI Agent] POST " .. url .. "\n")
     
     local cmd = string.format(
-        'curl.exe -s --connect-timeout 10 --max-time 90 -X POST "%s" -d "%s"',
-        url, post_data
+        'curl.exe -s --connect-timeout 10 --max-time 90 -H "X-Markova-Internal-Secret: %s" -X POST "%s" -d "%s"',
+        INTERNAL_SECRET, url, post_data
     )
     
     local handle = io.popen(cmd)
@@ -73,8 +75,8 @@ function upload_audio(filepath)
     freeswitch.consoleLog("info", "[AI Agent] Uploading audio: " .. filepath .. " to " .. url .. "\n")
     
     local cmd = string.format(
-        'curl.exe -s --connect-timeout 10 --max-time 90 -X POST "%s" -F "AudioFile=@%s" -F "CallSid=%s"',
-        url, filepath, uuid
+        'curl.exe -s --connect-timeout 10 --max-time 90 -H "X-Markova-Internal-Secret: %s" -X POST "%s" -F "AudioFile=@%s" -F "CallSid=%s" -F "To=%s" -F "From=%s"',
+        INTERNAL_SECRET, url, filepath, uuid, destination_number, caller_id
     )
     
     local handle = io.popen(cmd)
@@ -203,8 +205,8 @@ function stream_response(rec_file)
     pcall(function() os.remove(out_file) end)
     pcall(function() os.remove(header_file) end)
     local cmd = string.format(
-        'curl.exe -s --compressed --tcp-nodelay -D "%s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "caller_id=%s" -o "%s" --connect-timeout 10 --max-time 90',
-        header_file, url, rec_file, uuid, caller_id, out_file
+        'curl.exe -s --compressed --tcp-nodelay -D "%s" -H "X-Markova-Internal-Secret: %s" -X POST "%s" -F "audio_file=@%s;type=audio/wav" -F "call_id=%s" -F "CallSid=%s" -F "caller_id=%s" -F "From=%s" -F "To=%s" -o "%s" --connect-timeout 10 --max-time 90',
+        header_file, INTERNAL_SECRET, url, rec_file, uuid, uuid, caller_id, caller_id, destination_number, out_file
     )
     freeswitch.consoleLog("info", "[AI Agent] Calling /sip-response...\n")
     os.execute(cmd)
@@ -256,7 +258,7 @@ warm_backend()
 
 -- 1. Cache the static greeting locally. Repeat calls avoid both the greeting
 -- endpoint and audio download, while invalid/non-WAV cache entries self-heal.
-local greeting_cache = temp_dir .. "\\markova_shop_greeting_8k.wav"
+local greeting_cache = temp_dir .. "\\markova_greeting_" .. destination_number .. "_8k.wav"
 if is_valid_wav(greeting_cache) then
     freeswitch.consoleLog("info", "[AI Agent] Greeting cache hit\n")
     play_with_barge_in(greeting_cache, true)
@@ -264,7 +266,7 @@ else
     pcall(function() os.remove(greeting_cache) end)
     local greeting_started = now_ms()
     freeswitch.consoleLog("info", "[AI Agent] Greeting cache miss; fetching greeting...\n")
-    local greeting = http_post("/incoming-call", "From=" .. caller_id .. "&CallSid=" .. uuid)
+    local greeting = http_post("/incoming-call", "From=" .. caller_id .. "&To=" .. destination_number .. "&CallSid=" .. uuid)
     local greeting_file_url = string.match(greeting, "<Play>(.-)</Play>")
     if greeting_file_url then
         if string.sub(greeting_file_url, 1, 1) == "/" then

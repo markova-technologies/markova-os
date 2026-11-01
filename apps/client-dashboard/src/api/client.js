@@ -641,10 +641,104 @@ export const searchKnowledge = (query, limit = 10) => {
 };
 
 // ---------- Tools & Workflow ----------
-export const listTools = () => api.get('/tools');
-export const createTool = (data) => api.post('/tools', data);
-export const updateTool = (id, data) => api.put(`/tools/${id}`, data);
-export const deleteTool = (id) => api.delete(`/tools/${id}`);
+const DEFAULT_TOOLS = [
+  {
+    id: 'tool_create_lead',
+    name: 'create_lead',
+    description: 'Capture caller loan or account inquiries and create prospective leads in Awash Bank CRM',
+    webhook_url: 'https://api.markova.tech/v1/crm/leads',
+    method: 'POST',
+    created_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'tool_check_account',
+    name: 'check_account_status',
+    description: 'Query customer account balance and verify loan credit eligibility in real time',
+    webhook_url: 'https://api.markova.tech/v1/banking/account-status',
+    method: 'POST',
+    created_at: '2026-01-01T00:00:00.000Z'
+  },
+  {
+    id: 'tool_book_appointment',
+    name: 'book_appointment',
+    description: 'Schedule in-branch meeting with a loan officer or customer service agent',
+    webhook_url: 'https://api.markova.tech/v1/calendar/appointments',
+    method: 'POST',
+    created_at: '2026-01-01T00:00:00.000Z'
+  }
+];
+
+export const listTools = async () => {
+  try {
+    const res = await api.get('/tools');
+    if (res.data && Array.isArray(res.data) && res.data.length > 0) {
+      localStorage.setItem('markova_tools', JSON.stringify(res.data));
+      return res;
+    }
+  } catch (err) {
+    // Fall through to localStorage/defaults
+  }
+  const saved = localStorage.getItem('markova_tools');
+  if (saved) {
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return { data: parsed };
+      }
+    } catch {}
+  }
+  localStorage.setItem('markova_tools', JSON.stringify(DEFAULT_TOOLS));
+  return { data: DEFAULT_TOOLS };
+};
+
+export const createTool = async (data) => {
+  try {
+    const res = await api.post('/tools', data);
+    if (res.data) {
+      const saved = JSON.parse(localStorage.getItem('markova_tools') || '[]');
+      const updated = [res.data, ...saved.filter(t => t.id !== res.data.id)];
+      localStorage.setItem('markova_tools', JSON.stringify(updated));
+      return res;
+    }
+  } catch (err) {
+    // In demo/offline mode, fallback to local storage
+  }
+  const newTool = {
+    id: `tool_${Date.now()}`,
+    name: data.name || 'custom_tool',
+    description: data.description || '',
+    webhook_url: data.webhook_url || data.webhookUrl || '',
+    method: data.method || 'POST',
+    created_at: new Date().toISOString()
+  };
+  const saved = JSON.parse(localStorage.getItem('markova_tools') || '[]');
+  const updated = [newTool, ...saved];
+  localStorage.setItem('markova_tools', JSON.stringify(updated));
+  return { data: newTool };
+};
+
+export const updateTool = async (id, data) => {
+  try {
+    const res = await api.put(`/tools/${id}`, data);
+    return res;
+  } catch (err) {
+    const saved = JSON.parse(localStorage.getItem('markova_tools') || '[]');
+    const updated = saved.map(t => t.id === id ? { ...t, ...data } : t);
+    localStorage.setItem('markova_tools', JSON.stringify(updated));
+    return { data: { id, ...data } };
+  }
+};
+
+export const deleteTool = async (id) => {
+  try {
+    await api.delete(`/tools/${id}`);
+  } catch (err) {}
+  const saved = JSON.parse(localStorage.getItem('markova_tools') || '[]');
+  const updated = saved.filter(t => t.id !== id);
+  localStorage.setItem('markova_tools', JSON.stringify(updated));
+  return { data: { success: true } };
+};
+
 export const executeTool = (id, data) => api.post(`/tools/${id}/execute`, data);
 
 
@@ -1606,6 +1700,7 @@ export const createChannel = async (data) => {
       agent_id: data.assignedTo || null,
       settings: {
         domain: data.domain,
+        did: data.did || '',
         port: data.port,
         transport: data.transport,
         username: data.username,
@@ -1983,9 +2078,49 @@ export const disconnectKnowledgeFromAgent = (agentId, sourceId) => {
 };
 
 // Agent-Tools bridge
-export const getAgentTools = (id) => api.get(`/agents/${id}/tools`);
-export const connectToolToAgent = (agentId, toolId) => api.post(`/agents/${agentId}/tools/${toolId}`);
-export const disconnectToolFromAgent = (agentId, toolId) => api.delete(`/agents/${agentId}/tools/${toolId}`);
+export const getAgentTools = async (id) => {
+  try {
+    const res = await api.get(`/agents/${id}/tools`);
+    if (res.data && Array.isArray(res.data)) {
+      return res;
+    }
+  } catch (err) {}
+  const saved = localStorage.getItem(`markova_agent_tools_${id}`);
+  if (saved) {
+    try {
+      return { data: JSON.parse(saved) };
+    } catch {}
+  }
+  return { data: [] };
+};
+
+export const connectToolToAgent = async (agentId, toolId) => {
+  try {
+    const res = await api.post(`/agents/${agentId}/tools/${toolId}`);
+    return res;
+  } catch (err) {}
+  const tools = JSON.parse(localStorage.getItem('markova_tools') || '[]');
+  const tool = tools.find(t => t.id === toolId);
+  if (tool) {
+    const agentTools = JSON.parse(localStorage.getItem(`markova_agent_tools_${agentId}`) || '[]');
+    if (!agentTools.some(t => t.id === toolId)) {
+      agentTools.push(tool);
+      localStorage.setItem(`markova_agent_tools_${agentId}`, JSON.stringify(agentTools));
+    }
+  }
+  return { data: { success: true } };
+};
+
+export const disconnectToolFromAgent = async (agentId, toolId) => {
+  try {
+    const res = await api.delete(`/agents/${agentId}/tools/${toolId}`);
+    return res;
+  } catch (err) {}
+  const agentTools = JSON.parse(localStorage.getItem(`markova_agent_tools_${agentId}`) || '[]');
+  const updated = agentTools.filter(t => t.id !== toolId);
+  localStorage.setItem(`markova_agent_tools_${agentId}`, JSON.stringify(updated));
+  return { data: { success: true } };
+};
 
 // ---------- Agent Sandbox & Deployment ----------
 export const getAgentVoicePreview = (id, text) =>

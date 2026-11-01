@@ -39,8 +39,14 @@ const ResetPassword = () => {
       return
     }
 
-    if (password.length < 6) {
-      setMessage('Password must be at least 6 characters')
+    if (password.length < 12) {
+      setMessage('Password must be at least 12 characters')
+      setStatus('error')
+      return
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/.test(password)) {
+      setMessage('Password must contain uppercase, lowercase, a number, and a special character')
       setStatus('error')
       return
     }

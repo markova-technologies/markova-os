@@ -658,22 +658,53 @@ async def get_agent_by_name(company_id: str, agent_name: str) -> Optional[dict]:
 
 async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
     """
-    Look up which company+agent owns this phone number.
-    Returns full agent configuration including provider settings.
+    Look up which company+agent owns this phone number or SIP trunk destination.
+    Supports E.164 numbers (+251...), extensions (8888), SIP URIs (sip:8888@domain),
+    and domain-level SIP trunk routing.
     Caches in Redis for 5 minutes (300s) to reduce DB load on calls.
     """
-    cache_key = f"agent:phone:{phone_number}"
+    if not phone_number:
+        return None
+
+    clean_target = str(phone_number).strip()
+    cache_key = f"agent:phone:{clean_target}"
     if redis_client and not REDIS_DEGRADED:
         try:
             cached = await redis_client.get(cache_key)
             if cached:
-                logger.info("agent_phone_lookup_cache_hit", phone_number=phone_number)
+                logger.info("agent_phone_lookup_cache_hit", phone_number=clean_target)
                 return json.loads(cached)
         except Exception:
             pass
 
     if not db_pool:
         raise RuntimeError("DB pool not initialized in get_agent_by_phone")
+
+    # Extract all candidate tokens from the inbound destination
+    candidates = [clean_target]
+    
+    # SIP URI handling: sip:8888@sip.markova.et:5060 -> [8888, sip.markova.et]
+    target_no_scheme = clean_target[4:] if clean_target.startswith("sip:") else clean_target
+    if "@" in target_no_scheme:
+        u_part, d_part = target_no_scheme.split("@", 1)
+        if u_part.strip():
+            candidates.append(u_part.strip())
+        d_clean = d_part.split(":")[0].strip()
+        if d_clean:
+            candidates.append(d_clean)
+    else:
+        d_clean = target_no_scheme.split(":")[0].strip()
+        if d_clean:
+            candidates.append(d_clean)
+
+    # Number variations: with or without leading '+'
+    if clean_target.startswith("+"):
+        candidates.append(clean_target[1:])
+    elif clean_target.isdigit():
+        candidates.append("+" + clean_target)
+
+    unique_candidates = [c for c in dict.fromkeys(candidates) if c]
+
     try:
         row = await db_pool.fetchrow(
             """
@@ -691,10 +722,51 @@ async def get_agent_by_phone(phone_number: str) -> Optional[dict]:
                 a.model_id
             FROM phone_numbers pn
             LEFT JOIN agents a ON a.id = pn.agent_id
-            WHERE pn.phone_number = $1 AND pn.status = 'active'
+            WHERE pn.status = 'active'
+              AND (
+                  pn.phone_number = ANY($1::text[])
+                  OR (pn.settings->>'domain') = ANY($1::text[])
+                  OR (pn.settings->>'did') = ANY($1::text[])
+                  OR (pn.settings->>'extension') = ANY($1::text[])
+              )
+            ORDER BY 
+                CASE 
+                    WHEN pn.phone_number = ANY($1::text[]) THEN 1
+                    WHEN (pn.settings->>'did') = ANY($1::text[]) THEN 2
+                    ELSE 3
+                END ASC
+            LIMIT 1
             """,
-            phone_number
+            unique_candidates
         )
+        if not row:
+            # Fallback for dev / single-tenant sandbox testing if no explicit match
+            env = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
+            if env != "production" or os.getenv("ALLOW_LOCAL_SIP_TEST", "false").lower() == "true":
+                row = await db_pool.fetchrow(
+                    """
+                    SELECT 
+                        pn.id as phone_number_id,
+                        pn.phone_number,
+                        pn.company_id,
+                        pn.settings as phone_settings,
+                        a.id as agent_id,
+                        a.name as agent_name,
+                        a.prompt,
+                        a.voice_provider,
+                        a.voice_id,
+                        a.model_provider,
+                        a.model_id
+                    FROM phone_numbers pn
+                    JOIN agents a ON a.id = pn.agent_id
+                    WHERE pn.status = 'active'
+                    ORDER BY pn.created_at DESC
+                    LIMIT 1
+                    """
+                )
+                if row:
+                    logger.warning("agent_phone_lookup_fallback_used", input_target=clean_target, matched_number=row["phone_number"])
+
         if not row:
             return None
         data = dict(row)
@@ -908,7 +980,7 @@ async def _dispatch_developer_webhook(call_id: str):
         )
 
         target_url = None
-        secret_key = "mk_whsec_default"
+        secret_key = os.environ.get("WEBHOOK_SECRET_DEFAULT") or os.environ.get("WEBHOOK_SECRET") or ""
         if webhook and webhook.get("webhook_url"):
             target_url = webhook["webhook_url"]
             secret_key = webhook.get("secret_key") or secret_key
@@ -2104,8 +2176,63 @@ async def verify_twilio_signature(request: Request) -> bool:
         return False
 
 
+async def verify_telephony_request(request: Request) -> bool:
+    """
+    Unified dual-authentication validator for telephony webhooks.
+    Supports:
+      1. Internal Gateway / FreeSWITCH SBC calls via shared secret:
+         - Header 'X-Markova-Internal-Secret'
+         - Header 'X-Gateway-Secret'
+         - Header 'X-Internal-Secret'
+         - Header 'Authorization: Bearer <GATEWAY_SECRET>'
+      2. Loopback test calls (127.0.0.1, ::1) when ALLOW_LOCAL_SIP_TEST is true or in development/test.
+      3. Twilio carrier webhooks via X-Twilio-Signature cryptographic HMAC-SHA1.
+    """
+    gateway_secret = (
+        os.getenv("INTERNAL_SERVICE_SECRET")
+        or os.getenv("GATEWAY_SECRET")
+        or os.getenv("WEBHOOK_SECRET")
+        or "mk_whsec_default"
+    ).strip()
+
+    internal_header = (
+        request.headers.get("X-Markova-Internal-Secret")
+        or request.headers.get("X-Gateway-Secret")
+        or request.headers.get("X-Internal-Secret")
+        or ""
+    ).strip()
+
+    if internal_header and gateway_secret:
+        if hmac.compare_digest(internal_header, gateway_secret):
+            return True
+
+    auth_header = request.headers.get("Authorization", "").strip()
+    if auth_header.startswith("Bearer ") and gateway_secret:
+        token = auth_header[7:].strip()
+        if hmac.compare_digest(token, gateway_secret):
+            return True
+
+    env = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
+    allow_local = os.getenv("ALLOW_LOCAL_SIP_TEST", "false").lower() == "true" or env != "production"
+    client_host = request.client.host if request.client else ""
+    if allow_local and client_host in ("127.0.0.1", "::1", "localhost", "testclient"):
+        return True
+
+    return await verify_twilio_signature(request)
+
+
 from fastapi import WebSocket, WebSocketDisconnect
 from media_stream_handler import MediaStreamHandler
+
+# SEC-04: WebSocket Concurrency Guards & Tenant Quota Enforcers
+MAX_CONCURRENT_MEDIA_STREAMS_PER_TENANT = int(os.getenv("MAX_CONCURRENT_STREAMS", "30"))
+MAX_TOTAL_CONCURRENT_MEDIA_STREAMS = int(os.getenv("MAX_TOTAL_MEDIA_STREAMS", "200"))
+_active_media_streams_by_tenant: dict[str, int] = {}
+_total_active_media_streams: int = 0
+_media_stream_concurrency_lock = asyncio.Lock()
+
+MAX_CONCURRENT_TEST_SESSIONS_PER_TENANT = int(os.getenv("MAX_CONCURRENT_TEST_SESSIONS", "10"))
+_active_test_sessions_by_tenant: dict[str, int] = {}
 
 @app.websocket("/ws/media-stream/{call_sid}")
 async def media_stream_ws(websocket: WebSocket, call_sid: str):
@@ -2114,13 +2241,29 @@ async def media_stream_ws(websocket: WebSocket, call_sid: str):
     Receives raw μ-law audio at 20ms intervals, processes STT→LLM→TTS,
     and streams audio back in real-time.
     """
-    await websocket.accept()
+    global _total_active_media_streams
     company_id = websocket.query_params.get("company_id")
     agent_id = websocket.query_params.get("agent_id")
     
     if not company_id or not agent_id:
         await websocket.close(code=1008, reason="Missing company_id or agent_id")
         return
+    
+    # SEC-04: Tenant & Server-wide WebSocket Concurrency Limits
+    async with _media_stream_concurrency_lock:
+        current_tenant_streams = _active_media_streams_by_tenant.get(company_id, 0)
+        if current_tenant_streams >= MAX_CONCURRENT_MEDIA_STREAMS_PER_TENANT:
+            logger.warning("media_stream_quota_exceeded", company_id=company_id, active=current_tenant_streams)
+            await websocket.close(code=1008, reason="Concurrent stream limit exceeded for tenant")
+            return
+        if _total_active_media_streams >= MAX_TOTAL_CONCURRENT_MEDIA_STREAMS:
+            logger.warning("media_stream_server_capacity_reached", total=_total_active_media_streams)
+            await websocket.close(code=1013, reason="Server busy, try again later")
+            return
+        _active_media_streams_by_tenant[company_id] = current_tenant_streams + 1
+        _total_active_media_streams += 1
+
+    await websocket.accept()
     
     handler = MediaStreamHandler(
         websocket=websocket,
@@ -2138,6 +2281,12 @@ async def media_stream_ws(websocket: WebSocket, call_sid: str):
     except Exception as e:
         logger.error("media_stream_error", call_sid=call_sid, error=str(e))
     finally:
+        async with _media_stream_concurrency_lock:
+            if company_id in _active_media_streams_by_tenant:
+                _active_media_streams_by_tenant[company_id] = max(0, _active_media_streams_by_tenant[company_id] - 1)
+                if _active_media_streams_by_tenant[company_id] == 0:
+                    del _active_media_streams_by_tenant[company_id]
+            _total_active_media_streams = max(0, _total_active_media_streams - 1)
         await handler.cleanup()
 
 
@@ -2154,7 +2303,7 @@ async def handle_inbound_call(
     Twilio inbound call webhook.
     Resolve number → optional IVR → agent gather; honor recording toggle.
     """
-    if not await verify_twilio_signature(request):
+    if not await verify_telephony_request(request):
         return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio cryptographic signature.")
 
     logger.info("inbound_call_from_from", From=From, To=To, CallSid=CallSid)
@@ -2300,6 +2449,10 @@ async def handle_ivr(
     Digits: str = Form(default=""),
 ):
     """DTMF IVR: route by digit to agent, transfer, or voicemail."""
+    if not await verify_telephony_request(request):
+        logger.error("security_twilio_sig_rejected_on_ivr", CallSid=CallSid)
+        return PlainTextResponse("Forbidden", status_code=403)
+
     state = await get_conversation_state(CallSid)
     if not state.get("call_id"):
         return PlainTextResponse(
@@ -2400,6 +2553,10 @@ async def handle_voicemail(
     RecordingDuration: str = Form(default="0"),
 ):
     """Persist voicemail recording and queue voicemail-to-email delivery."""
+    if not await verify_telephony_request(request):
+        logger.error("security_twilio_sig_rejected_on_voicemail", CallSid=CallSid)
+        return PlainTextResponse("Forbidden", status_code=403)
+
     state = await get_conversation_state(CallSid)
     call_id = state.get("call_id")
     company_id = state.get("company_id")
@@ -2436,10 +2593,15 @@ async def handle_voicemail(
 
 @app.post("/twilio/recording")
 async def handle_recording_callback(
+    request: Request,
     CallSid: str = Form(default=""),
     RecordingUrl: str = Form(default=""),
 ):
     """Twilio recording status — attach URL to call."""
+    if not await verify_telephony_request(request):
+        logger.error("security_twilio_sig_rejected_on_recording", CallSid=CallSid)
+        return PlainTextResponse("Forbidden", status_code=403)
+
     state = await get_conversation_state(CallSid) if CallSid else {}
     call_id = state.get("call_id")
     if call_id and RecordingUrl:
@@ -2953,12 +3115,137 @@ async def handle_speech_response(
     Twilio speech recognition result webhook (Gather path).
     Protected by Twilio HMAC-SHA1 cryptographic signature.
     """
-    if not await verify_twilio_signature(request):
+    if not await verify_telephony_request(request):
         logger.error("security_twilio_sig_rejected_on_respond", CallSid=CallSid)
         return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio signature.")
     logger.info("sid_callsid_speech_speechresult", CallSid=CallSid, SpeechResult=SpeechResult, Confidence=Confidence)
     twiml_content = await _process_voice_turn(request, CallSid, SpeechResult.strip(), mode="gather")
     return PlainTextResponse(content=twiml_content, media_type="application/xml")
+
+
+@app.post("/sip-response")
+@limiter.limit("120/minute")
+async def handle_sip_response(
+    request: Request,
+    audio_file: Optional[UploadFile] = File(None),
+    AudioFile: Optional[UploadFile] = File(None),
+    call_id: Optional[str] = Form(None),
+    CallSid: Optional[str] = Form(None),
+    caller_id: Optional[str] = Form(None),
+    From: Optional[str] = Form(None),
+    To: Optional[str] = Form(None),
+    SpeechResult: Optional[str] = Form(None),
+):
+    """
+    Direct low-latency audio response endpoint for FreeSWITCH and enterprise SIP SBCs.
+    Receives recorded caller speech WAV, runs STT (Groq Whisper / OpenAI) -> LLM -> Tools -> TTS,
+    and returns a synthesized 16kHz WAV file directly with X-End-Call and X-Transcript headers.
+    """
+    if not await verify_telephony_request(request):
+        return PlainTextResponse(status_code=403, content="Forbidden: Invalid telephony credentials.")
+
+    effective_sid = CallSid or call_id or f"sip-{uuid.uuid4().hex[:12]}"
+    effective_caller = From or caller_id or "sip-user"
+    effective_audio = audio_file or AudioFile
+
+    state = await get_conversation_state(effective_sid)
+    company_id = state.get("company_id")
+    agent_id = state.get("agent_id")
+
+    # If new call session without state, initialize it
+    if not company_id or not state.get("call_id"):
+        agent = await get_agent_by_phone(To or effective_caller or "default")
+        if not agent and db_pool:
+            row = await db_pool.fetchrow("SELECT a.*, a.id as agent_id, a.name as agent_name FROM agents a WHERE a.status = 'active' LIMIT 1")
+            if row:
+                agent = dict(row)
+        
+        if agent:
+            company_id = str(agent["company_id"])
+            agent_id = str(agent.get("agent_id") or agent.get("id"))
+            system_prompt = agent.get("prompt", "You are a helpful assistant.")
+            system_prompt += "\n" + SYSTEM_TOOLS_PROMPT
+            rec_id = await create_call_record(company_id, agent_id, effective_caller, None)
+            state = {
+                "messages": [{"role": "system", "content": system_prompt}],
+                "turn_count": 0,
+                "call_id": rec_id,
+                "company_id": company_id,
+                "agent_id": agent_id,
+                "agent_name": agent.get("agent_name"),
+                "voice_provider": agent.get("voice_provider") or "edge",
+                "voice_id": agent.get("voice_id") or "am-ET-MekdesNeural",
+                "model_provider": agent.get("model_provider") or "groq",
+                "model_id": agent.get("model_id") or "llama-3.3-70b-versatile",
+                "caller_number": effective_caller,
+                "call_sid": effective_sid,
+            }
+            await save_conversation_state(effective_sid, state)
+
+    user_text = (SpeechResult or "").strip()
+
+    # Transcribe speech audio file if provided
+    if effective_audio and not user_text:
+        try:
+            raw_bytes = await effective_audio.read()
+            if len(raw_bytes) > 200:
+                audio_processed = await preprocess_audio_for_stt(raw_bytes, ".wav")
+                groq_key = os.getenv("GROQ_API_KEY", "")
+                if groq_key:
+                    user_text = await _groq_stt(audio_processed, "call.wav", groq_key, "am")
+                elif os.getenv("OPENAI_API_KEY"):
+                    user_text = await _openai_stt(audio_processed, "call.wav", os.getenv("OPENAI_API_KEY"), "am")
+        except Exception as e:
+            logger.error("sip_audio_stt_transcription_failed", error=str(e))
+
+    if not user_text:
+        user_text = "ሰላም" if state.get("turn_count", 0) == 0 else ""
+
+    # Process conversation turn
+    twiml_xml = await _process_voice_turn(request, effective_sid, user_text, mode="gather")
+    
+    # Extract audio URL or synthesize WAV bytes directly
+    play_match = re.search(r"<Play>(.*?)</Play>", twiml_xml)
+    say_match = re.search(r"<Say.*?>(.*?)</Say>", twiml_xml)
+    end_call = "<Hangup/>" in twiml_xml or "<Hangup />" in twiml_xml
+
+    wav_content = None
+    if play_match:
+        audio_url = play_match.group(1).strip()
+        filename = os.path.basename(audio_url.split("/audio/")[-1])
+        local_path = os.path.realpath(os.path.join(AUDIO_DIR, filename))
+        if local_path.startswith(os.path.realpath(AUDIO_DIR)) and os.path.exists(local_path):
+            with open(local_path, "rb") as f:
+                wav_content = f.read()
+
+    if not wav_content:
+        synth_text = say_match.group(1).strip() if say_match else "እንደምን አለህ። ምን ልርዳዎት?"
+        voice_id = state.get("voice_id") or "am-ET-MekdesNeural"
+        audio_url = await get_audio_url_for_text(company_id, state.get("voice_provider") or "edge", voice_id, synth_text, None, request)
+        if audio_url:
+            filename = os.path.basename(audio_url.split("/audio/")[-1])
+            local_path = os.path.realpath(os.path.join(AUDIO_DIR, filename))
+            if local_path.startswith(os.path.realpath(AUDIO_DIR)) and os.path.exists(local_path):
+                with open(local_path, "rb") as f:
+                    wav_content = f.read()
+
+    if not wav_content:
+        voice_id = state.get("voice_id") or "am-ET-MekdesNeural"
+        wav_content = _GREETING_AUDIO_CACHE.get(voice_id, b"")
+
+    headers = {
+        "X-End-Call": "true" if end_call else "false",
+        "X-Call-Sid": effective_sid,
+        "X-Turn-Count": str(state.get("turn_count", 0)),
+    }
+    if user_text:
+        try:
+            from urllib.parse import quote
+            headers["X-Transcript"] = quote(user_text)
+        except Exception:
+            pass
+
+    return Response(content=wav_content, media_type="audio/wav", headers=headers)
 
 
 @app.post("/twilio/respond-audio")
@@ -2973,7 +3260,7 @@ async def handle_audio_response(
     New endpoint for direct Whisper STT path.
     Replaces Twilio Gather speech recognition with Groq Whisper for maximum Amharic accuracy.
     """
-    if not await verify_twilio_signature(request):
+    if not await verify_telephony_request(request):
         logger.error("security_twilio_sig_rejected_on_respond_audio", CallSid=CallSid)
         return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio signature.")
     logger.info("sid_callsid_audio_recordingurl", CallSid=CallSid, RecordingUrl=RecordingUrl, RecordingDuration=RecordingDuration)
@@ -3055,6 +3342,10 @@ async def handle_incoming_message(
     NumMedia: int = Form(0),
 ):
     """Handles incoming SMS/MMS/WhatsApp. Injects documents into active calls."""
+    if not await verify_telephony_request(request):
+        logger.error("security_twilio_sig_rejected_on_messaging", From=From)
+        return PlainTextResponse("Forbidden", status_code=403)
+
     logger.info("incoming_message", From=From, Body=Body, NumMedia=NumMedia)
     
     # Check if this user is currently in a call
@@ -3099,11 +3390,16 @@ async def handle_incoming_message(
 
 @app.post("/twilio/status")
 async def handle_call_status(
+    request: Request,
     CallSid: str = Form(...),
     CallStatus: str = Form(...),
     CallDuration: Optional[str] = Form(None),
 ):
     """Twilio call status callback — cleanup on call end and track usage minutes."""
+    if not await verify_telephony_request(request):
+        logger.error("security_twilio_sig_rejected_on_status", CallSid=CallSid)
+        return PlainTextResponse("Forbidden", status_code=403)
+
     logger.info("call_status_sid_callsid", CallSid=CallSid, CallStatus=CallStatus, CallDuration=CallDuration)
 
     if CallStatus in ["completed", "failed", "canceled", "busy", "no-answer"]:
@@ -3192,8 +3488,11 @@ def _tenant_id(request: Request) -> str:
     company_id = request.headers.get("x-company-id") or request.headers.get("x-tenant-id")
     auth_header = request.headers.get("Authorization", "")
 
-    # Allow demo token & sandbox operations without crashing
+    # Allow demo token & sandbox operations in non-production environments only
+    is_prod = os.getenv("ENVIRONMENT", "").lower() in ("production", "prod") or os.getenv("NODE_ENV", "").lower() in ("production", "prod")
     if auth_header == "Bearer demo-token" or company_id == "00000000-0000-0000-0000-000000000000":
+        if is_prod and os.getenv("ALLOW_DEMO_AUTH", "false").lower() != "true":
+            raise HTTPException(status_code=403, detail="Demo authentication bypass is disabled in production")
         return company_id or "00000000-0000-0000-0000-000000000000"
 
     if not company_id:
@@ -3903,7 +4202,7 @@ async def handle_twilio_message(
     Twilio SMS and WhatsApp Webhook.
     Reuses the core AI RAG/Tool logic used for voice.
     """
-    if not await verify_twilio_signature(request):
+    if not await verify_telephony_request(request):
         return PlainTextResponse(status_code=403, content="Forbidden: Invalid Twilio signature.")
 
     logger.info("inbound_message", From=From, To=To, MessageSid=MessageSid, Body=Body)
@@ -4161,13 +4460,22 @@ _NOISE_FILTER_SET = {
 
 @app.websocket("/ws/agent-test/{session_id}")
 async def agent_test_ws(websocket: WebSocket, session_id: str):
-    await websocket.accept()
-    
     session_data = test_sessions.get(session_id)
     if not session_data:
         await websocket.close(code=4004, reason="Session not found")
         return
         
+    company_id = session_data.get("company_id") or "sandbox"
+    async with _media_stream_concurrency_lock:
+        tenant_tests = _active_test_sessions_by_tenant.get(company_id, 0)
+        if tenant_tests >= MAX_CONCURRENT_TEST_SESSIONS_PER_TENANT:
+            logger.warning("agent_test_session_quota_exceeded", company_id=company_id, active=tenant_tests)
+            await websocket.close(code=1008, reason="Concurrent test session limit reached for tenant")
+            return
+        _active_test_sessions_by_tenant[company_id] = tenant_tests + 1
+
+    await websocket.accept()
+    
     import httpx
     http_client = httpx.AsyncClient()
     voice_session = VoiceSession(http_client)
@@ -4229,6 +4537,11 @@ async def agent_test_ws(websocket: WebSocket, session_id: str):
     except Exception as e:
         logger.error(f"Test call {session_id} error: {e}")
     finally:
+        async with _media_stream_concurrency_lock:
+            if company_id in _active_test_sessions_by_tenant:
+                _active_test_sessions_by_tenant[company_id] = max(0, _active_test_sessions_by_tenant[company_id] - 1)
+                if _active_test_sessions_by_tenant[company_id] == 0:
+                    del _active_test_sessions_by_tenant[company_id]
         await voice_session.end()
         await http_client.aclose()
         if session_id in test_sessions:

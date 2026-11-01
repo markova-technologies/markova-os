@@ -366,8 +366,12 @@ export default function Profile() {
       addToast('Please enter your current password', 'error');
       return;
     }
-    if (passwords.newPassword.length < 8) {
-      addToast('New password must be at least 8 characters long', 'error');
+    if (passwords.newPassword.length < 12) {
+      addToast('New password must be at least 12 characters long', 'error');
+      return;
+    }
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/.test(passwords.newPassword)) {
+      addToast('New password must contain uppercase, lowercase, a number, and a special character', 'error');
       return;
     }
     if (passwords.newPassword !== passwords.confirmPassword) {

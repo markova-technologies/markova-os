@@ -295,6 +295,7 @@ function App() {
                                 <Route path="phone-channels" element={<RequirePermission permission="telephony:read"><PhoneChannels /></RequirePermission>} />
                                 <Route path="keys" element={<RequirePermission permission="keys:read"><Keys /></RequirePermission>} />
                                 <Route path="integrations" element={<RequirePermission permission="integrations:read"><IntegrationHub /></RequirePermission>} />
+                                <Route path="tools" element={<Navigate to="/app/integrations" replace />} />
                                 <Route path="call-center" element={<RequirePermission permission="calls:read"><CallCenter /></RequirePermission>} />
                                 <Route path="call-center/:callId" element={<RequirePermission permission="calls:read"><CallCenter /></RequirePermission>} />
                                 <Route path="usage" element={<RequirePermission permission="analytics:read"><UsageCenter /></RequirePermission>} />

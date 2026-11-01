@@ -19,7 +19,7 @@ async def get_cached_audio_url(
     validating file size to prevent playing corrupt audio.
     """
     try:
-        text_hash = hashlib.md5(f"{provider}_{voice_id}_{text}".encode('utf-8')).hexdigest()[:8]
+        text_hash = hashlib.sha256(f"{provider}_{voice_id}_{text}".encode('utf-8')).hexdigest()[:16]
         filename = f"tts_{text_hash}.wav"
         filepath = os.path.join(AUDIO_DIR, filename)
 

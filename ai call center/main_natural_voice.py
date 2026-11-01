@@ -960,7 +960,7 @@ async def generate_multilingual_voice(text: str, lang_name: str = "amharic", met
         if method == "auto":
             sample_rate = int(os.getenv("TTS_SAMPLE_RATE", "8000"))
             import hashlib
-            text_hash = hashlib.md5(f"addisai_{lang_code}_{sample_rate}_{text}".encode('utf-8')).hexdigest()[:8]
+            text_hash = hashlib.sha256(f"addisai_{lang_code}_{sample_rate}_{text}".encode('utf-8')).hexdigest()[:16]
             wav_filename = f"addisai_{lang_code}_{text_hash}.wav"
             if (AUDIO_DIR / wav_filename).exists():
                 return f"/audio/{wav_filename}"
@@ -1008,9 +1008,9 @@ async def generate_addis_ai_tts(text: str, lang: str = "am", call_id: str = None
         sample_rate = int(os.getenv("TTS_SAMPLE_RATE", "8000"))
 
         # Create unique filename
-        text_hash = hashlib.md5(
+        text_hash = hashlib.sha256(
             f"addisai_{lang}_{sample_rate}_{text}".encode('utf-8')
-        ).hexdigest()[:8]
+        ).hexdigest()[:16]
         wav_filename = f"addisai_{lang}_{text_hash}.wav"
         wav_path = AUDIO_DIR / wav_filename
         
@@ -1103,7 +1103,7 @@ async def generate_edge_tts(text: str, lang: str = "am", call_id: str = None) ->
         import edge_tts
         
         # Create unique filename
-        text_hash = hashlib.md5(f"edge_{lang}_{text}".encode('utf-8')).hexdigest()[:8]
+        text_hash = hashlib.sha256(f"edge_{lang}_{text}".encode('utf-8')).hexdigest()[:16]
         mp3_filename = f"edge_{lang}_{text_hash}.mp3"
         wav_filename = f"edge_{lang}_{text_hash}.wav"
         mp3_path = AUDIO_DIR / mp3_filename
@@ -1159,7 +1159,7 @@ async def generate_enhanced_google_tts(text: str, lang: str = "am", call_id: str
     """Enhanced Google Translate TTS with long text support and audio concatenation"""
     try:
         # Create unique filename including language
-        text_hash = hashlib.md5(f"{lang}_{text}".encode('utf-8')).hexdigest()[:8]
+        text_hash = hashlib.sha256(f"{lang}_{text}".encode('utf-8')).hexdigest()[:16]
         mp3_filename = f"tts_{lang}_{text_hash}.mp3"
         wav_filename = f"tts_{lang}_{text_hash}.wav"
         mp3_path = AUDIO_DIR / mp3_filename
@@ -1257,7 +1257,7 @@ async def generate_openai_tts(text: str, lang: str = "am") -> Optional[str]:
         from openai import AsyncOpenAI
         
         # Create unique filename including language
-        text_hash = hashlib.md5(f"{lang}_{text}".encode('utf-8')).hexdigest()[:8]
+        text_hash = hashlib.sha256(f"{lang}_{text}".encode('utf-8')).hexdigest()[:16]
         mp3_filename = f"openai_{lang}_{text_hash}.mp3"
         wav_filename = f"openai_{lang}_{text_hash}.wav"
         mp3_path = AUDIO_DIR / mp3_filename
@@ -1373,9 +1373,11 @@ class AmharicAIAssistant:
         processed_path = None
         
         try:
-            # Save temp file - preserve original extension (.wav, .webm, .mp3, etc.)
-            original_ext = Path(audio_file.filename).suffix or ".webm"
-            temp_filename = f"temp_{hashlib.md5(audio_file.filename.encode()).hexdigest()}{original_ext}"
+            # Save temp file securely with UUID to prevent path traversal
+            raw_ext = Path(audio_file.filename).suffix.lower() if audio_file.filename else ".webm"
+            safe_ext = raw_ext if re.match(r'^\.[a-z0-9]{2,8}$', raw_ext) else ".webm"
+            random_token = uuid.uuid4().hex
+            temp_filename = f"temp_{random_token}{safe_ext}"
             temp_path = Path(temp_filename)
             
             with open(temp_path, "wb") as buffer:
@@ -1387,7 +1389,7 @@ class AmharicAIAssistant:
             # the raw telephone recording directly. Running the loudnorm pass
             # eagerly charged every turn for output that was then discarded, so
             # it now happens only when a fallback provider is really used.
-            processed_path = Path(f"temp_processed_{hashlib.md5(audio_file.filename.encode()).hexdigest()}.wav")
+            processed_path = Path(f"temp_processed_{random_token}.wav")
             import subprocess
             transcribe_path = temp_path
             transcribe_filename = temp_filename
@@ -2104,7 +2106,7 @@ async def handle_incoming_call(
     """Handle incoming calls (SIP or Twilio) with natural Amharic voice"""
     try:
         # Normalize parameters (FreeSWITCH sends caller_id/uuid, Twilio sends From/CallSid)
-        call_uuid = uuid or request.headers.get('X-Twilio-CallSid') or f"sim-{hashlib.md5(str(datetime.now()).encode()).hexdigest()[:8]}"
+        call_uuid = uuid or request.headers.get('X-Twilio-CallSid') or f"sim-{hashlib.sha256(str(datetime.now()).encode()).hexdigest()[:12]}"
         caller = caller_id or From or "unknown"
         target = To or "system"
         route = route_manager.get_active_route()

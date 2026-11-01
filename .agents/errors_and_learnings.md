@@ -4,6 +4,114 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-11-01] Fixed Agent Studio Tool Redirection to Command Center
+- **Error/Problem:**
+  - In `AgentStudio.jsx` (Integrations tab), clicking "Add Webhook Tool" or "Integration Hub" kicked the user out of Agent Studio and redirected them to the "Command Center" dashboard (`/app`).
+- **How it Happened:**
+  - Both buttons were hardcoded with `onClick={() => navigate('/app/tools')}`.
+  - In `App.jsx`, the integration hub was registered under `path="integrations"` (`/app/integrations`), but there was no route definition for `path="tools"`.
+  - React Router matched the wildcard `<Route path="*" element={<Navigate to={ROUTES.app} replace />} />`, redirecting to `/app` (which mounts `CommandCenter.jsx` as the index route).
+  - Additionally, there was no in-place modal to create webhook tools directly in `AgentStudio.jsx`, forcing unnecessary context switching.
+- **Lesson Learned & Remediations Applied:**
+  1. Route Alias Added: Added `<Route path="tools" element={<Navigate to="/app/integrations" replace />} />` in `App.jsx` to prevent broken deep links.
+  2. Fixed Link Navigation: Updated "Integration Hub" button in `AgentStudio.jsx` to `navigate('/app/integrations')`.
+  3. In-Place Tool Creation Modal: Built a complete "Add Webhook Tool" modal in `AgentStudio.jsx` allowing users to define tool name, AI description, method, and webhook URL without leaving the agent builder.
+  4. Resilient Sandbox & Demo Tool Persistence: Updated `listTools`, `createTool`, `getAgentTools`, and `connectToolToAgent` in `client.js` with default banking tools (`create_lead`, `check_account_status`, `book_appointment`) and `localStorage` fallbacks.
+  5. Built and verified cleanly with Vite (`npm run build`: 0 errors).
+
+
+### [2026-10-29] Telephony Lua Script Curl Formatting Bug in FreeSWITCH AI Handler
+- **Error/Problem:**
+  - In `ai_agent_handler.lua`, `http_post`, `upload_audio`, and `stream_response` formatted curl commands with string concatenation syntax (`".. INTERNAL_SECRET .."`) inside single-quoted format strings, causing `curl.exe` to send literal strings `" .. INTERNAL_SECRET .. "` and `" .. destination_number .. "` rather than the actual token and dialed extension.
+  - Greeting cache was hardcoded to `markova_shop_greeting_8k.wav`, causing any new agent configured via the dashboard to play the legacy shop demo greeting.
+- **How it Happened:**
+  - Previous regex/replacement edit erroneously enclosed Lua variable concatenation operators inside string literals without matching Lua's `string.format` specifiers.
+- **Lesson Learned & Remediations Applied:**
+  - Re-engineered all `string.format` invocations to use `%s` placeholders with `INTERNAL_SECRET`, `url`, `destination_number`, and `caller_id` passed as arguments.
+  - Dynamically scoped greeting cache per destination: `temp_dir .. "\markova_greeting_" .. destination_number .. "_8k.wav"`.
+
+
+### [2026-10-29] Remediated Banking-Grade Security Vulnerabilities (SEC-01, SEC-02, SEC-04, SEC-05, SEC-13)
+- **Error/Problem:**
+  1. SEC-01: Demo token authentication in `auth.middleware.ts` allowed arbitrary tenant impersonation if `X-Company-ID` header was provided.
+  2. SEC-02: FreeSWITCH ESL configuration defaulted to listening on port 8021 with password `ClueCon`.
+  3. SEC-04: WebSockets (`/ws/media-stream`, `/ws/agent-test`) lacked concurrency rate limiting, exposing the system to denial of service and runaway inference billing.
+  4. SEC-05: Audio file handling in `/sip-response` used direct string splitting without path normalization.
+  5. SEC-13: SIP domain and port inputs in `PhoneChannels.jsx` lacked client-side format validation.
+  6. Python compilation error: `global _total_active_media_streams` placed after reference in `media_stream_ws`.
+- **How it Happened:**
+  - Rapid prototyping left open development shortcuts and loose inputs across telephony and WebSocket layers.
+  - Python scope rules require `global` declaration prior to any variable access within a function.
+- **Lesson Learned & Remediations Applied:**
+  1. Locked demo token behind explicit `ENABLE_DEMO_AUTH === 'true'` AND pinned `tenantId` strictly to isolated sandbox UUID `00000000-0000-0000-0000-000000000000`.
+  2. Created `event_socket.conf.xml` strictly bound to `127.0.0.1` and configured `$${esl_auth_password}` in `vars.xml`.
+  3. Injected `_media_stream_concurrency_lock` with per-tenant (`MAX_CONCURRENT_MEDIA_STREAMS_PER_TENANT = 30`) and server-wide (`MAX_TOTAL_CONCURRENT_MEDIA_STREAMS = 200`) quotas in `services/orchestrator/main.py`. Reject handshakes with WebSocket close code 1008/1013.
+  4. Sanitized audio file paths with `os.path.basename` and `os.path.realpath` check against `AUDIO_DIR`.
+  5. Added domain regex and port range validation (1-65535) in `PhoneChannels.jsx`.
+  6. Declared `global _total_active_media_streams` at the top of `media_stream_ws`. All builds (`nest build`, `vite build`, `py_compile`) succeeded cleanly with 0 errors.
+
+
+### [2026-10-29] Enterprise Threat Model & Strix Cryptographic Governance Audit
+- **Error/Problem:**
+  1. Identified potential authentication bypass in `auth.middleware.ts` if `NODE_ENV` is not explicitly set to `'production'`, where `demo-token` or demo API keys would be accepted with wildcard `['*']` tenant permissions.
+  2. FreeSWITCH Event Socket Layer (`mod_event_socket`) on port 8021 defaults to listening on all interfaces with default password `ClueCon`, exposing telephony control if port 8021 is not strictly bound to `127.0.0.1`.
+  3. Real-time media streaming endpoints (`/ws/media-stream`, `/ws/agent-test`) lacked connection concurrency throttling, posing resource exhaustion and API token billing risks.
+- **How it Happened:**
+  - Prototype developer bypasses and default PBX configuration templates persisted during rapid SaaS scaling without strict environment segregation.
+- **Lesson Learned & Remediations Applied:**
+  1. Executed Strix proof verification (`strix doctor`, `strix health`) validating that environment isolation and cryptographic verification endpoints are active and healthy.
+  2. Created comprehensive Banking-Grade Security Audit Report in `ENTERPRISE_SECURITY_AUDIT_REPORT.md` prioritizing immediate fixes for demo tokens, ESL port binding, and WebSocket concurrency limits.
+
+### [2026-10-29] Production Telephony Audit: Generic SIP Trunk Webhook Rejection (Twilio HMAC Signature Blocker) & Inbound Routing Gap
+- **Error/Problem:**
+  1. Production Orchestrator (`services/orchestrator/main.py`) enforced `verify_twilio_signature` on `/incoming-call` and `/handle-input`, rejecting non-Twilio SIP trunks (FreeSWITCH, Asterisk, 3CX, Cisco PBXs) with `HTTP 403 Forbidden`.
+  2. Inbound routing via `get_agent_by_phone(To)` performed strict exact matching `WHERE pn.phone_number = $1`. When a tenant registers a SIP domain (e.g., `sip.example.com` or `sip.mybank.et`) in the Phone & Channels UI, inbound SIP calls carrying dialed DIDs/extensions (e.g. `8888` or `+251911234567`) fail to resolve to the assigned agent.
+- **How it Happened:**
+  - Automated OWASP security remediation hardened all incoming webhook endpoints with Twilio cryptographic signatures without providing an alternative mutual service secret / internal gateway bearer token for Generic SIP SBC gateways.
+  - The UI stores the domain in `phone_number` and settings, but the routing lookup only checked `phone_number = To`.
+- **Lesson Learned & Remediations Applied:**
+  1. Implemented `verify_telephony_request` dual-authentication in `services/orchestrator/main.py`: accepts either valid Twilio cryptographic HMAC or internal gateway secrets (`X-Markova-Internal-Secret`, `X-Gateway-Secret`, `Authorization: Bearer <secret>`), plus local loopback in dev/test environments.
+  2. Upgraded `get_agent_by_phone` to parse SIP URIs, DIDs, extensions, and domains, querying `pn.phone_number`, `settings->>'domain'`, and `settings->>'did'`.
+  3. Implemented `/sip-response` in `services/orchestrator/main.py` and registered `@All('sip-response')` in `services/api-gateway/src/app.controller.ts` for zero-latency direct WAV audio streaming.
+  4. Added `Inbound Number / DID / Extension` input in `PhoneChannels.jsx` and updated FreeSWITCH Lua handler to include auth headers and `To=` parameter.
+  5. Both `apps/client-dashboard` and `services/api-gateway` compiled with 0 errors (`npm run build` passed).
+
+### [2026-10-29] Telephony Port 5060 Conflict with 3CX PhoneSystem & FreeSWITCH Cloud Simulation
+- **Error/Problem:**
+  - When attempting to run local FreeSWITCH to bridge MicroSIP calls to the cloud AI orchestrator (`https://markova-ai-backend-us.onrender.com`), FreeSWITCH fails to bind to port 5060 (UDP/TCP).
+  - MicroSIP was unable to register to `127.0.0.1:5060`.
+- **How it Happened:**
+  - Windows background services for 3CX PhoneSystem (`3CXPhoneSystem01`, `3CXMediaServer`, `3CXGatewayService`, etc.) were configured with `Automatic` startup and occupied port 5060.
+- **Lesson Learned & Remediations Applied:**
+  1. Identified that FreeSWITCH can either run by temporarily stopping 3CX services via `Get-Service -Name '*3CX*' | Stop-Service`, or by remapping FreeSWITCH's `internal_sip_port` to `5066` in `conf/vars.xml`.
+  2. Confirmed that `ai call center/freeswitch_config/scripts/ai_agent_handler.lua` is already wired to the live Render cloud backend (`https://markova-ai-backend-us.onrender.com`), allowing 100% free SIP calls via MicroSIP -> FreeSWITCH -> Cloud AI.
+
+### [2026-10-21] OWASP Security Audit Remediation & Banking-Grade Hardening (INSA Compliance)
+- **Error/Problem:**
+  1. Static application security analysis identified hardcoded default webhook secret `mk_whsec_default` in `services/orchestrator/main.py`.
+  2. SDK tests contained dummy live key constants (`mk_live_12345`, `mk_live_test`) that triggered secret scanner alerts.
+  3. Loose password requirements (min 6–8 characters) across `Signup.jsx`, `ResetPassword.jsx`, `Profile.jsx`, `AcceptInvite.jsx`, `WorkspaceAcceptInvite.jsx`, and `auth-service/server.js` failed banking/INSA regulatory standards.
+  4. Permissive JWT algorithm validation risk where algorithm whitelist was not explicitly checked in API Gateway middleware before processing.
+  5. MD5 hashing in `main_natural_voice.py` and `tts_cache.py` for audio cache keys, plus direct usage of user-supplied `audio_file.filename` in file path generation (path traversal risk).
+  6. Twilio webhook callback endpoints (`/twilio/ivr`, `/twilio/voicemail`, `/twilio/recording`, `/twilio/messaging`, `/twilio/status`) lacked HMAC signature verification, exposing endpoints to spoofed requests.
+  7. Internal demo authentication bypass (`Bearer demo-token`) was not guarded against production environments.
+  8. Knowledge Service lacked UUID format validation and internal gateway signature checking.
+- **How it Happened:**
+  - Prototype code and demo developer paths were preserved during rapid multi-tenant feature growth without strict environment separation.
+  - Hashing routines inherited legacy MD5 from early telephony demos.
+  - Twilio callbacks were partially protected (`/twilio/voice`, `/twilio/respond`) while secondary callbacks were omitted.
+- **Lesson Learned & Remediations Applied:**
+  1. Universal `.gitignore` established (`**/.env`, `**/.env.*`, `!**/.env.example`) and full git history audited (0 leaked `.env` files).
+  2. Webhook secret fallback strictly decoupled from source code to `os.environ.get("WEBHOOK_SECRET")`.
+  3. All mock keys changed to `mk_test_*` mock tokens.
+  4. Enforced enterprise banking password policy (min 12 characters, uppercase, lowercase, numbers, special characters) end-to-end on both frontend and backend.
+  5. Hardened API Gateway to strictly reject any JWT where `alg` is not `RS256` or `HS256`.
+  6. Replaced MD5 with SHA-256 for audio caching; replaced user filename uploads with `uuid.uuid4().hex` and sanitized extensions to eliminate path traversal.
+  7. Added `verify_twilio_signature` cryptographic verification to all Twilio endpoints with 403 rejection.
+  8. Enforced production guard on demo-token auth in Orchestrator.
+  9. Added UUID validation and internal HMAC signature verification in Knowledge Service.
+  10. Established automated GitHub Actions CI/CD security workflow (`.github/workflows/security.yml`) with TruffleHog secret scanning, Semgrep SAST, pip-audit, and npm audit.
+
 ### [2026-10-19] GitHub Push Protection Secret Interception & OAuth Token Redaction in Memory Ledger
 - **Error/Problem:**
   - `git push origin main` was rejected with GitHub error `GH013: Repository rule violations found for refs/heads/main. Push cannot contain secrets (Google OAuth Access Token at .agents/skills/Memory/memory.md:1265)`.

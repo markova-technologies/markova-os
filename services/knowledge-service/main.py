@@ -141,11 +141,35 @@ class SourceCreate(BaseModel):
 def company_id_from_headers(
     x_company_id: Optional[str] = None,
     x_tenant_id: Optional[str] = None,
+    request: Optional[Request] = None,
 ) -> str:
     cid = x_company_id or x_tenant_id
     if not cid:
         raise HTTPException(status_code=400, detail="X-Company-ID or X-Tenant-ID header is required")
-    return cid
+    try:
+        uuid.UUID(str(cid).strip())
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Invalid company ID format; must be a valid UUID")
+
+    service_secret = os.getenv("SERVICE_AUTH_SECRET")
+    if service_secret and request:
+        gateway_sig = request.headers.get("x-gateway-sig", "")
+        gateway_ts = request.headers.get("x-gateway-timestamp", "")
+        if gateway_sig and gateway_ts:
+            import time, hmac, hashlib
+            try:
+                ts_ms = int(gateway_ts)
+                now_ms = int(time.time() * 1000)
+                if abs(now_ms - ts_ms) > 300_000:
+                    raise HTTPException(status_code=401, detail="Gateway timestamp expired")
+            except ValueError:
+                raise HTTPException(status_code=401, detail="Invalid gateway timestamp format")
+            user_id = request.headers.get("x-user-id", "")
+            expected_payload = f"{cid}:{user_id}:{gateway_ts}"
+            expected_sig = hmac.new(service_secret.encode(), expected_payload.encode(), hashlib.sha256).hexdigest()
+            if not hmac.compare_digest(expected_sig, gateway_sig):
+                raise HTTPException(status_code=403, detail="Invalid internal gateway signature")
+    return str(cid).strip()
 
 def audit_user_id(x_user_id: Optional[str]) -> Optional[str]:
     """API-key auth uses synthetic user ids like 'api-key-auth' — do not insert as UUID."""

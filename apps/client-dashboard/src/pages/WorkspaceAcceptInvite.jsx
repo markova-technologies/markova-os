@@ -87,8 +87,13 @@ export default function WorkspaceAcceptInvite({ onLogin }) {
       return
     }
 
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters long')
+    if (password.length < 12) {
+      setError('Password must be at least 12 characters long')
+      return
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])/.test(password)) {
+      setError('Password must contain uppercase, lowercase, a number, and a special character')
       return
     }
 

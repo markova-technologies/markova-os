@@ -366,10 +366,10 @@ app.post(
     return res.status(400).json({ error: 'All fields (name, companyName, email, password) are required' });
   }
 
-  // Strong password policy
-  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+  // Strong password policy (Banking-grade compliance: 12+ chars, uppercase, lowercase, number, symbol)
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
   if (!passwordRegex.test(password)) {
-    return res.status(400).json({ error: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number' });
+    return res.status(400).json({ error: 'Password must be at least 12 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character' });
   }
 
   const client = await pool.connect();
@@ -1002,8 +1002,9 @@ app.post(['/api/auth/me/change-password', '/v1/auth/me/change-password', '/v1/us
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current password and new password are required' });
   }
-  if (newPassword.length < 8) {
-    return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+  const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
+  if (!passwordRegex.test(newPassword)) {
+    return res.status(400).json({ error: 'New password must be at least 12 characters long and contain uppercase, lowercase, number, and special character' });
   }
 
   try {
@@ -1701,10 +1702,10 @@ app.post(['/api/auth/users/accept-invite', '/v1/users/accept-invite'], async (re
   }
 
   if (password) {
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{12,}$/;
     if (!passwordRegex.test(password)) {
       return res.status(400).json({
-        error: 'Password must be at least 8 characters long and contain at least one uppercase letter, one lowercase letter, and one number'
+        error: 'Password must be at least 12 characters long and contain at least one uppercase letter, one lowercase letter, one number, and one special character'
       });
     }
   }

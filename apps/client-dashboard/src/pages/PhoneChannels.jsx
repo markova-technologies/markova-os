@@ -67,6 +67,7 @@ const PhoneChannels = () => {
   const [sipConfig, setSipConfig] = useState({
     provider: 'generic',
     domain: '',
+    did: '',
     port: '5060',
     transport: 'udp',
     username: '',
@@ -250,14 +251,28 @@ const PhoneChannels = () => {
   };
 
   const handleSaveSip = async () => {
+    // SEC-13: Validate SIP Domain & Port formatting
+    const domain = (sipConfig.domain || '').trim();
+    if (!domain || !/^[a-zA-Z0-9.-]+$/.test(domain)) {
+      showError('Please enter a valid SIP domain or host IP (e.g. sip.bank.et or 10.0.0.1)');
+      return;
+    }
+    const portNum = parseInt(sipConfig.port, 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      showError('Please enter a valid SIP port between 1 and 65535');
+      return;
+    }
+
     info('Connecting SIP Trunk...');
     try {
       const assigned = sipConfig.assignedTo || agents[0]?.id || '';
+      const identifier = sipConfig.did ? `${sipConfig.did} (${sipConfig.domain})` : sipConfig.domain;
       const res = await createChannel({
         type: 'voice',
         subType: 'sip',
-        identifier: sipConfig.domain,
+        identifier: identifier,
         domain: sipConfig.domain,
+        did: sipConfig.did || '',
         port: sipConfig.port,
         transport: sipConfig.transport,
         username: sipConfig.username,
@@ -452,6 +467,12 @@ const PhoneChannels = () => {
               <div className="sip-form-group" style={{flex: 1}}>
                 <label>Port</label>
                 <input type="text" placeholder="5060" value={sipConfig.port} onChange={e => setSipConfig({...sipConfig, port: e.target.value})} />
+              </div>
+            </div>
+            <div className="sip-form-row">
+              <div className="sip-form-group" style={{flex: 1}}>
+                <label>Inbound Number / DID / Extension</label>
+                <input type="text" placeholder="8888 or +251..." value={sipConfig.did} onChange={e => setSipConfig({...sipConfig, did: e.target.value})} />
               </div>
             </div>
             <div className="sip-form-row">

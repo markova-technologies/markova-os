@@ -388,6 +388,11 @@ export class AppController {
     return proxyTo(this.orchestratorUrl, req, res);
   }
 
+  @All('sip-response')
+  proxySipResponse(@Req() req: Request, @Res() res: Response) {
+    return proxyTo(this.orchestratorUrl, req, res);
+  }
+
   @All('twilio*')
   proxyTwilio(@Req() req: Request, @Res() res: Response) {
     return proxyTo(this.orchestratorUrl, req, res);

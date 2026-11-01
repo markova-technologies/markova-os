@@ -1,9 +1,11 @@
 node_modules/
 dist/
 build/
-.env
-.env.local
-services/**/.env
+# Environment variable files (NEVER commit secrets)
+**/.env
+**/.env.*
+**/.env.local
+!**/.env.example
 .DS_Store
 coverage/
 .next/

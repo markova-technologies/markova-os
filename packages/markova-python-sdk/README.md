@@ -17,7 +17,7 @@ from markova import MarkovaClient
 
 # Live or Sandbox API Key
 client = MarkovaClient(
-    api_key="mk_live_your_api_key_here",
+    api_key=os.environ.get("MARKOVA_API_KEY", "your-api-key"),
     base_url="https://api.markova.et",
 )
 ```

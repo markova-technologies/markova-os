@@ -57,14 +57,14 @@ def test_webhook_signature_verification():
 
 def test_client_init_and_headers():
     client = MarkovaClient(
-        api_key="mk_live_12345",
+        api_key="mk_test_sandbox_12345",
         base_url="https://api.markova.et/v1",
     )
     assert client.base_url == "https://api.markova.et/v1"
-    assert client.api_key == "mk_live_12345"
+    assert client.api_key == "mk_test_sandbox_12345"
 
     headers = client._headers({"Custom-Header": "value"})
-    assert headers["x-api-key"] == "mk_live_12345"
+    assert headers["x-api-key"] == "mk_test_sandbox_12345"
     assert headers["Custom-Header"] == "value"
     assert headers["User-Agent"] == "markova-python-sdk/1.0.0"
 
@@ -103,7 +103,7 @@ def test_calls_create_idempotency_and_parameters():
 
 
 def test_error_status_mapping():
-    client = MarkovaClient(api_key="mk_live_test")
+    client = MarkovaClient(api_key="mk_test_mock")
 
     # 401 AuthenticationError
     client._http.request = lambda *a, **kw: httpx.Response(401, json={"error": "Invalid API Key"})
@@ -134,7 +134,7 @@ def test_error_status_mapping():
 
 
 def test_providers_crud():
-    client = MarkovaClient(api_key="mk_live_admin")
+    client = MarkovaClient(api_key="mk_test_admin")
     captured = {}
 
     def mock_req(method, url, params=None, json=None, headers=None):

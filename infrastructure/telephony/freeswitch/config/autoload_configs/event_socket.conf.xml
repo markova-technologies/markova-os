@@ -1,0 +1,12 @@
+<configuration name="event_socket.conf" description="Socket Client">
+  <settings>
+    <param name="nat-map" value="false"/>
+    <!-- SECURITY: Bind strictly to loopback interface 127.0.0.1. NEVER bind to 0.0.0.0 or public interfaces -->
+    <param name="listen-ip" value="127.0.0.1"/>
+    <param name="listen-port" value="8021"/>
+    <!-- Hardened secret rotated from default ClueCon -->
+    <param name="password" value="$${esl_auth_password}"/>
+    <param name="apply-inbound-acl" value="loopback.auto"/>
+  </settings>
+</configuration>
+
