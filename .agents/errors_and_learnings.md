@@ -4,6 +4,20 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-11-01] Resolved Cloud Production Deployment Gap for Agent Studio Tool Fixes
+- **Error/Problem:**
+  - User reported "Still it is not fixed" when testing on `https://app.markova.tech/app/agent-studio`.
+- **How it Happened:**
+  - The bug fix was made to local files on disk and built locally, but was not committed or pushed to `origin/main` on GitHub.
+  - `https://app.markova.tech` is auto-deployed by Vercel from the remote GitHub `main` branch, which was still running commit `54aa8ee` (the old build containing `navigate('/app/tools')`).
+  - Furthermore, git push was initially blocked by HTTP 408 timeout due to large audio assets in untracked skills.
+- **Lesson Learned & Remediations Applied:**
+  1. Identified that `https://app.markova.tech` runs directly from GitHub Vercel deployments.
+  2. Isolated and unstaged large audio assets, staging only clean code diffs across `apps/client-dashboard`, `services/api-gateway`, `services/orchestrator`, and `infrastructure/telephony`.
+  3. Pushed commit `4be8528` to `origin/main` to trigger the production Vercel deployment for `app.markova.tech`.
+  4. Started local Vite server daemon at `http://127.0.0.1:3001/` for immediate zero-delay local testing.
+
+
 ### [2026-11-01] Fixed Agent Studio Tool Redirection to Command Center
 - **Error/Problem:**
   - In `AgentStudio.jsx` (Integrations tab), clicking "Add Webhook Tool" or "Integration Hub" kicked the user out of Agent Studio and redirected them to the "Command Center" dashboard (`/app`).

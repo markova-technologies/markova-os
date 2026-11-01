@@ -33,3 +33,5 @@ audio/
 audit_findings_clean.json
 audit_findings_raw.json
 
+
+.agents/skills/brag/assets/
