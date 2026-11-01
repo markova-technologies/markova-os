@@ -113,7 +113,7 @@ except ImportError:
 
 semantic_cache = None
 from dotenv import load_dotenv
-from fastapi import FastAPI, Form, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 

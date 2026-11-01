@@ -36,6 +36,16 @@ CREATE TABLE IF NOT EXISTS permissions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Idempotent column checks in case table pre-existed with different schema
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT false;
+
+ALTER TABLE permissions ADD COLUMN IF NOT EXISTS name VARCHAR(100);
+ALTER TABLE permissions ADD COLUMN IF NOT EXISTS action VARCHAR(100);
+ALTER TABLE permissions ADD COLUMN IF NOT EXISTS resource VARCHAR(50);
+ALTER TABLE permissions ADD COLUMN IF NOT EXISTS description TEXT;
+
 CREATE TABLE IF NOT EXISTS role_permissions (
     role_id UUID REFERENCES roles(id) ON DELETE CASCADE,
     permission_id UUID REFERENCES permissions(id) ON DELETE CASCADE,

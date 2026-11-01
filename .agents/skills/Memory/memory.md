@@ -14129,3 +14129,67 @@ I have started the local development server for you:
 - Vercel is now building and deploying the new code to `https://app.markova.tech`.
 - In about **1-2 minutes**, perform a hard refresh (`Ctrl + F5` or `Cmd + Shift + R`) on `https://app.markova.tech/app/agent-studio`, and the in-place Add Webhook Tool modal will be live on production!
 ---
+
+
+### Turn 167
+#### 👤 User Prompt:
+markova orchestrator "2026-11-01T11:14:29.177789603Z     return asyncio.run(self.serve(sockets=sockets))
+...
+NameError: name 'File' is not defined. Did you mean: 'False'?
+...
+==> Port scan timeout reached, no open ports detected. Bind your service to at least one port." deployement failure
+
+#### 🤖 Agent Response:
+### 🛠️ Root Cause & Resolution: Render Orchestrator Deployment Failure
+
+I have diagnosed and resolved the exact deployment failure from your Render logs.
+
+---
+
+### 🔍 Diagnostic Root Cause
+
+1. **`NameError: name 'File' is not defined`**:
+   - In [`services/orchestrator/main.py`](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/services/orchestrator/main.py), when we implemented `@app.post("/sip-response")` for FreeSWITCH/SBC audio streaming, the route signature included:
+     ```python
+     audio_file: Optional[UploadFile] = File(None)
+     ```
+   - However, at line 116, the FastAPI import statement was:
+     ```python
+     from fastapi import FastAPI, Form, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
+     ```
+   - Notice that `File` and `UploadFile` were missing from the import list.
+   - When Render ran `uvicorn main:app`, Python threw a `NameError` on import, crashing the Uvicorn container immediately before it could bind to port 10000.
+   - Render's health prober waited for port 10000, detected no listener, and failed the deploy with:
+     `==> Port scan timeout reached, no open ports detected.`
+
+2. **Migration Warning (`020_enterprise_rbac_and_invites.sql`)**:
+   - The logs also showed:
+     `column "name" of relation "permissions" does not exist`
+   - In PostgreSQL, the `permissions` table pre-existed from an older schema without the `name` column, causing `CREATE TABLE IF NOT EXISTS permissions` to skip creation and subsequent `INSERT INTO permissions (name, ...)` to throw an error.
+
+---
+
+### 🔧 Fixes Applied & Verified
+
+1. **Import Fixed in `main.py`**:
+   - Added `File` and `UploadFile` to FastAPI imports in [`services/orchestrator/main.py`](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/services/orchestrator/main.py):
+     ```python
+     from fastapi import FastAPI, File, Form, HTTPException, Request, Response, UploadFile, WebSocket, WebSocketDisconnect
+     ```
+   - Executed dynamic module execution test: `python -c "import main"` ➔ **SUCCESS: 0 NameErrors**.
+
+2. **Idempotent RBAC Migration Guard**:
+   - In [`infrastructure/migrations/020_enterprise_rbac_and_invites.sql`](file:///d:/Projects/Markova%20Projects/Markova%20Ai%20Call%20Center/infrastructure/migrations/020_enterprise_rbac_and_invites.sql), added idempotent column checks:
+     ```sql
+     ALTER TABLE permissions ADD COLUMN IF NOT EXISTS name VARCHAR(100);
+     ALTER TABLE permissions ADD COLUMN IF NOT EXISTS action VARCHAR(100);
+     ALTER TABLE permissions ADD COLUMN IF NOT EXISTS resource VARCHAR(50);
+     ALTER TABLE permissions ADD COLUMN IF NOT EXISTS description TEXT;
+     ALTER TABLE roles ADD COLUMN IF NOT EXISTS display_name VARCHAR(100);
+     ALTER TABLE roles ADD COLUMN IF NOT EXISTS description TEXT;
+     ALTER TABLE roles ADD COLUMN IF NOT EXISTS is_system BOOLEAN DEFAULT false;
+     ```
+
+3. **Pushed Fix to GitHub `origin/main`**:
+   - Pushed commit directly to trigger automatic Render rebuild and redeployment.
+---

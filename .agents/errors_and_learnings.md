@@ -4,6 +4,24 @@ This document serves as a persistent memory of my past mistakes, bugs, and perfo
 
 ## Log Entries
 
+### [2026-11-01] Resolved Render Deployment Failure: Missing FastAPI File/UploadFile & RBAC Migration
+- **Error/Problem:**
+  - Render orchestrator deployment failed during startup:
+    `File "/app/main.py", line 3130, in <module>`
+    `audio_file: Optional[UploadFile] = File(None),`
+    `NameError: name 'File' is not defined. Did you mean: 'False'?`
+    followed by port scan timeout because the Uvicorn process crashed at import time.
+  - Also observed migration warning: `020_enterprise_rbac_and_invites: column "name" of relation "permissions" does not exist`.
+- **How it Happened:**
+  - When implementing `/sip-response` low-latency audio ingress, `File` and `UploadFile` were used in FastAPI route parameters but omitted from line 116's `from fastapi import ...` statement.
+  - `python -m py_compile` only checks AST syntax and does not evaluate import-time names, masking the missing import locally.
+  - `permissions` table pre-existed in cloud PostgreSQL from an older schema without the `name` column, causing `INSERT INTO permissions (name, ...)` to fail.
+- **Lesson Learned & Remediations Applied:**
+  1. Added `File, UploadFile` to `from fastapi import ...` at line 116 in `services/orchestrator/main.py`. Verified via dynamic import execution `python -c "import main"`.
+  2. Added idempotent `ALTER TABLE permissions ADD COLUMN IF NOT EXISTS name VARCHAR(100);` and corresponding column guards in `020_enterprise_rbac_and_invites.sql`.
+  3. Pushed fixes to GitHub `main` to trigger clean Render backend redeployment.
+
+
 ### [2026-11-01] Resolved Cloud Production Deployment Gap for Agent Studio Tool Fixes
 - **Error/Problem:**
   - User reported "Still it is not fixed" when testing on `https://app.markova.tech/app/agent-studio`.
