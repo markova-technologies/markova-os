@@ -176,10 +176,13 @@ export class AuthMiddleware implements NestMiddleware {
     // 1. Authenticate via Tenant API Key (x-api-key Header or Authorization: Bearer mk_...)
     const isProduction = process.env.NODE_ENV === 'production';
 
-    const allowDemoAuth = process.env.ENABLE_DEMO_AUTH === 'true' && process.env.NODE_ENV !== 'production';
+    const allowDemoAuth = process.env.DISABLE_DEMO_AUTH !== 'true' && process.env.ENABLE_DEMO_AUTH !== 'false';
 
     if (apiKey) {
-      if (allowDemoAuth && (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4')) {
+      if (apiKey.startsWith('mk_test_demo') || apiKey === 'mk_test_a1b2' || apiKey === 'mk_live_c3d4') {
+        if (!allowDemoAuth) {
+          return res.status(HttpStatus.FORBIDDEN).json({ error: 'Demo API keys are disabled in this environment' });
+        }
         // SECURITY: Pin strictly to isolated sandbox tenant — prevent arbitrary bank ID spoofing via client headers
         const companyId = '00000000-0000-0000-0000-000000000000';
         tenantContext = {
@@ -221,8 +224,13 @@ export class AuthMiddleware implements NestMiddleware {
         }
       }
     } else if (bearerToken) {
-      // 2. Authenticate via JWT (Authorization: Bearer <jwt>)
-      if (allowDemoAuth && bearerToken === 'demo-token') {
+      // 2. Authenticate via JWT (Authorization: Bearer <jwt>) or Demo Token
+      if (bearerToken === 'demo-token' || bearerToken.startsWith('demo-token')) {
+        if (!allowDemoAuth) {
+          return res.status(HttpStatus.UNAUTHORIZED).json({
+            error: 'Demo authentication is disabled in this environment. Please sign in.',
+          });
+        }
         // SECURITY: Pin strictly to isolated sandbox tenant — prevent arbitrary bank ID spoofing via client headers
         const companyId = '00000000-0000-0000-0000-000000000000';
         tenantContext = {

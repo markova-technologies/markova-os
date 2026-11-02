@@ -429,26 +429,78 @@ export const verifyApiKey = async (apiKey, keyObject = null) => {
 // ---------- Agents ----------
 export const listAgents = () => apiCache.wrap('agents', () => api.get('/agents'), 30000);
 export const getAgent = (id) => apiCache.wrap(`agent:${id}`, () => api.get(`/agents/${id}`), 30000);
-export const createAgent = (data) => {
+export const createAgent = async (data) => {
   apiCache.invalidate('agents');
   apiCache.invalidate('teams');
   apiCache.invalidate('studio-data');
+  if (isDemoMode()) {
+    const newAgent = {
+      id: 'agent-' + Date.now(),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      status: 'active',
+      isNew: false,
+      ...data,
+    };
+    const saved = JSON.parse(localStorage.getItem('markova_demo_agents') || '[]');
+    localStorage.setItem('markova_demo_agents', JSON.stringify([newAgent, ...saved]));
+    api.post('/agents', data).catch(() => {});
+    return { data: newAgent };
+  }
   return api.post('/agents', data);
 };
-export const updateAgent = (id, data) => {
+export const updateAgent = async (id, data) => {
   apiCache.invalidate('agents');
   apiCache.invalidate(`agent:${id}`);
   apiCache.invalidate('studio-data');
+  if (isDemoMode()) {
+    const saved = JSON.parse(localStorage.getItem('markova_demo_agents') || '[]');
+    let found = false;
+    const updated = saved.map(a => {
+      if (a.id === id) {
+        found = true;
+        return { ...a, ...data, isNew: false, updated_at: new Date().toISOString() };
+      }
+      return a;
+    });
+    if (!found) {
+      updated.push({ id, ...data, isNew: false, updated_at: new Date().toISOString() });
+    }
+    localStorage.setItem('markova_demo_agents', JSON.stringify(updated));
+    api.put(`/agents/${id}`, data).catch(() => {});
+    return { data: { id, ...data, isNew: false } };
+  }
   return api.put(`/agents/${id}`, data);
 };
-export const deleteAgent = (id) => {
+export const deleteAgent = async (id) => {
   apiCache.invalidate('agents');
   apiCache.invalidate(`agent:${id}`);
   apiCache.invalidate('teams');
   apiCache.invalidate('studio-data');
+  if (isDemoMode()) {
+    const saved = JSON.parse(localStorage.getItem('markova_demo_agents') || '[]');
+    localStorage.setItem('markova_demo_agents', JSON.stringify(saved.filter(a => a.id !== id)));
+    api.delete(`/agents/${id}`).catch(() => {});
+    return { data: { success: true } };
+  }
   return api.delete(`/agents/${id}`);
 };
-export const getAgentVersions = (id) => api.get(`/agents/${id}/versions`);
+export const getAgentVersions = async (id) => {
+  if (isDemoMode()) {
+    return {
+      data: [
+        {
+          id: 'v-' + Date.now(),
+          version_number: 1,
+          created_at: new Date().toISOString(),
+          prompt: 'Initial agent configuration in Sandbox',
+          change_summary: 'Created in Markova Studio Sandbox'
+        }
+      ]
+    };
+  }
+  return api.get(`/agents/${id}/versions`);
+};
 export const rollbackAgent = (id, versionId) => {
   apiCache.invalidate('agents');
   apiCache.invalidate(`agent:${id}`);
@@ -2036,7 +2088,12 @@ export const getStudioData = async () => {
           prompt: 'You are Dawit, technical support engineer. Help callers resolve hardware and assembly questions with step-by-step guidance.'
         }
       ];
-      return { data: { teams: demoTeams, agents: demoAgents } };
+      const savedAgents = JSON.parse(localStorage.getItem('markova_demo_agents') || '[]');
+      const agentMap = new Map();
+      demoAgents.forEach(a => agentMap.set(a.id, a));
+      savedAgents.forEach(a => agentMap.set(a.id, a));
+      const mergedAgents = Array.from(agentMap.values());
+      return { data: { teams: demoTeams, agents: mergedAgents } };
     }
 
     try {
@@ -2126,7 +2183,16 @@ export const disconnectToolFromAgent = async (agentId, toolId) => {
 export const getAgentVoicePreview = (id, text) =>
   api.get(`/agents/${id}/voice-preview`, { params: { text }, responseType: 'blob' });
 
-export const deployAgent = (id) => api.post(`/agents/${id}/deploy`);
+export const deployAgent = async (id) => {
+  if (isDemoMode()) {
+    const saved = JSON.parse(localStorage.getItem('markova_demo_agents') || '[]');
+    const updated = saved.map(a => a.id === id ? { ...a, deployed: true, status: 'active', deployed_at: new Date().toISOString() } : a);
+    localStorage.setItem('markova_demo_agents', JSON.stringify(updated));
+    api.post(`/agents/${id}/deploy`).catch(() => {});
+    return { data: { success: true, message: 'Agent deployed to Voice Orchestrator successfully!' } };
+  }
+  return api.post(`/agents/${id}/deploy`);
+};
 
 export const startAgentTestSession = (id, config = {}) => api.post(`/agents/${id}/test-call`, { config });
 
