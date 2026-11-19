@@ -1,0 +1,1091 @@
+{
+  "summary": {
+    "scanned": 361,
+    "total": 120,
+    "critical": 21,
+    "high": 14,
+    "medium": 85
+  },
+  "findings": [
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": ".env file present (may be committed)",
+      "file": "\\ai call center\\.env",
+      "line": 0,
+      "code": ".env",
+      "recommendation": "Ensure .env is in .gitignore and never committed. Use .env.example as template."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 717,
+      "code": "@app.get(\"/favicon.ico\", include_in_schema=False)",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 963,
+      "code": "text_hash = hashlib.md5(f\"addisai_{lang_code}_{sample_rate}_{text}\".encode('utf-8')).hexdigest()[:8]",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 1011,
+      "code": "text_hash = hashlib.md5(",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 1106,
+      "code": "text_hash = hashlib.md5(f\"edge_{lang}_{text}\".encode('utf-8')).hexdigest()[:8]",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 1162,
+      "code": "text_hash = hashlib.md5(f\"{lang}_{text}\".encode('utf-8')).hexdigest()[:8]",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 1260,
+      "code": "text_hash = hashlib.md5(f\"{lang}_{text}\".encode('utf-8')).hexdigest()[:8]",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 1378,
+      "code": "temp_filename = f\"temp_{hashlib.md5(audio_file.filename.encode()).hexdigest()}{original_ext}\"",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 1390,
+      "code": "processed_path = Path(f\"temp_processed_{hashlib.md5(audio_file.filename.encode()).hexdigest()}.wav\")",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2081,
+      "code": "@app.get(\"/favicon.ico\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2085,
+      "code": "@app.get(\"/\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2096,
+      "code": "@app.post(\"/incoming-call\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2107,
+      "code": "call_uuid = uuid or request.headers.get('X-Twilio-CallSid') or f\"sim-{hashlib.md5(str(datetime.now()).encode()).hexdiges",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2239,
+      "code": "@app.post(\"/handle-input\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2416,
+      "code": "@app.post(\"/stream-response\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2566,
+      "code": "@app.post(\"/sip-response\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2712,
+      "code": "@app.get(\"/api/commerce/products\", dependencies=[Depends(require_commerce_admin)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2724,
+      "code": "@app.post(\"/api/commerce/products\", dependencies=[Depends(require_commerce_admin)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2749,
+      "code": "@app.post(\"/api/commerce/orders/sync\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2763,
+      "code": "@app.get(\"/api/commerce/orders\", dependencies=[Depends(require_commerce_admin)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2811,
+      "code": "@app.post(\"/api/commerce/voice/orders\", dependencies=[Depends(require_commerce_voice)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2867,
+      "code": "@app.get(\"/api/dashboard/status\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2885,
+      "code": "@app.post(\"/api/dashboard/failover\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2913,
+      "code": "@app.get(\"/api/dashboard/metrics\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2938,
+      "code": "@app.post(\"/api/dashboard/test-alert\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 2952,
+      "code": "@app.get(\"/api/calls\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3006,
+      "code": "@app.get(\"/api/calls/{call_id}/recording\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3016,
+      "code": "@app.get(\"/api/agent/info\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3030,
+      "code": "@app.get(\"/api/agent/details\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3050,
+      "code": "@app.get(\"/api/agent/conversations\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3066,
+      "code": "@app.get(\"/api/agent/metrics\", dependencies=[Depends(get_api_key)])",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3150,
+      "code": "@app.post(\"/api/agents/{agent_id}/test-call\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3151,
+      "code": "@app.post(\"/v1/agents/{agent_id}/test-call\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3274,
+      "code": "@app.post(\"/api/agents/{agent_id}/voice-preview\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3275,
+      "code": "@app.post(\"/v1/agents/{agent_id}/voice-preview\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3305,
+      "code": "@app.post(\"/api/agents/{agent_id}/deploy\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3306,
+      "code": "@app.post(\"/v1/agents/{agent_id}/deploy\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A09-Logging Failures",
+      "title": "Sensitive data potentially printed to stdout",
+      "file": "\\ai call center\\main_natural_voice.py",
+      "line": 3353,
+      "code": "print(\"   2. OpenAI TTS (if API key provided)\")",
+      "recommendation": "Remove logging of credentials. Use structured logging with field masking."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A09-Logging Failures",
+      "title": "Sensitive data potentially printed to stdout",
+      "file": "\\ai call center\\test_cli_chat.py",
+      "line": 15,
+      "code": "print(\"\u274c Error: GROQ_API_KEY not found or invalid.\")",
+      "recommendation": "Remove logging of credentials. Use structured logging with field masking."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Potential embedded credential",
+      "file": "\\apps\\client-dashboard\\.env",
+      "line": 4,
+      "code": "VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYXdocXpjcHR2enlvYmdveHF3",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": ".env file present (may be committed)",
+      "file": "\\apps\\client-dashboard\\.env",
+      "line": 0,
+      "code": ".env",
+      "recommendation": "Ensure .env is in .gitignore and never committed. Use .env.example as template."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\apps\\client-dashboard\\src\\pages\\Keys.jsx",
+      "line": 226,
+      "code": "API_KEY = \"${activeKeyToken}\"",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\apps\\client-dashboard\\src\\pages\\Keys.jsx",
+      "line": 249,
+      "code": "const API_KEY = \"${activeKeyToken}\";",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded password",
+      "file": "\\apps\\client-dashboard\\src\\pages\\Signup.jsx",
+      "line": 39,
+      "code": "if (!formData.password) newErrors.password = 'Password is required'",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded password",
+      "file": "\\apps\\client-dashboard\\src\\pages\\Signup.jsx",
+      "line": 40,
+      "code": "else if (formData.password.length < 6) newErrors.password = 'Password must be at least 6 characters'",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded password",
+      "file": "\\apps\\client-dashboard\\src\\pages\\Signup.jsx",
+      "line": 41,
+      "code": "if (formData.password !== formData.confirmPassword) newErrors.confirmPassword = 'Passwords do not match'",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\apps\\docs\\src\\pages\\Sdks.jsx",
+      "line": 147,
+      "code": "client = MarkovaClient(api_key=\"mk_test_YOUR_KEY\")",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A09-Logging Failures",
+      "title": "Sensitive data potentially printed to stdout",
+      "file": "\\examples\\dispatch_outbound_call.py",
+      "line": 37,
+      "code": "print(f\"Idempotency warning: Call {idempotency_key} is already processing concurrently.\")",
+      "recommendation": "Remove logging of credentials. Use structured logging with field masking."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A09-Logging Failures",
+      "title": "Sensitive data potentially printed to stdout",
+      "file": "\\examples\\dispatch_outbound_call.py",
+      "line": 39,
+      "code": "print(\"Authentication failure: Please verify MARKOVA_API_KEY.\")",
+      "recommendation": "Remove logging of credentials. Use structured logging with field masking."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\examples\\webhook_receiver_fastapi.py",
+      "line": 19,
+      "code": "@app.post(\"/webhooks/markova\", status_code=status.HTTP_200_OK)",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\packages\\markova-python-sdk\\tests\\test_sdk.py",
+      "line": 60,
+      "code": "api_key=\"mk_live_12345\",",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\packages\\markova-python-sdk\\tests\\test_sdk.py",
+      "line": 73,
+      "code": "client = MarkovaClient(api_key=\"mk_test_sandbox\")",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\packages\\markova-python-sdk\\tests\\test_sdk.py",
+      "line": 106,
+      "code": "client = MarkovaClient(api_key=\"mk_live_test\")",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\packages\\markova-python-sdk\\tests\\test_sdk.py",
+      "line": 137,
+      "code": "client = MarkovaClient(api_key=\"mk_live_admin\")",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded API key",
+      "file": "\\packages\\markova-python-sdk\\tests\\test_sdk.py",
+      "line": 167,
+      "code": "async with AsyncMarkovaClient(api_key=\"mk_test_async\") as client:",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A07-Authentication Failures",
+      "title": "JWT decode without explicit algorithm check",
+      "file": "\\packages\\shared-auth\\index.ts",
+      "line": 5,
+      "code": "const decoded = jwt.verify(token, secret) as any;",
+      "recommendation": "Always specify allowed algorithms: jwt.decode(..., algorithms=['HS256'])"
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": ".env file present (may be committed)",
+      "file": "\\services\\api-gateway\\.env",
+      "line": 0,
+      "code": ".env",
+      "recommendation": "Ensure .env is in .gitignore and never committed. Use .env.example as template."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A07-Authentication Failures",
+      "title": "JWT decode without explicit algorithm check",
+      "file": "\\services\\api-gateway\\src\\auth.middleware.ts",
+      "line": 236,
+      "code": "const unverifiedDecoded = jwt.decode(bearerToken, { complete: true }) as any;",
+      "recommendation": "Always specify allowed algorithms: jwt.decode(..., algorithms=['HS256'])"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 163,
+      "code": "@app.post(\"/api/knowledge/sources\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 198,
+      "code": "@app.get(\"/api/knowledge/sources\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 288,
+      "code": "@app.post(\"/api/knowledge/upload\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 297,
+      "code": "@app.post(\"/api/knowledge/sources/{source_id}/documents\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 306,
+      "code": "@app.get(\"/api/knowledge/sources/{source_id}/documents\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 338,
+      "code": "@app.post(\"/api/knowledge/search\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 425,
+      "code": "@app.post(\"/api/knowledge/seed\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\knowledge-service\\main.py",
+      "line": 535,
+      "code": "@app.get(\"/health\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A03-Injection",
+      "title": "Use of eval() \u2014 code injection risk",
+      "file": "\\services\\ml-pipeline\\evaluation\\amharic_eval.py",
+      "line": 38,
+      "code": "model.eval()",
+      "recommendation": "Never pass user-controlled data to eval()."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": ".env file present (may be committed)",
+      "file": "\\services\\orchestrator\\.env",
+      "line": 0,
+      "code": ".env",
+      "recommendation": "Ensure .env is in .gitignore and never committed. Use .env.example as template."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A09-Logging Failures",
+      "title": "Sensitive data potentially printed to stdout",
+      "file": "\\services\\orchestrator\\crypto.py",
+      "line": 20,
+      "code": "\"Generate one with: python -c \\\"import secrets; print(secrets.token_hex(32))\\\"\"",
+      "recommendation": "Remove logging of credentials. Use structured logging with field masking."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 555,
+      "code": "@app.get(\"/\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 567,
+      "code": "@app.get(\"/health\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 593,
+      "code": "@app.get(\"/metrics\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded secret key",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 911,
+      "code": "secret_key = \"mk_whsec_default\"",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A07-Authentication Failures",
+      "title": "JWT decode without explicit algorithm check",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 1934,
+      "code": "payload = pyjwt.decode(",
+      "recommendation": "Always specify allowed algorithms: jwt.decode(..., algorithms=['HS256'])"
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 1957,
+      "code": "@app.get(\"/health\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 1962,
+      "code": "@app.get(\"/health/detailed\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2144,
+      "code": "@app.post(\"/incoming-call\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2145,
+      "code": "@app.post(\"/twilio/voice\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2296,
+      "code": "@app.post(\"/twilio/ivr\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2395,
+      "code": "@app.post(\"/twilio/voicemail\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2437,
+      "code": "@app.post(\"/twilio/recording\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2943,
+      "code": "@app.post(\"/handle-input\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2944,
+      "code": "@app.post(\"/twilio/respond\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 2964,
+      "code": "@app.post(\"/twilio/respond-audio\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3050,
+      "code": "@app.post(\"/twilio/messaging\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3100,
+      "code": "@app.post(\"/twilio/status\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3254,
+      "code": "@app.get(\"/api/calls\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3255,
+      "code": "@app.get(\"/v1/calls\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3296,
+      "code": "@app.post(\"/v1/calls\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3460,
+      "code": "@app.get(\"/v1/providers\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3498,
+      "code": "@app.put(\"/v1/providers/{provider_type}/{provider_name}\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3538,
+      "code": "@app.delete(\"/v1/providers/{provider_type}/{provider_name}\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3550,
+      "code": "@app.get(\"/v1/calls/{call_id}\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3568,
+      "code": "@app.get(\"/api/calls/{call_id}/transcript\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3569,
+      "code": "@app.get(\"/v1/calls/{call_id}/transcript\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3594,
+      "code": "@app.get(\"/v1/calls/{call_id}/recording\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3608,
+      "code": "@app.post(\"/v1/calls/{call_id}/barge-in\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3658,
+      "code": "@app.post(\"/v1/calls/{call_id}/release-barge-in\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3674,
+      "code": "@app.get(\"/v1/calls/{call_id}/barge-status\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3684,
+      "code": "@app.post(\"/v1/calls/{call_id}/transfer\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3760,
+      "code": "@app.get(\"/v1/calls/{call_id}/transfer-context\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3775,
+      "code": "@app.get(\"/api/stats\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3813,
+      "code": "@app.get(\"/admin/audit/verify-chain\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3852,
+      "code": "@app.post(\"/v1/billing/portal\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3893,
+      "code": "@app.post(\"/twilio/message\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3963,
+      "code": "@app.get(\"/api/capabilities\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3977,
+      "code": "@app.get(\"/api/crew/status\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 3998,
+      "code": "@app.post(\"/api/crew/test-flow\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 4041,
+      "code": "@app.post(\"/api/agents/{agent_id}/deploy\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 4042,
+      "code": "@app.post(\"/v1/agents/{agent_id}/deploy\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 4056,
+      "code": "@app.post(\"/api/agents/{agent_id}/voice-preview\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 4057,
+      "code": "@app.post(\"/v1/agents/{agent_id}/voice-preview\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 4101,
+      "code": "@app.post(\"/api/agents/{agent_id}/test-call\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "MEDIUM",
+      "category": "A01-Broken Access Control",
+      "title": "FastAPI route may lack auth dependency",
+      "file": "\\services\\orchestrator\\main.py",
+      "line": 4102,
+      "code": "@app.post(\"/v1/agents/{agent_id}/test-call\")",
+      "recommendation": "Add Depends(get_current_user) or equivalent to protect this endpoint."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A02-Cryptographic Failures",
+      "title": "Weak hash algorithm (MD5/SHA1)",
+      "file": "\\services\\orchestrator\\core\\domain\\tts_cache.py",
+      "line": 22,
+      "code": "text_hash = hashlib.md5(f\"{provider}_{voice_id}_{text}\".encode('utf-8')).hexdigest()[:8]",
+      "recommendation": "Use SHA-256 or bcrypt/argon2 for passwords."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": ".env file present (may be committed)",
+      "file": "\\services\\tenant-service\\.env",
+      "line": 0,
+      "code": ".env",
+      "recommendation": "Ensure .env is in .gitignore and never committed. Use .env.example as template."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded secret key",
+      "file": "\\services\\tenant-service\\patch_server.py",
+      "line": 36,
+      "code": "const secret_key = 'whsec_' + randomBytes(32).toString('hex');",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": "Hardcoded secret key",
+      "file": "\\services\\tenant-service\\server.js",
+      "line": 703,
+      "code": "const secret_key = 'whsec_' + randomBytes(32).toString('hex');",
+      "recommendation": "Move to environment variables. Never commit secrets."
+    },
+    {
+      "severity": "CRITICAL",
+      "category": "A02-Cryptographic Failures",
+      "title": ".env file present (may be committed)",
+      "file": "\\services\\tool-engine\\.env",
+      "line": 0,
+      "code": ".env",
+      "recommendation": "Ensure .env is in .gitignore and never committed. Use .env.example as template."
+    },
+    {
+      "severity": "HIGH",
+      "category": "A03-Injection",
+      "title": "Use of eval() \u2014 code injection risk",
+      "file": "\\services\\tool-engine\\sandbox_runner\\opensandbox_client.js",
+      "line": 42,
+      "code": "const forbiddenPatterns = ['require(\"child_process\")', 'import os; os.system', 'subprocess.', 'eval('];",
+      "recommendation": "Never pass user-controlled data to eval()."
+    }
+  ]
+}

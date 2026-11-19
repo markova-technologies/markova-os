@@ -2192,8 +2192,12 @@ async def verify_telephony_request(request: Request) -> bool:
         os.getenv("INTERNAL_SERVICE_SECRET")
         or os.getenv("GATEWAY_SECRET")
         or os.getenv("WEBHOOK_SECRET")
-        or "mk_whsec_default"
+        or ""
     ).strip()
+
+    env = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
+    if not gateway_secret and env == "production":
+        logger.error("security_misconfiguration_missing_gateway_secret", message="No telephony internal shared secret configured in production.")
 
     internal_header = (
         request.headers.get("X-Markova-Internal-Secret")
@@ -2244,9 +2248,31 @@ async def media_stream_ws(websocket: WebSocket, call_sid: str):
     global _total_active_media_streams
     company_id = websocket.query_params.get("company_id")
     agent_id = websocket.query_params.get("agent_id")
+    token = websocket.query_params.get("token")
     
-    if not company_id or not agent_id:
-        await websocket.close(code=1008, reason="Missing company_id or agent_id")
+    if not company_id or not agent_id or not call_sid:
+        await websocket.close(code=1008, reason="Missing company_id, agent_id, or call_sid")
+        return
+
+    # Validate active call session and token authenticity
+    stream_secret = os.getenv("INTERNAL_SERVICE_SECRET") or os.getenv("GATEWAY_SECRET") or "mk_stream_sec"
+    expected_token = hmac.new(stream_secret.encode(), f"{call_sid}:{company_id}:{agent_id}".encode(), hashlib.sha256).hexdigest()
+    has_valid_token = bool(token and hmac.compare_digest(token, expected_token))
+
+    call_state = await get_conversation_state(call_sid)
+    has_valid_session = bool(
+        call_state 
+        and call_state.get("call_id") 
+        and str(call_state.get("company_id")) == str(company_id)
+        and str(call_state.get("agent_id")) == str(agent_id)
+    )
+
+    env = os.getenv("ENVIRONMENT", os.getenv("NODE_ENV", "development")).lower()
+    is_local_dev = env != "production" and websocket.client and websocket.client.host in ("127.0.0.1", "::1", "localhost", "testclient")
+
+    if not (has_valid_token or has_valid_session or is_local_dev):
+        logger.warning("unauthorized_media_stream_rejected", call_sid=call_sid, company_id=company_id)
+        await websocket.close(code=1008, reason="Unauthorized: call session does not exist or invalid signature")
         return
     
     # SEC-04: Tenant & Server-wide WebSocket Concurrency Limits
@@ -2425,7 +2451,9 @@ async def handle_inbound_call(
         elif orchestrator_base.startswith("http://"):
             orchestrator_base = orchestrator_base[7:]
             
-        stream_url = f"wss://{orchestrator_base}/ws/media-stream/{CallSid}?company_id={company_id}&agent_id={agent_id}"
+        stream_secret = os.getenv("INTERNAL_SERVICE_SECRET") or os.getenv("GATEWAY_SECRET") or "mk_stream_sec"
+        stream_token = hmac.new(stream_secret.encode(), f"{CallSid}:{company_id}:{agent_id}".encode(), hashlib.sha256).hexdigest()
+        stream_url = f"wss://{orchestrator_base}/ws/media-stream/{CallSid}?company_id={company_id}&agent_id={agent_id}&token={stream_token}"
 
         twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
 <Response>
@@ -3155,32 +3183,30 @@ async def handle_sip_response(
     # If new call session without state, initialize it
     if not company_id or not state.get("call_id"):
         agent = await get_agent_by_phone(To or effective_caller or "default")
-        if not agent and db_pool:
-            row = await db_pool.fetchrow("SELECT a.*, a.id as agent_id, a.name as agent_name FROM agents a WHERE a.status = 'active' LIMIT 1")
-            if row:
-                agent = dict(row)
+        if not agent:
+            logger.warning("sip_call_rejected_no_matching_agent", dialed=To, caller=effective_caller)
+            return PlainTextResponse(status_code=404, content="Error: No active agent configured for dialed destination.")
         
-        if agent:
-            company_id = str(agent["company_id"])
-            agent_id = str(agent.get("agent_id") or agent.get("id"))
-            system_prompt = agent.get("prompt", "You are a helpful assistant.")
-            system_prompt += "\n" + SYSTEM_TOOLS_PROMPT
-            rec_id = await create_call_record(company_id, agent_id, effective_caller, None)
-            state = {
-                "messages": [{"role": "system", "content": system_prompt}],
-                "turn_count": 0,
-                "call_id": rec_id,
-                "company_id": company_id,
-                "agent_id": agent_id,
-                "agent_name": agent.get("agent_name"),
-                "voice_provider": agent.get("voice_provider") or "edge",
-                "voice_id": agent.get("voice_id") or "am-ET-MekdesNeural",
-                "model_provider": agent.get("model_provider") or "groq",
-                "model_id": agent.get("model_id") or "llama-3.3-70b-versatile",
-                "caller_number": effective_caller,
-                "call_sid": effective_sid,
-            }
-            await save_conversation_state(effective_sid, state)
+        company_id = str(agent["company_id"])
+        agent_id = str(agent.get("agent_id") or agent.get("id"))
+        system_prompt = agent.get("prompt", "You are a helpful assistant.")
+        system_prompt += "\n" + SYSTEM_TOOLS_PROMPT
+        rec_id = await create_call_record(company_id, agent_id, effective_caller, None)
+        state = {
+            "messages": [{"role": "system", "content": system_prompt}],
+            "turn_count": 0,
+            "call_id": rec_id,
+            "company_id": company_id,
+            "agent_id": agent_id,
+            "agent_name": agent.get("agent_name"),
+            "voice_provider": agent.get("voice_provider") or "edge",
+            "voice_id": agent.get("voice_id") or "am-ET-MekdesNeural",
+            "model_provider": agent.get("model_provider") or "groq",
+            "model_id": agent.get("model_id") or "llama-3.3-70b-versatile",
+            "caller_number": effective_caller,
+            "call_sid": effective_sid,
+        }
+        await save_conversation_state(effective_sid, state)
 
     user_text = (SpeechResult or "").strip()
 

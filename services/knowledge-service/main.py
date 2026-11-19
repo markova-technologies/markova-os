@@ -1,7 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, Form, Header, HTTPException, status
+from fastapi import FastAPI, Request, UploadFile, File, Form, Header, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import re
 import time
 import asyncio
 import asyncpg
@@ -155,20 +156,21 @@ def company_id_from_headers(
     if service_secret and request:
         gateway_sig = request.headers.get("x-gateway-sig", "")
         gateway_ts = request.headers.get("x-gateway-timestamp", "")
-        if gateway_sig and gateway_ts:
-            import time, hmac, hashlib
-            try:
-                ts_ms = int(gateway_ts)
-                now_ms = int(time.time() * 1000)
-                if abs(now_ms - ts_ms) > 300_000:
-                    raise HTTPException(status_code=401, detail="Gateway timestamp expired")
-            except ValueError:
-                raise HTTPException(status_code=401, detail="Invalid gateway timestamp format")
-            user_id = request.headers.get("x-user-id", "")
-            expected_payload = f"{cid}:{user_id}:{gateway_ts}"
-            expected_sig = hmac.new(service_secret.encode(), expected_payload.encode(), hashlib.sha256).hexdigest()
-            if not hmac.compare_digest(expected_sig, gateway_sig):
-                raise HTTPException(status_code=403, detail="Invalid internal gateway signature")
+        if not gateway_sig or not gateway_ts:
+            raise HTTPException(status_code=401, detail="Missing internal gateway signature")
+        import time, hmac, hashlib
+        try:
+            ts_ms = int(gateway_ts)
+            now_ms = int(time.time() * 1000)
+            if abs(now_ms - ts_ms) > 300_000:
+                raise HTTPException(status_code=401, detail="Gateway timestamp expired")
+        except ValueError:
+            raise HTTPException(status_code=401, detail="Invalid gateway timestamp format")
+        user_id = request.headers.get("x-user-id", "")
+        expected_payload = f"{cid}:{user_id}:{gateway_ts}"
+        expected_sig = hmac.new(service_secret.encode(), expected_payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected_sig, gateway_sig):
+            raise HTTPException(status_code=403, detail="Invalid internal gateway signature")
     return str(cid).strip()
 
 def audit_user_id(x_user_id: Optional[str]) -> Optional[str]:
@@ -187,11 +189,12 @@ def audit_user_id(x_user_id: Optional[str]) -> Optional[str]:
 @app.post("/api/knowledge/sources")
 async def create_source(
     source: SourceCreate,
+    request: Request,
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
     x_user_id: Optional[str] = Header(None),
 ):
-    x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
+    x_company_id = company_id_from_headers(x_company_id, x_tenant_id, request=request)
     user_id = audit_user_id(x_user_id)
         
     try:
@@ -221,10 +224,11 @@ async def create_source(
 
 @app.get("/api/knowledge/sources")
 async def list_sources(
+    request: Request,
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
+    x_company_id = company_id_from_headers(x_company_id, x_tenant_id, request=request)
         
     try:
         async with _db_pool.acquire() as conn:
@@ -311,29 +315,32 @@ async def _store_document(source_id: str, file: UploadFile, x_company_id: str):
 
 @app.post("/api/knowledge/upload")
 async def upload_document(
+    request: Request,
     source_id: str = Form(...),
     file: UploadFile = File(...),
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    return await _store_document(source_id, file, company_id_from_headers(x_company_id, x_tenant_id))
+    return await _store_document(source_id, file, company_id_from_headers(x_company_id, x_tenant_id, request=request))
 
 @app.post("/api/knowledge/sources/{source_id}/documents")
 async def upload_document_for_source(
     source_id: str,
+    request: Request,
     file: UploadFile = File(...),
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    return await _store_document(source_id, file, company_id_from_headers(x_company_id, x_tenant_id))
+    return await _store_document(source_id, file, company_id_from_headers(x_company_id, x_tenant_id, request=request))
 
 @app.get("/api/knowledge/sources/{source_id}/documents")
 async def list_documents(
     source_id: str,
+    request: Request,
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
+    x_company_id = company_id_from_headers(x_company_id, x_tenant_id, request=request)
         
     try:
         async with _db_pool.acquire() as conn:
@@ -362,10 +369,11 @@ class SearchRequest(BaseModel):
 @app.post("/api/knowledge/search")
 async def search_knowledge(
     body: SearchRequest,
+    request: Request,
     x_company_id: Optional[str] = Header(None),
     x_tenant_id: Optional[str] = Header(None),
 ):
-    x_company_id = company_id_from_headers(x_company_id, x_tenant_id)
+    x_company_id = company_id_from_headers(x_company_id, x_tenant_id, request=request)
     q = (body.query or "").strip()
     if not q:
         raise HTTPException(status_code=400, detail="query is required")
@@ -445,23 +453,31 @@ class SeedRequest(BaseModel):
     template: Optional[str] = "gm_furniture"
     source_name: Optional[str] = "Sample Knowledge Base (GM Furniture)"
 
+SAFE_TEMPLATE_RE = re.compile(r'^[a-zA-Z0-9_-]{1,64}$')
 
 @app.post("/api/knowledge/seed")
 async def seed_knowledge_base(
+    request: Request,
     payload: SeedRequest = SeedRequest(),
-    x_company_id: str = Header(..., alias="x-company-id"),
+    x_company_id: Optional[str] = Header(None, alias="x-company-id"),
+    x_tenant_id: Optional[str] = Header(None, alias="x-tenant-id"),
     x_user_id: Optional[str] = Header(None, alias="x-user-id"),
 ):
     """
     Seed a sample knowledge base (e.g. GM Furniture) into the tenant's knowledge store.
     This enables testing RAG without needing to upload custom documents first.
     """
+    x_company_id = company_id_from_headers(x_company_id, x_tenant_id, request=request)
     if not _db_pool:
         raise HTTPException(status_code=503, detail="Database pool not ready")
 
-    template_file = os.path.join(os.path.dirname(__file__), "seed_data", f"{payload.template}.json")
-    if not os.path.exists(template_file):
-        raise HTTPException(status_code=404, detail=f"Seed template '{payload.template}' not found")
+    if not payload.template or not SAFE_TEMPLATE_RE.match(payload.template):
+        raise HTTPException(status_code=400, detail="Invalid template identifier.")
+
+    seed_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "seed_data"))
+    template_file = os.path.realpath(os.path.join(seed_dir, f"{payload.template}.json"))
+    if not template_file.startswith(seed_dir + os.sep) or not os.path.isfile(template_file):
+        raise HTTPException(status_code=404, detail=f"Seed template '{payload.template}' not found.")
 
     with open(template_file, "r", encoding="utf-8") as f:
         raw_data = json.load(f)

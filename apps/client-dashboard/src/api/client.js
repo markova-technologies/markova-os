@@ -25,6 +25,8 @@ export const DEMO_USER = {
   email: DEMO_CREDENTIALS.email,
   name: 'Demo Developer',
   companyName: 'Markova Demo',
+  role: 'owner',
+  permissions: ['*'],
   plan: 'plus',
 }
 

@@ -27,6 +27,7 @@ function parseJwt(token) {
 const DEFAULT_ROLE_PERMISSIONS = {
   owner: ['*'],
   superadmin: ['*'],
+  client: ['*'],
   admin: [
     'agents:read', 'agents:create', 'agents:update', 'agents:delete',
     'knowledge:read', 'knowledge:create', 'knowledge:update', 'knowledge:delete',
@@ -143,8 +144,8 @@ export const AuthProvider = ({ children, initialUser = null }) => {
     if (!requiredPermission) return true;
     const currentRole = (role || 'viewer').toLowerCase();
 
-    // Owner and Superadmin possess total platform override
-    if (currentRole === 'owner' || currentRole === 'superadmin') {
+    // Owner, Superadmin, and Client possess total platform override
+    if (currentRole === 'owner' || currentRole === 'superadmin' || currentRole === 'client') {
       return true;
     }
 

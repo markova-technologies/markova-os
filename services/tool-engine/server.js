@@ -3,6 +3,7 @@ const cors = require('cors');
 const { Pool } = require('pg');
 const { createClient } = require('redis');
 const axios = require('axios');
+const dns = require('dns').promises;
 const EventBus = require('../../kernel/events/bus');
 const { EventTypes } = require('../../kernel/events/registry');
 const TenantGuard = require('../../kernel/identity/tenant-guard');
@@ -84,36 +85,132 @@ async function initialize() {
   }
 }
 
-initialize();
+if (require.main === module) {
+  initialize();
+}
 
-function isSafeWebhookUrl(urlString) {
+function decodeIpv4Octets(str) {
+  if (!str || typeof str !== 'string') return null;
+  const s = str.trim().toLowerCase();
+
+  // 1. Dotted-decimal format: e.g. "127.0.0.1" or "169.254.169.254"
+  const dotMatch = s.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (dotMatch) {
+    const octets = dotMatch.slice(1).map(Number);
+    if (octets.every(o => o <= 255)) {
+      return octets;
+    }
+    return null;
+  }
+
+  // 2. Colon-hex format from WHATWG URL parser or IPv6 hex words: e.g. "7f00:1" or "a9fe:a9fe"
+  const hexMatch = s.match(/^([0-9a-f]{1,4}):([0-9a-f]{1,4})$/);
+  if (hexMatch) {
+    const high = parseInt(hexMatch[1], 16);
+    const low = parseInt(hexMatch[2], 16);
+    if (isNaN(high) || isNaN(low) || high > 0xffff || low > 0xffff) return null;
+    const a = (high >> 8) & 0xff;
+    const b = high & 0xff;
+    const c = (low >> 8) & 0xff;
+    const d = low & 0xff;
+    return [a, b, c, d];
+  }
+
+  return null;
+}
+
+function isRestrictedIpv4(a, b, c, d) {
+  if (a > 255 || b > 255 || c > 255 || d > 255) return true;
+  if (a === 0) return true;                          // 0.0.0.0/8 (Current network)
+  if (a === 10) return true;                         // 10.0.0.0/8 (RFC 1918)
+  if (a === 127) return true;                        // 127.0.0.0/8 (Loopback)
+  if (a === 169 && b === 254) return true;           // 169.254.0.0/16 (Link-Local & Cloud Metadata, 169.254.169.254)
+  if (a === 172 && b >= 16 && b <= 31) return true;  // 172.16.0.0/12 (RFC 1918)
+  if (a === 192 && b === 168) return true;          // 192.168.0.0/16 (RFC 1918)
+  if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10 (CGNAT)
+  if (a >= 224) return true;                         // 224.0.0.0/4 (Multicast & Reserved)
+  return false;
+}
+
+function isPrivateOrRestrictedIp(ip) {
+  if (!ip || typeof ip !== 'string') return true;
+  let normalized = ip.toLowerCase().trim().replace(/^\[|\]$/g, '');
+
+  // 1. Direct standard IPv4 dotted-decimal
+  const directIpv4 = decodeIpv4Octets(normalized);
+  if (directIpv4 && normalized.includes('.')) {
+    return isRestrictedIpv4(...directIpv4);
+  }
+
+  // 2. IPv4-mapped IPv6 (e.g. ::ffff:127.0.0.1 or ::ffff:7f00:1)
+  // Covers compressed ::ffff: and uncompressed 0:0:0:0:0:ffff:
+  if (
+    normalized.startsWith('::ffff:') ||
+    normalized.startsWith('0:0:0:0:0:ffff:') ||
+    normalized.startsWith('0000:0000:0000:0000:0000:ffff:')
+  ) {
+    const ffffIndex = normalized.indexOf('ffff:');
+    const rest = normalized.slice(ffffIndex + 5);
+    const octets = decodeIpv4Octets(rest);
+    // If an IP starts with ::ffff: and cannot be parsed into 4 valid public octets, fail closed
+    if (!octets) return true;
+    return isRestrictedIpv4(...octets);
+  }
+
+  // 3. IPv4-compatible IPv6 (deprecated, e.g. ::127.0.0.1 or ::7f00:1)
+  if (
+    (normalized.startsWith('::') && !normalized.startsWith('::ffff:')) ||
+    normalized.startsWith('0:0:0:0:0:0:') ||
+    normalized.startsWith('0000:0000:0000:0000:0000:0000:')
+  ) {
+    // ::1 loopback or :: unspecified
+    if (normalized === '::1' || normalized === '::' || /^(0|:)*1$/.test(normalized) || /^[0:]+$/.test(normalized)) {
+      return true;
+    }
+    const rest = normalized.startsWith('::')
+      ? normalized.slice(2)
+      : normalized.replace(/^(?:0000|0):(?:0000|0):(?:0000|0):(?:0000|0):(?:0000|0):(?:0000|0):/, '');
+    const octets = decodeIpv4Octets(rest);
+    if (octets) {
+      if (isRestrictedIpv4(...octets)) return true;
+      // Deprecated IPv4-compatible format is not permitted for outbound webhooks
+      return true;
+    }
+  }
+
+  // 4. IPv6 Loopback, Unspecified, Link-Local, ULA, Multicast, Documentation
+  if (normalized === '::1' || normalized === '::') return true;
+  if (/^(0|:)*1$/.test(normalized) || /^[0:]+$/.test(normalized)) return true;
+  if (normalized.startsWith('fe8') || normalized.startsWith('fe9') || normalized.startsWith('fea') || normalized.startsWith('feb')) return true; // fe80::/10
+  if (normalized.startsWith('fc') || normalized.startsWith('fd')) return true; // fc00::/7
+  if (normalized.startsWith('ff')) return true; // ff00::/8 multicast
+  if (normalized.startsWith('2001:db8:') || normalized.startsWith('2001:0db8:')) return true; // documentation
+
+  return false;
+}
+
+async function isSafeWebhookUrl(urlString) {
   try {
+    if (!urlString || typeof urlString !== 'string') return false;
     const parsed = new URL(urlString);
     if (!['http:', 'https:'].includes(parsed.protocol)) return false;
-    const hostname = parsed.hostname.toLowerCase();
+    const rawHostname = parsed.hostname.toLowerCase();
+    const cleanHostname = rawHostname.replace(/^\[|\]$/g, '');
     if (
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      hostname === '::1' ||
-      hostname === '0.0.0.0' ||
-      hostname.endsWith('.local') ||
-      hostname.endsWith('.internal') ||
-      hostname === '169.254.169.254' ||
-      hostname === 'metadata.google.internal'
+      cleanHostname === 'localhost' ||
+      cleanHostname.endsWith('.local') ||
+      cleanHostname.endsWith('.internal') ||
+      cleanHostname === 'metadata.google.internal'
     ) {
       return false;
     }
-    const match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-    if (match) {
-      const p1 = parseInt(match[1], 10);
-      const p2 = parseInt(match[2], 10);
-      if (
-        p1 === 10 ||
-        p1 === 127 ||
-        (p1 === 172 && p2 >= 16 && p2 <= 31) ||
-        (p1 === 192 && p2 === 168) ||
-        (p1 === 169 && p2 === 254)
-      ) {
+    if (isPrivateOrRestrictedIp(cleanHostname)) {
+      return false;
+    }
+    const addresses = await dns.lookup(cleanHostname, { all: true });
+    if (!addresses || addresses.length === 0) return false;
+    for (const addr of addresses) {
+      if (isPrivateOrRestrictedIp(addr.address)) {
         return false;
       }
     }
@@ -126,7 +223,8 @@ function isSafeWebhookUrl(urlString) {
 // Unified Plugin Execution Interface
 class WebhookPlugin {
   async execute(tool, payload) {
-    if (!isSafeWebhookUrl(tool.webhook_url)) {
+    const isSafe = await isSafeWebhookUrl(tool.webhook_url);
+    if (!isSafe) {
       throw new Error(`SSRF Blocked: Webhook target URL ${tool.webhook_url} is not permitted.`);
     }
 
@@ -490,6 +588,11 @@ app.post('/api/tools', async (req, res) => {
 
   if (!name || !webhook_url) return res.status(400).json({ error: 'Name and Webhook URL are required' });
 
+  const isSafe = await isSafeWebhookUrl(webhook_url);
+  if (!isSafe) {
+    return res.status(400).json({ error: 'SSRF Blocked: Webhook target URL is not permitted' });
+  }
+
   try {
     const result = await tenantDb.query(
       ctx,
@@ -522,6 +625,12 @@ app.put('/api/tools/:id', async (req, res) => {
   const { name, description, webhook_url, method } = req.body;
 
   try {
+    if (webhook_url) {
+      const isSafe = await isSafeWebhookUrl(webhook_url);
+      if (!isSafe) {
+        return res.status(400).json({ error: 'SSRF Blocked: Webhook target URL is not permitted' });
+      }
+    }
     const result = await tenantDb.query(
       ctx,
       `UPDATE tools 
@@ -569,26 +678,35 @@ app.delete('/api/tools/:id', async (req, res) => {
   }
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`🚀 Tool Engine Service listening on port ${PORT}`);
-});
+let server = null;
+if (require.main === module) {
+  server = app.listen(PORT, () => {
+    console.log(`🚀 Tool Engine Service listening on port ${PORT}`);
+  });
+}
 
 const gracefulShutdown = async (signal) => {
   console.log(`Received ${signal}. Shutting down gracefully...`);
-  server.close(async () => {
-    try {
-      await pool.end();
-      if (redisClient?.isOpen) {
-        await redisClient.quit();
+  if (server) {
+    server.close(async () => {
+      try {
+        await pool.end();
+        if (redisClient?.isOpen) {
+          await redisClient.quit();
+        }
+        console.log('Tool Engine Service closed all connections cleanly.');
+        process.exit(0);
+      } catch (err) {
+        console.error('Error during shutdown:', err);
+        process.exit(1);
       }
-      console.log('Tool Engine Service closed all connections cleanly.');
-      process.exit(0);
-    } catch (err) {
-      console.error('Error during shutdown:', err);
-      process.exit(1);
-    }
-  });
+    });
+  } else {
+    process.exit(0);
+  }
 };
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+module.exports = { app, server, isPrivateOrRestrictedIp, isSafeWebhookUrl };

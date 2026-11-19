@@ -44,17 +44,16 @@ export class RateLimiterService {
   async isRateLimited(tenantId: string, plan = 'starter'): Promise<boolean> {
     try {
       const rateLimitKey = `rate_limit:${tenantId}`;
-      const requests = await this.redisClient.incr(rateLimitKey);
+      const multi = this.redisClient.multi();
+      multi.incr(rateLimitKey);
+      multi.expire(rateLimitKey, 60, 'NX');
+      const results = await multi.exec();
 
-      if (requests === 1) {
-        // Set expiry for 1 minute window
-        await this.redisClient.expire(rateLimitKey, 60);
-      }
-
+      const requests = (results?.[0] as unknown as number) ?? 1;
       const limit = this.PLAN_LIMITS[plan] ?? this.PLAN_LIMITS.starter;
       return requests > limit;
-    } catch (err) {
-      console.error('Rate limit checking failed:', err.message);
+    } catch (err: any) {
+      console.error('Rate limit checking failed:', err?.message || err);
       return false; // Fail open to prevent service denial
     }
   }

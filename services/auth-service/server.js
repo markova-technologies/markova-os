@@ -52,12 +52,11 @@ app.get(['/api/auth/health/email', '/v1/auth/health/email', '/v1/health/email'],
   const rawKey = (process.env.RESEND_API_KEY || '').trim().replace(/^['"]|['"]$/g, '');
   const isConfigured = Boolean(rawKey && rawKey.length > 5);
   const fromEmail = (process.env.RESEND_FROM_EMAIL || '').trim().replace(/^['"]|['"]$/g, '') || 'Markova AI <onboarding@resend.dev>';
-  const maskedKey = isConfigured ? `${rawKey.substring(0, 6)}...${rawKey.slice(-4)}` : null;
 
   res.json({
     status: 'ok',
     configured: isConfigured,
-    masked_key: maskedKey,
+    masked_key: isConfigured ? '••••••••••••••••' : null,
     from_email: fromEmail,
     client_dashboard_url: process.env.CLIENT_DASHBOARD_URL || 'not set (using request origin)'
   });
